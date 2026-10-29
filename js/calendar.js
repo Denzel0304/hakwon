@@ -59,7 +59,13 @@ const MiniCal = {
     const el = $('#mini-cal');
     if (!this.month) { const d = parseYmd(App.selDate); this.month = new Date(d.getFullYear(), d.getMonth(), 1); }
     const y = this.month.getFullYear(), m = this.month.getMonth();
-    const idx = CalIndex.build();
+    const today0 = todayStr();
+    const tdIdx = {};
+    Store.all('todos').forEach(t => {
+      if (t.done || !isYmd(t.date)) return;
+      const o = tdIdx[t.date] = tdIdx[t.date] || { late: false, todo: false };
+      if (t.date < today0) o.late = true; else o.todo = true;
+    });
     const first = new Date(y, m, 1);
     const start = addDays(first, -first.getDay());
     const last = new Date(y, m + 1, 0);
@@ -73,7 +79,7 @@ const MiniCal = {
     </div><div class="mc-grid">`;
     DOW.forEach((w, i) => { h += `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
     for (let i = 0; i < weeks * 7; i++) {
-      const d = addDays(start, i), k = ymd(d), o = idx[k];
+      const d = addDays(start, i), k = ymd(d), o = tdIdx[k];
       const cls = ['mc-day'];
       if (d.getMonth() !== m) cls.push('other');
       if (d.getDay() === 0) cls.push('sun');
@@ -82,14 +88,12 @@ const MiniCal = {
       if (k === App.selDate) cls.push('sel');
       let dots = '';
       if (o) {
-        if (o.exam.length) dots += '<i class="dot-exam"></i>';
-        if (o.pre.length) dots += '<i class="dot-pre"></i>';
-        if (o.weekend.length) dots += '<i class="dot-weekend"></i>';
-        if (o.etc.length) dots += '<i class="dot-etc"></i>';
+        if (o.late) dots += '<i class="dot-late"></i>';
+        if (o.todo) dots += '<i class="dot-todo"></i>';
       }
       h += `<button class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
     }
-    h += `</div><div class="mc-legend"><span><i class="dot-exam"></i>시험</span><span><i class="dot-pre"></i>직전보강</span><span><i class="dot-weekend"></i>주말보강</span><span><i class="dot-etc"></i>기타</span></div>`;
+    h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span></div>`;
     el.innerHTML = h;
     if (!this.bound) {
       this.bound = true;
@@ -194,10 +198,13 @@ const DayPage = {
     const dow = dowOf(date);
     const classes = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).sort((a, b) => ko(a.start, b.start));
     const counsels = Store.where('counsels', c => c.date === date);
+    const todos = Store.where('todos', t => t.date === date).sort(Todos.sortFn);
     let h = `<div class="page-head"><h1>${fmtDate(date)}</h1>
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
       <span class="grow"></span><button class="btn primary" data-a="add">+ 일정 추가</button></div>
       <div class="grid-2"><div>
+      <div class="panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
+      ${todos.length ? Todos.rowsHtml(todos, false) : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
       <div class="panel"><h2>시험</h2>`;
     h += o.exam.length ? '<div class="list">' + o.exam.map(ex => `
         <div class="list-item click" data-exam="${ex.id}"><span class="when"><span class="badge red">시험</span></span>
@@ -233,7 +240,8 @@ const DayPage = {
       }
       const ex = e.target.closest('[data-exam]'); if (ex) { Exams.openModal(ex.dataset.exam); return; }
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
-      const cl = e.target.closest('[data-class]'); if (cl) { App.go('lessons', { date, classId: cl.dataset.class }); return; }
+      if (Todos.handleClick(e)) return;
+      const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); return; }
       const co = e.target.closest('[data-counsel]'); if (co) { Counsels.openModal(co.dataset.counsel); }
     };
     main.onchange = null;

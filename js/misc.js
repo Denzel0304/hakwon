@@ -88,12 +88,17 @@ const Today = {
       [...o.pre, ...o.weekend, ...o.etc].forEach(ev => upcoming.push({ d, kind: 'ev', item: ev }));
     }
     const mks = Store.where('makeups', m => m.status === 'plan' && m.date && m.date <= today).sort((a, b) => ko(a.date, b.date) || ko(a.time, b.time));
-    const todos = Store.where('todos', t => !t.done).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
+    const todayTodos = Store.where('todos', t => t.date === today).sort(Todos.sortFn);
+    const lateTodos = Store.where('todos', t => !t.done && isYmd(t.date) && t.date < today).sort(Todos.sortFn);
     const pending = Promo.pendingStudents();
 
     let h = `<div class="page-head"><h1>오늘</h1><span class="sub">${fmtDate(today)}</span></div>`;
     if (pending.length) h += `<div class="panel" style="margin-bottom:14px;border-color:#F1D3A1;background:#FFFBF3"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
-    h += `<div class="grid-2"><div><div class="panel"><h2>오늘 수업</h2>`;
+    h += `<div class="grid-2"><div>
+      <div class="panel"><h2>오늘 할일 <span class="sub">${todayTodos.filter(t => !t.done).length}개 남음</span></h2>
+      ${todayTodos.length ? Todos.rowsHtml(todayTodos, false) : '<div class="empty">오늘 할일이 없습니다.</div>'}</div>
+      ${lateTodos.length ? `<div class="panel" style="border-color:#F0C4C6"><h2 style="color:var(--danger)">밀린 할일 <span class="sub">${lateTodos.length}개</span></h2>${Todos.rowsHtml(lateTodos, true)}</div>` : ''}
+      <div class="panel"><h2>오늘 수업</h2>`;
     h += classes.length ? '<div class="list">' + classes.map(c => {
       const les = Store.get('lessons', Lessons.lessonId(c.id, today));
       const roster = Classes.rosterAt(c.id, today);
@@ -115,27 +120,15 @@ const Today = {
       ? `<div class="list-item click" data-exam="${u.item.id}"><span class="when">${u.d === today ? '오늘' : fmtMD(u.d)}</span><div class="what"><span class="badge red">시험</span> <b>${esc(examTitle(u.item))}</b>${u.item.end && u.item.end !== u.item.start ? ` <span class="small muted">~${fmtMD(u.item.end)}</span>` : ''}</div></div>`
       : `<div class="list-item click" data-ev="${u.item.id}"><span class="when">${u.d === today ? '오늘' : fmtMD(u.d)} ${esc(u.item.start || '')}</span><div class="what"><b>${esc(eventTitle(u.item))}</b></div></div>`).join('') + '</div>'
       : '<div class="empty">2주 안에 시험이나 일정이 없습니다.</div>';
-    h += `</div><div class="panel"><h2>미완료 할일 <span class="sub">${todos.length}개</span></h2>`;
-    h += todos.length ? todos.map(t => {
-      const c = Store.get('classes', t.classId);
-      return `<div class="todo-row"><input type="checkbox" data-tdone="${t.id}"><span class="tx">${esc(t.text)}</span><span class="small muted nowrap" data-tgo="${t.id}" style="cursor:pointer">${fmtMD(t.date)} ${esc(c ? c.name : '')}</span></div>`;
-    }).join('') : '<div class="empty">남은 할일이 없습니다.</div>';
     h += '</div></div></div>';
     main.innerHTML = h;
     main.onclick = (e) => {
       if (e.target.closest('[data-a=school]')) { Promo.openSchoolModal(); return; }
-      const cl = e.target.closest('[data-class]'); if (cl) { App.go('lessons', { date: today, classId: cl.dataset.class }); return; }
+      if (Todos.handleClick(e)) return;
+      const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(today, cl.dataset.class); return; }
       const mk = e.target.closest('[data-mk]'); if (mk) { Makeups.q = mk.dataset.mk; Makeups.tab = 'open'; App.go('makeups'); return; }
       const ex = e.target.closest('[data-exam]'); if (ex) { Exams.openModal(ex.dataset.exam); return; }
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
-      const td = e.target.closest('[data-tdone]');
-      if (td) { const t = Store.get('todos', td.dataset.tdone); if (t) { Store.put('todos', Object.assign({}, t, { done: true })); toast('완료했습니다'); App.render(); } return; }
-      const tg = e.target.closest('[data-tgo]');
-      if (tg) {
-        const t = Store.get('todos', tg.dataset.tgo); if (!t) return;
-        const l = Store.get('lessons', t.lessonId), d = l ? l.date : t.date;
-        App.selDate = d; MiniCal.showMonthOf(d); App.go('lessons', { date: d, classId: t.classId });
-      }
     };
     main.onchange = null;
   },

@@ -244,7 +244,7 @@ const Timetable = {
       const ed = e.target.closest('[data-editcls]'); if (ed) { e.stopPropagation(); Classes.openModal(ed.dataset.editcls); return; }
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
       const ls = e.target.closest('[data-lesson]');
-      if (ls) { App.selDate = ls.dataset.date; MiniCal.showMonthOf(ls.dataset.date); App.go('lessons', { date: ls.dataset.date, classId: ls.dataset.lesson }); return; }
+      if (ls) { Lessons.open(ls.dataset.date, ls.dataset.lesson); return; }
       const col = e.target.closest('[data-col]');
       if (col) {
         const r = col.getBoundingClientRect();

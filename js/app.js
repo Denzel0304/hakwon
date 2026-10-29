@@ -8,12 +8,14 @@ const App = {
   _needRender: false,
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
-    lessons: Lessons, makeups: Makeups, exams: Exams, scores: Scores,
+    lessons: Lessons, attendance: AttBook, progress: ProgressBook, makeups: Makeups, exams: Exams, scores: Scores,
     counsels: Counsels, calendar: BigCal, day: DayPage, settings: Settings,
   },
 
   go(page, params = {}) {
     const same = page === this.page;
+    const cur = this.pages[this.page];
+    if (!same && cur && cur.onLeave) cur.onLeave();   // 예: 수업일지 저장 안 한 입력 버리기
     this.page = page;
     this.params = params;
     this.render(!same);
