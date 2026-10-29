@@ -163,10 +163,12 @@ const Timetable = {
     // 날짜별 블록
     const cols = dates.map(d => {
       const dow = dowOf(d);
+      // 이번 주의 지난 요일은 오늘 기준 명단(현재 반 구성)으로 보여준다
+      const rosterDate = d < today && d >= ymd(mondayOf(new Date())) ? today : d;
       const items = [];
       classes.filter(c => (c.days || []).includes(dow)).forEach(c => {
         const s = toMin(c.start), e = s + (+c.duration || 90);
-        items.push({ kind: 'class', c, s, e, roster: Classes.rosterAt(c.id, d) });
+        items.push({ kind: 'class', c, s, e, roster: Classes.rosterAt(c.id, rosterDate) });
       });
       events.filter(ev => ev.date === d).forEach(ev => {
         const s = toMin(ev.start), e = ev.end ? Math.max(toMin(ev.end), s + 30) : s + 60;

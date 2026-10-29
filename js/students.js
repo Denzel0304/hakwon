@@ -37,7 +37,7 @@ const Students = {
       .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)))
       .sort((a, b) => this.sortFn(a, b));
 
-    let h = `<div class="page-head"><h1>학생</h1><span class="grow"></span><button class="btn primary" data-a="add">+ 학생 등록</button></div>
+    let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button></div>
       <div class="tabs">${['active', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
       <div class="toolbar">
         <input type="search" data-q placeholder="이름, 학교, 연락처, 메모 검색" value="${esc(this.q)}" style="width:280px">
@@ -47,7 +47,7 @@ const Students = {
     if (!list.length) {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 학생이 없습니다.' : '등록된 학생이 없습니다. 오른쪽 위 “학생 등록”으로 시작하세요.'}</div></div>`;
     } else {
-      h += `<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>
         <th>이름</th><th>학교·학년</th>${this.tab === 'active' ? '<th>수강반</th>' : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th><th>메모</th></tr></thead><tbody>`;
       list.forEach(s => {
         const third = this.tab === 'active'
@@ -63,6 +63,7 @@ const Students = {
       });
       h += '</tbody></table></div>';
     }
+    h += '</div>';
     main.innerHTML = h;
     main.onclick = (e) => {
       if (e.target.closest('[data-a=add]')) { this.openNew(); return; }
@@ -83,9 +84,16 @@ const Students = {
   },
 
   /* ---------- 기본 정보 폼 ---------- */
+  joinDateOf(s) {
+    if (s.joinDate) return s.joinDate;
+    const lg = Store.where('student_log', l => l.studentId === s.id && l.type === 'join').sort((a, b) => ko(a.date, b.date))[0];
+    return lg ? lg.date : (s.statusDate || '');
+  },
+
   infoFormHtml(s) {
     return `<div class="form">
       <label class="req">이름</label><input type="text" name="name" value="${esc(s.name)}" maxlength="30">
+      <label class="req">등록일</label><div class="row"><input type="date" name="joinDate" value="${esc(s.id ? this.joinDateOf(s) : (s.joinDate || todayStr()))}"></div>
       <label>학교·학년</label><div class="row"><input type="text" name="school" list="dl-schools" value="${esc(s.school)}" placeholder="비워 두면 학교미정" style="flex:1"><select name="grade">${gradeOptions(s.grade, '학년 선택')}</select></div>
       <label>학생 연락처</label><input type="tel" name="phone" value="${esc(s.phone)}" placeholder="010-0000-0000">
       <label>부모님 연락처</label><input type="tel" name="parentPhone" value="${esc(s.parentPhone)}" placeholder="010-0000-0000">
@@ -115,7 +123,6 @@ const Students = {
   /* ---------- 신규 등록 ---------- */
   openNew() {
     const body = this.infoFormHtml({}) + `<div class="form" style="margin-top:10px">
-      <label class="req">등록일</label><div class="row"><input type="date" name="joinDate" value="${todayStr()}"></div>
       <label class="top">수강반</label><div>${this.classPickHtml()}</div></div>`;
     Modal.open({
       title: '학생 등록', body, size: 'lg',
@@ -127,7 +134,7 @@ const Students = {
           const joinDate = $('[name=joinDate]', b).value;
           if (!info.name) { toast('이름을 입력하세요'); return false; }
           if (!isYmd(joinDate)) { toast('등록일을 선택하세요'); return false; }
-          const s = Object.assign({ id: uid('ST'), status: 'active', statusDate: joinDate, statusReason: '', schoolPending: false, createdAt: new Date().toISOString() }, info);
+          const s = Object.assign({ id: uid('ST'), status: 'active', joinDate, statusDate: joinDate, statusReason: '', schoolPending: false, createdAt: new Date().toISOString() }, info);
           Store.put('students', s);
           this.addLog(s.id, 'join', joinDate, '');
           $$('[name=cls]:checked', b).forEach(i => Classes.enroll(s.id, i.value, joinDate));
@@ -186,9 +193,15 @@ const Students = {
     this.bindPhones(pane);
     $('[data-save]', pane).onclick = () => {
       const info = this.readInfo(pane);
+      const joinDate = $('[name=joinDate]', pane).value;
       if (!info.name) { toast('이름을 입력하세요'); return; }
+      if (!isYmd(joinDate)) { toast('등록일을 선택하세요'); return; }
       const cur = Store.get('students', s.id);
-      const rec = Object.assign({}, cur, info);
+      const rec = Object.assign({}, cur, info, { joinDate });
+      if (cur.status === 'active' && cur.statusDate === this.joinDateOf(cur)) rec.statusDate = joinDate;
+      const jl = Store.where('student_log', l => l.studentId === s.id && l.type === 'join').sort((a, b) => ko(a.date, b.date))[0];
+      if (jl) { if (jl.date !== joinDate) Store.put('student_log', Object.assign({}, jl, { date: joinDate })); }
+      else this.addLog(s.id, 'join', joinDate, '');
       if (info.school) rec.schoolPending = false;
       Store.put('students', rec);
       toast('저장했습니다');
