@@ -113,6 +113,8 @@ body.app-on #mg-app { display: flex; }
 .dot-pre { background: var(--pre); }
 .dot-weekend { background: var(--weekend); }
 .dot-etc { background: var(--etc); }
+.dot-todo { background: var(--accent); }
+.dot-late { background: var(--danger); }
 .mc-day.sel .mc-dots i { box-shadow: 0 0 0 1.5px #fff; }
 .mc-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--ink-soft); }
 .mc-legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -355,6 +357,20 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .todo-row input[type=text] { flex: 1; }
 .todo-row .todo-date { width: 140px; flex: 0 0 auto; padding: 4px 7px; font-size: 13px; }
 .todo-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+/* 출석부 */
+.tbl.ab th.ab-d { text-align: center; padding: 6px 4px; min-width: 36px; }
+.tbl.ab th.ab-d small { display: block; font-size: 11px; color: var(--ink-mute); font-weight: 400; }
+.tbl.ab th.ab-d.today { color: var(--accent); }
+.tbl.ab th.ab-d.unsaved { color: var(--ink-mute); }
+.tbl.ab td.ab-c { text-align: center; padding: 6px 4px; cursor: pointer; font-weight: 700; user-select: none; }
+.tbl.ab td.ab-c:hover { background: var(--accent-soft); }
+.tbl.ab td.ab-c.P { color: var(--ok); }
+.tbl.ab td.ab-c.L { color: var(--warn); background: var(--warn-soft); }
+.tbl.ab td.ab-c.A { color: var(--danger); background: var(--danger-soft); }
+.tbl.ab td.ab-c.E { color: var(--early); background: var(--early-soft); }
+.tbl.ab td.ab-c.na { color: var(--line-strong); cursor: default; font-weight: 400; }
+.tbl tr.hl td { background: #FFF8DC; }
 
 /* ---------- 보강 ---------- */
 .mk-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
