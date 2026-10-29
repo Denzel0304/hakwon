@@ -92,11 +92,11 @@ const Students = {
 
   infoFormHtml(s) {
     return `<div class="form">
-      <label class="req">이름</label><input type="text" name="name" value="${esc(s.name)}" maxlength="30">
+      <label class="req">이름</label><input type="text" name="name" value="${esc(s.name)}" maxlength="30" style="width:160px">
       <label class="req">등록일</label><div class="row"><input type="date" name="joinDate" value="${esc(s.id ? this.joinDateOf(s) : (s.joinDate || todayStr()))}"></div>
-      <label>학교·학년</label><div class="row"><input type="text" name="school" list="dl-schools" value="${esc(s.school)}" placeholder="비워 두면 학교미정" style="flex:1"><select name="grade">${gradeOptions(s.grade, '학년 선택')}</select></div>
-      <label>학생 연락처</label><input type="tel" name="phone" value="${esc(s.phone)}" placeholder="010-0000-0000">
-      <label>부모님 연락처</label><input type="tel" name="parentPhone" value="${esc(s.parentPhone)}" placeholder="010-0000-0000">
+      <label>학교·학년</label><div class="row"><input type="text" name="school" class="combo-input" value="${esc(s.school)}" placeholder="비워 두면 학교미정" autocomplete="off" style="width:200px"><select name="grade">${gradeOptions(s.grade, '학년 선택')}</select></div>
+      <label>학생 연락처</label><input type="tel" name="phone" value="${esc(s.phone)}" placeholder="010-0000-0000" style="width:180px">
+      <label>부모님 연락처</label><input type="tel" name="parentPhone" value="${esc(s.parentPhone)}" placeholder="010-0000-0000" style="width:180px">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(s.memo)}</textarea>
     </div>`;
   },
@@ -112,6 +112,8 @@ const Students = {
   },
   bindPhones(b) {
     $$('input[type=tel]', b).forEach(i => i.addEventListener('blur', () => { i.value = fmtPhone(i.value); }));
+    const sch = $('[name=school]', b);
+    if (sch) bindCombo(sch, schoolOptions);
   },
 
   classPickHtml(selected = []) {
@@ -125,7 +127,7 @@ const Students = {
     const body = this.infoFormHtml({}) + `<div class="form" style="margin-top:10px">
       <label class="top">수강반</label><div>${this.classPickHtml()}</div></div>`;
     Modal.open({
-      title: '학생 등록', body, size: 'lg',
+      title: '학생 등록', body, size: 'md',
       onMount: (b) => { enhanceAll(b); this.bindPhones(b); },
       buttons: [
         { text: '취소' },
@@ -154,7 +156,7 @@ const Students = {
     const s = Store.get('students', id);
     if (!s) return;
     const m = Modal.open({
-      title: s.name, size: 'lg', autofocus: false,
+      title: s.name, size: 'md', autofocus: false,
       body: `<div class="tabs" data-tabs>
         <button data-t="info">기본정보</button><button data-t="cls">수강반</button><button data-t="status">상태·이력</button>
         <button data-t="score">성적</button><button data-t="counsel">상담</button></div><div data-pane></div>`,
@@ -166,6 +168,7 @@ const Students = {
           toast('학생을 삭제했습니다');
           App.render();
         } },
+        { text: '정보 저장', cls: 'primary', primary: true, onClick: (mm) => (mm.tab === 'info' ? this.saveInfo(mm, s.id) : false) },
         { text: '닫기' },
       ],
     });
@@ -184,18 +187,26 @@ const Students = {
     $$('[data-t]', m.body).forEach(b => b.classList.toggle('active', b.dataset.t === m.tab));
     const pane = $('[data-pane]', m.body);
     pane.onclick = null;
+    const saveBtn = $('[data-primary]', m.foot);
+    if (saveBtn) saveBtn.style.display = m.tab === 'info' ? '' : 'none';
     this['pane_' + m.tab](pane, s, m);
   },
 
   pane_info(pane, s, m) {
-    pane.innerHTML = this.infoFormHtml(s) + `<div style="text-align:right;margin-top:12px"><button class="btn primary" data-save>정보 저장</button></div>`;
-    enhanceAll(pane, { onSave: () => $('[data-save]', pane).click() });
+    pane.innerHTML = this.infoFormHtml(s);
+    enhanceAll(pane);
     this.bindPhones(pane);
-    $('[data-save]', pane).onclick = () => {
+  },
+
+  // 기본정보 저장 (false를 돌려주면 모달이 닫히지 않음)
+  saveInfo(m, sid) {
+    const pane = $('[data-pane]', m.body);
+    const s = { id: sid };
+    {
       const info = this.readInfo(pane);
       const joinDate = $('[name=joinDate]', pane).value;
-      if (!info.name) { toast('이름을 입력하세요'); return; }
-      if (!isYmd(joinDate)) { toast('등록일을 선택하세요'); return; }
+      if (!info.name) { toast('이름을 입력하세요'); return false; }
+      if (!isYmd(joinDate)) { toast('등록일을 선택하세요'); return false; }
       const cur = Store.get('students', s.id);
       const rec = Object.assign({}, cur, info, { joinDate });
       if (cur.status === 'active' && cur.statusDate === this.joinDateOf(cur)) rec.statusDate = joinDate;
@@ -205,9 +216,8 @@ const Students = {
       if (info.school) rec.schoolPending = false;
       Store.put('students', rec);
       toast('저장했습니다');
-      this.renderPane(m, s.id);
       App.render();
-    };
+    }
   },
 
   pane_cls(pane, s, m) {

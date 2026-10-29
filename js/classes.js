@@ -42,12 +42,13 @@ const Classes = {
         <td class="num">${r.length}</td><td class="small">${r.map(s => esc(s.name) + `<span class="tag">${esc(stTag(s))}</span>`).join(', ') || '<span class="muted">-</span>'}</td>
         <td class="small soft">${esc(firstLine(c.memo))}</td></tr>`;
     };
-    let h = `<div class="page-head"><h1>반 관리</h1><span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
-      <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label>
-      <button class="btn primary" data-a="add">+ 반 만들기</button></div>`;
+    let h = `<div class="page-narrow"><div class="page-head"><h1>반 관리</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
+      <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
+      <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;
-    h += show.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th><th>메모</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
-      : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 오른쪽 위 “반 만들기”로 시작하세요.</div></div>';
+    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th><th>메모</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
+      : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 위의 “반 만들기”로 시작하세요.</div></div>';
+    h += '</div>';
     main.innerHTML = h;
     main.onclick = (e) => {
       if (e.target.closest('[data-a=add]')) { this.openModal(null); return; }

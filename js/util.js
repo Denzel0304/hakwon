@@ -120,6 +120,10 @@ const Modal = {
     const m = { el: wrap, body: $('.mg-modal-body', wrap), foot: $('.mg-modal-foot', wrap), onClose: o.onClose, closed: false };
     m.close = () => Modal.close(m);
     $('.mg-x', wrap).addEventListener('click', () => m.close());
+    // 모달 바깥(어두운 영역)을 누르면 닫기 (안에서 드래그하다 밖에서 놓은 경우는 제외)
+    let downOut = false;
+    wrap.addEventListener('mousedown', (e) => { downOut = e.target === wrap; });
+    wrap.addEventListener('click', (e) => { if (downOut && e.target === wrap) m.close(); downOut = false; });
     (o.buttons || []).forEach(b => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -178,6 +182,54 @@ function alertDlg(title, msg) {
     title, size: 'sm', autofocus: false, body: `<p class="confirm-msg">${esc(msg)}</p>`,
     buttons: [{ text: '확인', cls: 'primary', primary: true, onClick() { res(); } }], onClose() { res(); },
   }));
+}
+
+/* ---------- 드롭다운 입력 (누르면 목록이 펼쳐짐) ---------- */
+function schoolOptions() { return $$('#dl-schools option').map(o => o.value).filter(Boolean); }
+function bindCombo(input, getOptions) {
+  if (input._combo) return;
+  input._combo = true;
+  input.removeAttribute('list');
+  const box = document.createElement('div');
+  box.className = 'combo-box';
+  let items = [], cur = -1;
+  const hide = () => { box.remove(); cur = -1; document.removeEventListener('mousedown', outside, true); };
+  const outside = (e) => { if (e.target !== input && !box.contains(e.target)) hide(); };
+  const show = () => {
+    if (!input.isConnected) { hide(); return; }
+    const q = input.value.trim();
+    const all = getOptions();
+    items = q ? all.filter(o => o.includes(q)) : all;
+    if (!items.length) { hide(); return; }
+    box.innerHTML = items.map((o, i) => `<div class="combo-item ${i === cur ? 'on' : ''}" data-i="${i}">${esc(o)}</div>`).join('');
+    const r = input.getBoundingClientRect();
+    box.style.left = r.left + 'px';
+    box.style.top = (r.bottom + 2) + 'px';
+    box.style.minWidth = r.width + 'px';
+    if (!box.isConnected) { document.body.appendChild(box); document.addEventListener('mousedown', outside, true); }
+  };
+  let picking = false;
+  const pick = (i) => {
+    if (items[i] == null) return;
+    input.value = items[i]; hide();
+    picking = true;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    picking = false;
+  };
+  box.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('[data-i]'); if (it) pick(+it.dataset.i); });
+  input.addEventListener('focus', () => { cur = -1; show(); });
+  input.addEventListener('click', () => { if (!box.isConnected) show(); });
+  input.addEventListener('input', () => { if (!picking && document.activeElement === input) { cur = -1; show(); } });
+  input.addEventListener('blur', () => setTimeout(hide, 100));
+  input.addEventListener('keydown', (e) => {
+    if (!box.isConnected) { if (e.key === 'ArrowDown') { show(); e.preventDefault(); } return; }
+    if (e.key === 'ArrowDown') { cur = Math.min(cur + 1, items.length - 1); show(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { cur = Math.max(cur - 1, 0); show(); e.preventDefault(); }
+    else if (e.key === 'Enter' && cur >= 0 && !e.isComposing) { pick(cur); e.preventDefault(); }
+    else if (e.key === 'Escape') { hide(); e.stopPropagation(); e.preventDefault(); }
+  });
+  input.closest('.mg-modal-body')?.addEventListener('scroll', hide, { passive: true });
 }
 
 /* ---------- 학생 선택 입력 (datalist) ---------- */
