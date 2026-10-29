@@ -353,6 +353,8 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .todo-row .tx { flex: 1; cursor: text; }
 .todo-row.done .tx { text-decoration: line-through; color: var(--ink-mute); }
 .todo-row input[type=text] { flex: 1; }
+.todo-row .todo-date { width: 140px; flex: 0 0 auto; padding: 4px 7px; font-size: 13px; }
+.todo-actions { display: flex; gap: 6px; margin-top: 6px; }
 
 /* ---------- 보강 ---------- */
 .mk-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
