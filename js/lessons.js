@@ -482,12 +482,20 @@ const Makeups = {
    할일 공용 표시 (날짜 상세 · 오늘)
    ========================================================= */
 const Todos = {
-  sortFn(a, b) { return (a.done ? 1 : 0) - (b.done ? 1 : 0) || ko(a.date, b.date) || ko(a.createdAt, b.createdAt); },
-  rowsHtml(list, showDate) {
+  // 끌어서 정한 순서(order) → 없으면 만든 순서
+  sortFn(a, b) {
+    const oa = a.order == null ? 1e9 : a.order, ob = b.order == null ? 1e9 : b.order;
+    return oa - ob || ko(a.createdAt, b.createdAt);
+  },
+  rowsHtml(list, opt = {}) {
     return list.map(t => {
       const c = Store.get('classes', t.classId);
-      return `<div class="todo-row ${t.done ? 'done' : ''}"><input type="checkbox" data-tdone="${t.id}" ${t.done ? 'checked' : ''}>
-        <span class="tx">${esc(t.text)}</span><span class="small muted nowrap" data-tgo="${t.id}" style="cursor:pointer" title="진도 탭에서 보기">${showDate ? fmtMD(t.date) + ' ' : ''}${esc(c ? c.name : '')}</span></div>`;
+      return `<div class="todo-row big ${t.done ? 'done' : ''}" data-tid="${t.id}" ${opt.drag ? 'draggable="true"' : ''}>
+        ${opt.drag ? '<span class="grip" title="끌어서 순서 바꾸기">⠿</span>' : ''}
+        <input type="checkbox" data-tdone="${t.id}" ${t.done ? 'checked' : ''}>
+        <span class="tx">${esc(t.text)}</span>
+        <span class="small muted nowrap" data-tgo="${t.id}" style="cursor:pointer" title="진도 탭에서 보기">${opt.showDate ? fmtMD(t.date) + ' ' : ''}${esc(c ? c.name : '')}</span>
+        <button type="button" class="kebab" data-tmenu="${t.id}" title="메뉴">⋮</button></div>`;
     }).join('');
   },
   // 처리했으면 true
@@ -498,6 +506,23 @@ const Todos = {
       if (t) { Store.put('todos', Object.assign({}, t, { done: td.checked })); App.render(); }
       return true;
     }
+    const mn = e.target.closest('[data-tmenu]');
+    if (mn) {
+      const t = Store.get('todos', mn.dataset.tmenu); if (!t) return true;
+      popMenu(mn, [
+        { text: '날짜 변경', onClick: async () => {
+          const d = await DatePicker.open(t.date, '할일 날짜 변경');
+          if (!d || d === t.date) return;
+          const cur = Store.get('todos', t.id); if (!cur) return;
+          const max = Math.max(-1, ...Store.where('todos', x => x.date === d && x.order != null).map(x => x.order));
+          Store.put('todos', Object.assign({}, cur, { date: d, order: max + 1 }));
+          toast(`${fmtMD(d)} 할일로 옮겼습니다`);
+          App.render();
+        } },
+        { text: '삭제', danger: true, onClick: () => { Store.del('todos', t.id); toast('할일을 삭제했습니다'); App.render(); } },
+      ]);
+      return true;
+    }
     const tg = e.target.closest('[data-tgo]');
     if (tg) {
       const t = Store.get('todos', tg.dataset.tgo); if (!t) return true;
@@ -506,5 +531,37 @@ const Todos = {
       return true;
     }
     return false;
+  },
+  // 끌어서 순서 바꾸기
+  bindDrag(box) {
+    let dragId = null;
+    const clear = () => $$('.drop-before,.drop-after', box).forEach(x => x.classList.remove('drop-before', 'drop-after'));
+    box.addEventListener('dragstart', (e) => {
+      const r = e.target.closest('[data-tid]'); if (!r) return;
+      dragId = r.dataset.tid; r.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragId);
+    });
+    box.addEventListener('dragend', () => { dragId = null; clear(); $$('.dragging', box).forEach(x => x.classList.remove('dragging')); });
+    box.addEventListener('dragover', (e) => {
+      const r = e.target.closest('[data-tid]'); if (!r || !dragId) return;
+      e.preventDefault();
+      clear();
+      if (r.dataset.tid === dragId) return;
+      const rc = r.getBoundingClientRect();
+      r.classList.add(e.clientY > rc.top + rc.height / 2 ? 'drop-after' : 'drop-before');
+    });
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const r = e.target.closest('[data-tid]');
+      if (!r || !dragId || r.dataset.tid === dragId) { clear(); return; }
+      const after = r.classList.contains('drop-after');
+      const ids = $$('[data-tid]', box).map(x => x.dataset.tid).filter(id => id !== dragId);
+      let i = ids.indexOf(r.dataset.tid); if (after) i++;
+      ids.splice(i, 0, dragId);
+      ids.forEach((id, k) => { const t = Store.get('todos', id); if (t && t.order !== k) Store.put('todos', Object.assign({}, t, { order: k })); });
+      dragId = null;
+      App.render();
+    });
   },
 };

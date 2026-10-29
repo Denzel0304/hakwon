@@ -27,7 +27,7 @@ const Exams = {
     const list = all.filter(e => (!this.year || +e.year === +this.year) && (!this.sem || +e.semester === +this.sem))
       .filter(e => !q || [e.school, examTitle(e), e.range, e.memo].some(v => String(v || '').includes(q)))
       .sort((a, b) => b.year - a.year || b.semester - a.semester || (a.kind === b.kind ? 0 : a.kind === 'final' ? -1 : 1) || ko(a.school, b.school) || a.grade - b.grade);
-    let h = `<div class="page-head"><h1>시험정보</h1><span class="sub">학교별 시험 기간·범위·형식</span><span class="grow"></span><button class="btn primary" data-a="add">+ 시험 등록</button></div>
+    let h = `<div class="page-head"><h1>시험정보</h1><button class="btn primary" data-a="add">+ 시험 등록</button><span class="sub">학교별 시험 기간·범위·형식</span></div>
       <div class="toolbar">
         <select data-year><option value="">전체 연도</option>${years.map(y => `<option value="${y}" ${+this.year === y ? 'selected' : ''}>${y}년</option>`).join('')}</select>
         <select data-sem><option value="">전체 학기</option><option value="1" ${this.sem === '1' ? 'selected' : ''}>1학기</option><option value="2" ${this.sem === '2' ? 'selected' : ''}>2학기</option></select>

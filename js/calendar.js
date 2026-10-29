@@ -189,23 +189,56 @@ const BigCal = {
   },
 };
 
-/* ---------- 날짜 상세 ---------- */
+/* ---------- 날짜 요약 (오늘 / 달력에서 고른 날짜) ---------- */
 const DayPage = {
   render(main, p) {
-    const date = p.date || App.selDate;
-    const o = CalIndex.build()[date] || { exam: [], pre: [], weekend: [], etc: [] };
+    const today = todayStr();
+    const date = isYmd(p.date) ? p.date : App.selDate;
+    const isToday = date === today;
+    const idx = CalIndex.build();
+    const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [] };
     const evs = [...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
-    const dow = dowOf(date);
-    const classes = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).sort((a, b) => ko(a.start, b.start));
+    const classes = Lessons.classesOn(date);
     const counsels = Store.where('counsels', c => c.date === date);
     const todos = Store.where('todos', t => t.date === date).sort(Todos.sortFn);
-    let h = `<div class="page-head"><h1>${fmtDate(date)}</h1>
+    const late = isToday ? Store.where('todos', t => !t.done && isYmd(t.date) && t.date < today).sort((a, b) => ko(a.date, b.date) || Todos.sortFn(a, b)) : [];
+    const mks = Store.where('makeups', m => m.status === 'plan' && m.date && (isToday ? m.date <= date : m.date === date)).sort((a, b) => ko(a.date, b.date) || ko(a.time, b.time));
+    const pending = isToday ? Promo.pendingStudents() : [];
+    const upcoming = [];
+    for (let i = 1; i <= 14; i++) {
+      const d = addDaysStr(date, i), x = idx[d];
+      if (!x) continue;
+      x.exam.forEach(ex => { if (ex.start === d) upcoming.push({ d, kind: 'exam', item: ex }); });
+      [...x.pre, ...x.weekend, ...x.etc].forEach(ev => upcoming.push({ d, kind: 'ev', item: ev }));
+    }
+
+    let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
-      <span class="grow"></span><button class="btn primary" data-a="add">+ 일정 추가</button></div>
-      <div class="grid-2"><div>
-      <div class="panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
-      ${todos.length ? Todos.rowsHtml(todos, false) : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
-      <div class="panel"><h2>시험</h2>`;
+      ${isToday ? '' : '<button class="btn sm" data-a="today">오늘</button>'}
+      <button class="btn primary" data-a="add">+ 일정 추가</button></div>`;
+    if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
+    h += `<div class="grid-2"><div>
+      <div class="panel todo-panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
+      ${todos.length ? `<div data-todolist>${Todos.rowsHtml(todos, { drag: true })}</div><p class="small muted" style="margin:6px 0 0">끌어서 순서를 바꿀 수 있습니다.</p>` : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
+      ${late.length ? `<div class="panel todo-panel late"><h2>밀린 할일 <span class="sub">${late.length}개</span></h2>${Todos.rowsHtml(late, { showDate: true })}</div>` : ''}
+      <div class="panel"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span></h2>`;
+    h += classes.length ? '<div class="list">' + classes.map(c => {
+      const les = Store.get('lessons', Lessons.lessonId(c.id, date));
+      const roster = Classes.rosterAt(c.id, date);
+      const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
+      const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
+      return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(c.start)}~${esc(Classes.endTime(c))}</span>
+        <div class="what"><b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
+        ${les ? '<span class="badge green">일지 저장</span>' : '<span class="badge gray">일지 전</span>'}
+        ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div></div>`;
+    }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
+    h += `</div><div class="panel"><h2>보강 예정</h2>`;
+    h += mks.length ? '<div class="list">' + mks.map(m => {
+      const s = Store.get('students', m.studentId), c = Store.get('classes', m.classId);
+      return `<div class="list-item click" data-mk="${esc(s ? s.name : '')}"><span class="when">${m.date === today ? '오늘' : fmtMD(m.date)} ${esc(m.time || '')}</span>
+        <div class="what"><b>${esc(s ? s.name : '(삭제된 학생)')}</b> <span class="small soft">${esc(c ? c.name : '')} · ${fmtMD(m.absentDate)} 결석분</span></div></div>`;
+    }).join('') + '</div>' : '<div class="empty">예정된 보강이 없습니다.</div>';
+    h += `</div></div><div><div class="panel"><h2>시험</h2>`;
     h += o.exam.length ? '<div class="list">' + o.exam.map(ex => `
         <div class="list-item click" data-exam="${ex.id}"><span class="when"><span class="badge red">시험</span></span>
         <div class="what"><b>${esc(examTitle(ex))}</b> <span class="muted small">${esc(ex.year)}년 ${esc(ex.semester)}학기 · ${fmtMD(ex.start)}${ex.end && ex.end !== ex.start ? ' ~ ' + fmtMD(ex.end) : ''}</span>
@@ -215,36 +248,86 @@ const DayPage = {
     h += evs.length ? '<div class="list">' + evs.map(ev => `
         <div class="list-item click" data-ev="${ev.id}"><span class="when">${esc(eventTime(ev)) || '시간 미정'}</span>
         <div class="what"><b>${esc(eventTitle(ev))}</b>${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`).join('') + '</div>'
-      : '<div class="empty">이 날 일정이 없습니다. 오른쪽 위 “일정 추가”로 등록하세요.</div>';
-    h += `</div></div><div><div class="panel"><h2>수업 <span class="sub">${DOW[dow]}요일 정규 수업</span></h2>`;
-    h += classes.length ? '<div class="list">' + classes.map(c => {
-      const les = Store.get('lessons', Lessons.lessonId(c.id, date));
-      const done = les && (les.progress || les.homework);
-      return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(c.start)}~${esc(fromMin(toMin(c.start) + (+c.duration || 90)))}</span>
-        <div class="what"><b>${esc(c.name)}</b> <span class="muted small">${Classes.rosterAt(c.id, date).length}명</span> ${done ? '<span class="badge green">일지 작성</span>' : ''}</div></div>`;
-    }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
+      : '<div class="empty">이 날 일정이 없습니다.</div>';
     h += `</div><div class="panel"><h2>상담</h2>`;
     h += counsels.length ? '<div class="list">' + counsels.map(c => {
       const s = Store.get('students', c.studentId);
       return `<div class="list-item click" data-counsel="${c.id}"><span class="when">${esc(s ? s.name : '(삭제된 학생)')}</span><div class="what pre small">${esc(c.content)}</div></div>`;
     }).join('') + '</div>' : '<div class="empty">이 날 상담 기록이 없습니다.</div>';
+    h += `</div><div class="panel"><h2>다가오는 일정 <span class="sub">2주</span></h2>`;
+    h += upcoming.length ? '<div class="list">' + upcoming.map(u => u.kind === 'exam'
+      ? `<div class="list-item click" data-exam="${u.item.id}"><span class="when">${fmtMD(u.d)}</span><div class="what"><span class="badge red">시험</span> <b>${esc(examTitle(u.item))}</b>${u.item.end && u.item.end !== u.item.start ? ` <span class="small muted">~${fmtMD(u.item.end)}</span>` : ''}</div></div>`
+      : `<div class="list-item click" data-ev="${u.item.id}"><span class="when">${fmtMD(u.d)} ${esc(u.item.start || '')}</span><div class="what"><b>${esc(eventTitle(u.item))}</b></div></div>`).join('') + '</div>'
+      : '<div class="empty">2주 안에 시험이나 일정이 없습니다.</div>';
     h += '</div></div></div>';
     main.innerHTML = h;
+    const list = $('[data-todolist]', main);
+    if (list) Todos.bindDrag(list);
     main.onclick = (e) => {
       const a = e.target.closest('[data-a]');
       if (a) {
-        if (a.dataset.a === 'add') { EventModal.open(null, { date }); return; }
-        const nd = addDaysStr(date, a.dataset.a === 'prev' ? -1 : 1);
-        App.selDate = nd; MiniCal.showMonthOf(nd); App.go('day', { date: nd });
+        const act = a.dataset.a;
+        if (act === 'add') { EventModal.open(null, { date }); return; }
+        if (act === 'school') { Promo.openSchoolModal(); return; }
+        App.pickDate(act === 'today' ? today : addDaysStr(date, act === 'prev' ? -1 : 1));
         return;
       }
+      if (Todos.handleClick(e)) return;
       const ex = e.target.closest('[data-exam]'); if (ex) { Exams.openModal(ex.dataset.exam); return; }
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
-      if (Todos.handleClick(e)) return;
       const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); return; }
+      const mk = e.target.closest('[data-mk]'); if (mk) { Makeups.q = mk.dataset.mk; Makeups.tab = 'open'; App.go('makeups'); return; }
       const co = e.target.closest('[data-counsel]'); if (co) { Counsels.openModal(co.dataset.counsel); }
     };
     main.onchange = null;
+  },
+};
+
+/* ---------- 날짜 고르기 모달 (달력) ---------- */
+const DatePicker = {
+  open(init, title = '날짜 선택') {
+    return new Promise(res => {
+      let cur = parseYmd(isYmd(init) ? init : todayStr());
+      let month = new Date(cur.getFullYear(), cur.getMonth(), 1);
+      let picked = null;
+      const draw = (box) => {
+        const y = month.getFullYear(), m = month.getMonth();
+        const first = new Date(y, m, 1), start = addDays(first, -first.getDay());
+        const weeks = Math.ceil((first.getDay() + new Date(y, m + 1, 0).getDate()) / 7);
+        const today = todayStr();
+        let h = `<div class="mc-head"><button class="mc-nav" data-dp="prev">‹</button><div class="mc-title">${y}년 ${m + 1}월</div><button class="mc-today" data-dp="today">오늘</button><button class="mc-nav" data-dp="next">›</button></div><div class="mc-grid">`;
+        DOW.forEach((w, i) => { h += `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
+        for (let i = 0; i < weeks * 7; i++) {
+          const d = addDays(start, i), k = ymd(d);
+          const cls = ['mc-day'];
+          if (d.getMonth() !== m) cls.push('other');
+          if (d.getDay() === 0) cls.push('sun');
+          if (d.getDay() === 6) cls.push('sat');
+          if (k === today) cls.push('today');
+          if (k === init) cls.push('sel');
+          h += `<button type="button" class="${cls.join(' ')}" data-pick="${k}"><span class="n">${d.getDate()}</span></button>`;
+        }
+        box.innerHTML = h + '</div>';
+      };
+      Modal.open({
+        title, size: 'sm', autofocus: false, body: '<div class="dp-box"></div>',
+        onMount: (b, m) => {
+          const box = $('.dp-box', b);
+          draw(box);
+          box.addEventListener('click', (e) => {
+            const n = e.target.closest('[data-dp]');
+            if (n) {
+              if (n.dataset.dp === 'today') { picked = todayStr(); m.close(); return; }
+              month = new Date(month.getFullYear(), month.getMonth() + (n.dataset.dp === 'prev' ? -1 : 1), 1);
+              draw(box); return;
+            }
+            const d = e.target.closest('[data-pick]');
+            if (d) { picked = d.dataset.pick; m.close(); }
+          });
+        },
+        onClose() { res(picked); },
+      });
+    });
   },
 };
 

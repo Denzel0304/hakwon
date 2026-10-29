@@ -25,6 +25,7 @@ const App = {
     const main = $('#main');
     const st = main.scrollTop;
     main.onclick = main.onchange = main.oninput = main.onkeydown = null;
+    main.dataset.page = this.page;      // 시간표·큰 달력만 넓게, 나머지는 폭 제한 (CSS)
     try {
       (this.pages[this.page] || Today).render(main, this.params);
     } catch (e) {
@@ -53,9 +54,7 @@ const App = {
   pickDate(date) {
     this.selDate = date;
     MiniCal.showMonthOf(date);
-    if (this.page === 'lessons') this.go('lessons', { date });
-    else if (this.page === 'timetable') this.go('timetable', { week: ymd(mondayOf(parseYmd(date))) });
-    else this.go('day', { date });
+    this.go(date === todayStr() ? 'today' : 'day', { date });
   },
 
   refreshSchools() {

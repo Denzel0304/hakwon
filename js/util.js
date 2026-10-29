@@ -184,6 +184,36 @@ function alertDlg(title, msg) {
   }));
 }
 
+/* ---------- 작은 메뉴 (⋮) ---------- */
+let _popEl = null, _popOutside = null;
+function closePop() {
+  if (_popEl) { _popEl.remove(); _popEl = null; }
+  if (_popOutside) { document.removeEventListener('mousedown', _popOutside, true); _popOutside = null; }
+}
+function popMenu(anchor, items) {
+  closePop();
+  const m = document.createElement('div');
+  m.className = 'pop-menu';
+  items.forEach(it => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pop-item' + (it.danger ? ' danger' : '');
+    b.textContent = it.text;
+    b.addEventListener('click', () => { closePop(); it.onClick(); });
+    m.appendChild(b);
+  });
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  const w = m.offsetWidth, hgt = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+  m.style.top = (r.bottom + hgt + 8 > window.innerHeight ? r.top - hgt - 4 : r.bottom + 4) + 'px';
+  _popEl = m;
+  _popOutside = (e) => { if (!m.contains(e.target) && e.target !== anchor) closePop(); };
+  setTimeout(() => document.addEventListener('mousedown', _popOutside, true), 0);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _popEl) { e.stopPropagation(); closePop(); } }, true);
+window.addEventListener('scroll', closePop, true);
+
 /* ---------- 드롭다운 입력 (누르면 목록이 펼쳐짐) ---------- */
 function schoolOptions() { return $$('#dl-schools option').map(o => o.value).filter(Boolean); }
 function bindCombo(input, getOptions) {
