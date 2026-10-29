@@ -29,13 +29,14 @@ const Lessons = {
     if (classId && !chips.find(c => c.id === classId)) chips.push(Store.get('classes', classId));
     const others = Classes.sorted(Store.all('classes').filter(c => !chips.find(x => x.id === c.id)));
 
-    let h = `<div class="page-head"><h1>수업일지</h1>
+    let h = `<div class="page-narrow"><div class="page-head"><h1>수업일지</h1>
       <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
-      <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span></div>
+      <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
+      <span class="grow"></span>${classId ? '<button class="btn primary" data-save>저장</button>' : ''}</div>
       <div class="toolbar class-chips">${chips.map(c => `<button class="chip ${c.id === classId ? 'active' : ''}" data-cls="${c.id}">${esc(c.name)}<small>${esc(c.start)}</small></button>`).join('')}
       ${others.length ? `<select data-other><option value="">다른 반 선택…</option>${others.map(c => `<option value="${c.id}">${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select>` : ''}</div>`;
     if (!classId) {
-      h += `<div class="panel"><div class="empty">이 날은 정규 수업이 있는 반이 없습니다.${others.length ? ' 위의 “다른 반 선택”으로 일지를 쓸 반을 고르세요.' : ' 반 관리에서 반을 먼저 만드세요.'}</div></div>`;
+      h += `<div class="panel"><div class="empty">이 날은 정규 수업이 있는 반이 없습니다.${others.length ? ' 위의 “다른 반 선택”으로 일지를 쓸 반을 고르세요.' : ' 반 관리에서 반을 먼저 만드세요.'}</div></div></div>`;
       main.innerHTML = h;
       this.bind(main, date, null);
       return;
@@ -47,11 +48,13 @@ const Lessons = {
     const people = [...roster, ...extraSt];
     const cnt = { P: 0, L: 0, A: 0, E: 0, none: 0 };
     people.forEach(s => { const a = les.att[s.id]; if (a) cnt[a]++; else cnt.none++; });
-    const todos = Store.where('todos', t => t.lessonId === les.id).sort((a, b) => ko(a.createdAt, b.createdAt));
+    const todos = Store.where('todos', t => t.lessonId === les.id).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
+    const drafts = this.draftsOf(les.id, date);
 
     h += `<div class="grid-2"><div class="panel">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h2 style="margin:0;flex:1">출석 <span class="sub">${esc(c.name)} · ${esc(Classes.timeLabel(c))}</span></h2>
-      <button class="btn sm" data-allp ${people.length ? '' : 'disabled'}>전원 출석</button></div>
+      <button class="btn sm" data-allp ${people.length ? '' : 'disabled'}>전원 출석</button>
+      <button class="btn sm" data-clearatt ${Object.keys(les.att || {}).length ? '' : 'disabled'}>전체 해제</button></div>
       <div class="att-sum"><span>출석 ${cnt.P}</span><span>지각 ${cnt.L}</span><span>결석 ${cnt.A}</span><span>조퇴 ${cnt.E}</span><span class="muted">미체크 ${cnt.none}</span></div>`;
     h += people.length ? people.map(s => {
       const a = les.att[s.id] || '';
@@ -67,10 +70,11 @@ const Lessons = {
       <div class="lesson-field"><label>숙제</label><textarea data-f="homework" rows="3" placeholder="내준 숙제">${esc(les.homework)}</textarea></div>
       <div class="lesson-field"><label>메모</label><textarea data-f="memo" rows="3">${esc(les.memo)}</textarea></div>
       <div class="lesson-field"><label>할일</label>
-        <div data-todos>${todos.map(t => `<div class="todo-row ${t.done ? 'done' : ''}"><input type="checkbox" data-tdone="${t.id}" ${t.done ? 'checked' : ''}><span class="tx" data-tedit="${t.id}">${esc(t.text)}</span><button class="icon-btn" data-tdel="${t.id}" title="삭제">✕</button></div>`).join('')}</div>
-        <div class="todo-row"><input type="text" data-tnew placeholder="할일 입력 후 Enter"><button class="btn sm" data-tadd>추가</button></div></div>
-      <p class="small muted" style="margin:10px 0 0">입력하면 자동 저장됩니다. Ctrl+Enter로 바로 저장할 수 있습니다.</p>
-    </div></div>`;
+        <div data-todos>${todos.map(t => `<div class="todo-row ${t.done ? 'done' : ''}"><input type="checkbox" data-tdone="${t.id}" ${t.done ? 'checked' : ''}><span class="tx" data-tedit="${t.id}">${esc(t.text)}</span><input type="date" class="todo-date" data-tdate="${t.id}" value="${esc(t.date)}"><button class="icon-btn" data-tdel="${t.id}" title="삭제">✕</button></div>`).join('')}</div>
+        <div class="todo-drafts">${drafts.map((d, i) => `<div class="todo-row"><input type="text" data-dtext="${i}" value="${esc(d.text)}" placeholder="새 할일"><input type="date" class="todo-date" data-ddate="${i}" value="${esc(d.date)}"><button class="icon-btn" data-ddel="${i}" title="칸 지우기">✕</button></div>`).join('')}</div>
+        <div class="todo-actions"><button class="btn sm" data-dadd>+ 할일 칸 추가</button><button class="btn sm primary" data-dsave>일괄 추가</button></div></div>
+      <p class="small muted" style="margin:10px 0 0">위의 “저장”을 누르면 출석·진도·숙제·메모·입력한 할일이 모두 저장됩니다. (Ctrl+Enter도 저장)</p>
+    </div></div></div>`;
     main.innerHTML = h;
     this.bind(main, date, classId);
 
@@ -84,7 +88,7 @@ const Lessons = {
     };
     const later = debounce(save, 800);
     $$('textarea[data-f]', main).forEach(ta => {
-      enhanceTextarea(ta, { onSave: () => { save(); Store.syncNow(); toast('저장했습니다'); } });
+      enhanceTextarea(ta, { onSave: () => this.saveAll(main, classId, date) });
       ta.addEventListener('input', () => { ind.textContent = '입력 중…'; later(); });
       ta.addEventListener('blur', () => { if (ind.textContent === '입력 중…') save(); });
     });
@@ -101,6 +105,29 @@ const Lessons = {
       }
       const ch = e.target.closest('[data-cls]'); if (ch) { go(date, ch.dataset.cls); return; }
       if (!classId) return;
+      if (e.target.closest('[data-save]')) { this.saveAll(main, classId, date); return; }
+      if (e.target.closest('[data-clearatt]')) {
+        if (!await confirmDlg('이 수업의 출석 체크를 모두 해제할까요?', '전체 해제', true)) return;
+        const cur = this.getOrNew(classId, date);
+        Store.put('lessons', Object.assign({}, cur, { att: {} }));
+        App.render();
+        return;
+      }
+      const les0 = this.lessonId(classId, date);
+      if (e.target.closest('[data-dadd]')) {
+        this.draftsOf(les0, date).push({ text: '', date });
+        App.render();
+        const all = $$('[data-dtext]', $('#main')); if (all.length) all[all.length - 1].focus();
+        return;
+      }
+      if (e.target.closest('[data-dsave]')) {
+        const n = this.commitDrafts(classId, date);
+        App.render();
+        toast(n ? `할일 ${n}개를 추가했습니다` : '추가할 할일을 입력하세요');
+        return;
+      }
+      const dd = e.target.closest('[data-ddel]');
+      if (dd) { this.draftsOf(les0, date).splice(+dd.dataset.ddel, 1); App.render(); return; }
       const at = e.target.closest('[data-att]');
       if (at) {
         const cur = this.getOrNew(classId, date);
@@ -120,7 +147,6 @@ const Lessons = {
         return;
       }
       const gm = e.target.closest('[data-gomk]'); if (gm) { Makeups.q = (Store.get('students', gm.dataset.gomk) || {}).name || ''; Makeups.tab = 'all'; App.go('makeups'); return; }
-      if (e.target.closest('[data-tadd]')) { this.addTodo(main, classId, date); return; }
       const td = e.target.closest('[data-tdone]');
       if (td) { const t = Store.get('todos', td.dataset.tdone); if (t) { Store.put('todos', Object.assign({}, t, { done: td.checked })); App.render(); } return; }
       const tdel = e.target.closest('[data-tdel]');
@@ -140,23 +166,66 @@ const Lessons = {
         inp.addEventListener('blur', () => fin(true));
       }
     };
-    main.onkeydown = (e) => { if (e.target.matches('[data-tnew]') && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this.addTodo(main, classId, date); } };
+    // 새 할일 칸: Enter → 다음 칸 추가
+    main.onkeydown = (e) => {
+      if (e.target.matches('[data-dtext]') && e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        const list = this.draftsOf(this.lessonId(classId, date), date);
+        const i = +e.target.dataset.dtext;
+        if (i === list.length - 1) list.push({ text: '', date: list[i].date || date });
+        App.render();
+        const n = $(`[data-dtext="${i + 1}"]`, $('#main')); if (n) n.focus();
+      }
+    };
+    // 새 할일 칸의 입력값은 화면이 다시 그려져도 남도록 기억한다
+    main.oninput = (e) => {
+      if (!classId) return;
+      const list = this.draftsOf(this.lessonId(classId, date), date);
+      if (e.target.matches('[data-dtext]')) list[+e.target.dataset.dtext].text = e.target.value;
+      if (e.target.matches('[data-ddate]')) list[+e.target.dataset.ddate].date = e.target.value;
+    };
     main.onchange = (e) => {
       if (e.target.matches('[data-date]') && isYmd(e.target.value)) go(e.target.value, null);
       if (e.target.matches('[data-other]') && e.target.value) go(date, e.target.value);
+      if (e.target.matches('[data-tdate]') && isYmd(e.target.value)) {
+        const t = Store.get('todos', e.target.dataset.tdate);
+        if (t) { Store.put('todos', Object.assign({}, t, { date: e.target.value })); App.render(); }
+      }
     };
   },
 
-  addTodo(main, classId, date) {
-    const inp = $('[data-tnew]', main);
-    const v = inp.value.trim();
-    if (!v) return;
-    const les = this.getOrNew(classId, date);
-    if (!Store.get('lessons', les.id)) Store.put('lessons', les);
-    Store.put('todos', { id: uid('TD'), lessonId: les.id, classId, date, text: v, done: false, createdAt: new Date().toISOString() });
-    App.render();
-    const n = $('[data-tnew]', $('#main')); if (n) n.focus();
+  /* ---------- 새 할일 칸 (아직 추가 전) ---------- */
+  drafts: {},
+  draftsOf(lessonId, date) {
+    if (!this.drafts[lessonId] || !this.drafts[lessonId].length) this.drafts[lessonId] = [{ text: '', date }];
+    return this.drafts[lessonId];
   },
+  // 입력한 새 할일을 한꺼번에 추가하고 추가한 개수를 돌려준다
+  commitDrafts(classId, date) {
+    const les = this.getOrNew(classId, date);
+    const list = (this.drafts[les.id] || []).filter(d => d.text.trim());
+    if (!list.length) return 0;
+    if (!Store.get('lessons', les.id)) Store.put('lessons', les);
+    const now = Date.now();
+    list.forEach((d, i) => {
+      Store.put('todos', { id: uid('TD'), lessonId: les.id, classId, date: isYmd(d.date) ? d.date : date, text: d.text.trim(), done: false, createdAt: new Date(now + i).toISOString() });
+    });
+    delete this.drafts[les.id];
+    return list.length;
+  },
+
+  /* ---------- 저장: 진도·숙제·메모 + 새 할일을 저장하고 서버에 바로 반영 ---------- */
+  async saveAll(main, classId, date) {
+    const cur = this.getOrNew(classId, date);
+    $$('textarea[data-f]', main).forEach(ta => { cur[ta.dataset.f] = stripZws(ta.value); });
+    Store.put('lessons', cur);
+    const n = this.commitDrafts(classId, date);
+    App.render();
+    await Store.syncNow();
+    const extra = n ? ` · 할일 ${n}개 추가` : '';
+    toast(Store.pendingCount() ? '저장했습니다 (인터넷 연결 후 서버에 자동 전송)' + extra : '저장했습니다' + extra);
+  },
+
 };
 
 /* =========================================================

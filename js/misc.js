@@ -131,7 +131,11 @@ const Today = {
       const td = e.target.closest('[data-tdone]');
       if (td) { const t = Store.get('todos', td.dataset.tdone); if (t) { Store.put('todos', Object.assign({}, t, { done: true })); toast('완료했습니다'); App.render(); } return; }
       const tg = e.target.closest('[data-tgo]');
-      if (tg) { const t = Store.get('todos', tg.dataset.tgo); if (t) { App.selDate = t.date; MiniCal.showMonthOf(t.date); App.go('lessons', { date: t.date, classId: t.classId }); } }
+      if (tg) {
+        const t = Store.get('todos', tg.dataset.tgo); if (!t) return;
+        const l = Store.get('lessons', t.lessonId), d = l ? l.date : t.date;
+        App.selDate = d; MiniCal.showMonthOf(d); App.go('lessons', { date: d, classId: t.classId });
+      }
     };
     main.onchange = null;
   },
