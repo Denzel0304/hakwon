@@ -232,7 +232,7 @@ const AttBook = {
         if (st) sum[st]++;
         const out = !enrolledOn(s.id, d);
         const reg = (c.days || []).includes(dowOf(d));
-        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강 기간 밖' : ''}">${ATT_SHORT[st] || ''}</td>`;
+        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강 기간 밖' : ''}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
       });
       h += `<td class="num">${sum.P}</td><td class="num">${sum.L}</td><td class="num">${sum.A}</td><td class="num">${sum.E}</td></tr>`;
     });

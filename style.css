@@ -421,6 +421,8 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl.ab th.ab-d.sun.offday { color: #E3A1A4; }
 .tbl.ab td.ab-c.reg { background-color: #F6FAFE; }
 .tbl.ab td.ab-c.out { background-color: #FAFBFC; }
+.tbl.ab td.ab-c .dash { color: var(--line-strong); font-weight: 400; }
+.tbl.ab td.ab-c:hover .dash { color: var(--accent); }
 .tbl.ab .ab-name { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
 .tbl.ab th.ab-name { background: #F7FBFE; }
 .tbl tr.hl td { background: #FFF8DC; }
