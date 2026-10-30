@@ -188,6 +188,9 @@ const App = {
   window.addEventListener('pageshow', (e) => { if (e.persisted && Auth.key()) Store.syncNow(); });
   setInterval(() => { if (document.visibilityState === 'visible' && Auth.key()) Store.checkRemote(); }, CFG.POLL_MS);
 
+  // 창 크기가 바뀌면 큰 달력 높이를 다시 맞춤 (직접 늘린 경우 제외)
+  window.addEventListener('resize', debounce(() => { if (App.page === 'calendar' && !BigCal.userH && !Modal.stack.length) App.render(); }, 200));
+
   // 창을 닫기 전 저장 대기분을 로컬에 기록
   window.addEventListener('beforeunload', () => { Store.persist(); });
 

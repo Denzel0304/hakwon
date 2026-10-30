@@ -408,9 +408,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .mk-ctl input[type=text] { flex: 1; min-width: 160px; }
 
 /* ---------- 큰 달력 ---------- */
-.bc2 { --wh: 130px; --bar-top: 30px; --bar-h: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px 12px 0 0; overflow: hidden; }
+#main[data-page="calendar"] { padding-bottom: 0; }
+.bc2 { --wh: 130px; --bar-top: 34px; --bar-h: 24px; background: var(--surface); border: 2px solid #7D9DB8; border-bottom: 0; border-radius: 12px 12px 0 0; overflow: hidden; }
 .bc2-wds { display: grid; grid-template-columns: repeat(7, 1fr); }
-.bc2 .bc-wd { padding: 8px; font-size: 15px; font-weight: 700; }
+.bc2 .bc-wd { padding: 9px 8px; font-size: 17px; font-weight: 800; color: var(--ink); }
+.bc2 .bc-wd.sun { color: var(--danger); } .bc2 .bc-wd.sat { color: var(--accent); }
 .bc2-week { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); height: var(--wh); border-bottom: 1px solid var(--line); }
 .bc2-week:last-child { border-bottom: 0; }
 .bc2-cell { border-right: 1px solid var(--line); padding: 5px 6px; cursor: pointer; overflow: hidden; min-width: 0; }
@@ -418,9 +420,9 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .bc2-cell:hover { background: #F9FCFF; }
 .bc2-cell.other { background: #FAFCFD; }
 .bc2-cell.other .n { opacity: .35; }
-.bc2-cell .n { display: inline-block; font-size: 17px; font-weight: 800; line-height: 22px; min-width: 24px; text-align: center; }
+.bc2-cell .n { display: inline-block; font-size: 21px; font-weight: 800; line-height: 26px; min-width: 28px; text-align: center; }
 .bc2-cell.sun .n { color: var(--danger); } .bc2-cell.sat .n { color: var(--accent); }
-.bc2-cell.today .n { background: var(--accent); color: #fff !important; border-radius: 12px; padding: 0 7px; }
+.bc2-cell.today .n { background: var(--accent); color: #fff !important; border-radius: 14px; padding: 0 8px; }
 .bc2-items { margin-top: calc(var(--lanes) * var(--bar-h) + 4px); }
 .bc2-items .bc-item { font-size: 13px; padding: 2px 6px; margin-top: 3px; }
 .bc2-bar {
@@ -429,10 +431,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; z-index: 2;
 }
 .bc2-bar:hover { filter: brightness(1.08); }
-.bc2-bar.tip { clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); border-radius: 5px 0 0 5px; }
-.bc2-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
-.bc2-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.bc2-resize { height: 14px; background: var(--surface); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; cursor: ns-resize; display: flex; align-items: center; justify-content: center; }
+/* 시작·끝 뾰족하게 (다음 주로 이어지는 쪽은 평평하게) */
+.bc2-bar { border-radius: 0; }
+.bc2-bar.tl { padding-left: 14px; }
+.bc2-bar.tl.tr { clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
+.bc2-bar.tl.cont-r { clip-path: polygon(9px 0, 100% 0, 100% 100%, 9px 100%, 0 50%); }
+.bc2-bar.cont-l.tr { clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); }
+.bc2-resize { height: 14px; background: var(--surface); border: 2px solid #7D9DB8; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; cursor: ns-resize; display: flex; align-items: center; justify-content: center; }
 .bc2-resize span { width: 48px; height: 4px; border-radius: 2px; background: var(--line-strong); }
 .bc2-resize:hover span { background: var(--accent); }
 body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none; }

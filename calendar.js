@@ -46,11 +46,13 @@ function eventRangeLabel(ev) { return isRange(ev) ? fmtMD(ev.date) + ' ~ ' + fmt
 
 // 기간 띠 색: 같은 학교·학년의 같은 종류(·제목)는 같은 색
 const BAR_COLORS = ['#DC5359', '#2B7FC1', '#2A9468', '#8A6CCB', '#D68A1C', '#1F98A6', '#C2537C', '#5C7F2C', '#3E5FBF', '#A0662B'];
-function barColor(ev) {
-  const key = evType(ev) + '|' + (ev.school || '') + '|' + (ev.grade || '') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id);
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return BAR_COLORS[h % BAR_COLORS.length];
+function barKey(ev) { return evType(ev) + '|' + (ev.school || '') + '|' + (ev.grade || '') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id); }
+// 화면에 보이는 기간 일정들에 색을 차례로 배정 → 서로 다른 일정은 다른 색
+function barColorMap(list) {
+  const map = {};
+  let n = 0;
+  list.forEach(ev => { const k = barKey(ev); if (!(k in map)) map[k] = BAR_COLORS[n++ % BAR_COLORS.length]; });
+  return map;
 }
 
 /* 날짜별 일정 색인: { 'YYYY-MM-DD': { exam:[], pre:[], weekend:[], etc:[] } } */
@@ -133,7 +135,8 @@ const MiniCal = {
 /* ---------- 큰 달력 ---------- */
 const BigCal = {
   filters: { exam: true, pre: true, weekend: true, etc: true },
-  LS_H: 'mg77_bigcal_h',
+  userH: 0,                        // 끌어서 바꾼 높이 (큰 달력을 떠나면 초기화)
+  onLeave() { this.userH = 0; },
   render(main, p) {
     const base = p.month ? parseYmd(p.month + '-01') : parseYmd(App.selDate);
     const y = base.getFullYear(), m = base.getMonth();
@@ -146,6 +149,7 @@ const BigCal = {
     const evs = Store.all('events').filter(ev => isYmd(ev.date) && f[evType(ev)]);
     const ranges = evs.filter(isRange).sort((a, b) => ko(a.date, b.date) || ko(evEnd(b), evEnd(a)));
     const singles = evs.filter(ev => !isRange(ev));
+    const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
     let h = `<div class="page-head">
       <h1>${y}년 ${m + 1}월</h1>
@@ -187,9 +191,9 @@ const BigCal = {
         h += `<div class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><div class="bc2-items">${items}</div></div>`;
       });
       segs.forEach(sg => {
-        const col = barColor(sg.ev);
+        const col = colors[barKey(sg.ev)];
         const label = (sg.contL ? '→ ' : '') + eventShort(sg.ev) + (sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : '');
-        h += `<div class="bc2-bar ${sg.contL ? 'cont-l' : ''} ${sg.contR ? 'cont-r' : 'tip'}" data-ev="${sg.ev.id}"
+        h += `<div class="bc2-bar ${sg.contL ? 'cont-l' : 'tl'} ${sg.contR ? 'cont-r' : 'tr'}" data-ev="${sg.ev.id}"
           style="left:calc(${sg.c0 / 7 * 100}% + 3px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 6px);top:calc(var(--bar-top) + ${sg.ln} * var(--bar-h));background:${col}"
           title="${esc(eventShort(sg.ev) + ' (' + eventRangeLabel(sg.ev) + ')')}">${esc(label)}</div>`;
       });
@@ -198,16 +202,20 @@ const BigCal = {
     h += `</div><div class="bc2-resize" title="끌어서 달력 높이 조절"><span></span></div>`;
     main.innerHTML = h;
 
-    // 높이: 저장된 값 → 없으면 화면에 꽉 차게
+    // 높이: 처음에는 달력 끝이 왼쪽 아래 '동기화됨' 칸 윗선에 오도록 맞춤 (스크롤 없음)
     const box = $('.bc2', main);
-    const minH = weeks * 90;
-    let saved = +localStorage.getItem(this.LS_H) || 0;
-    const fit = Math.max(minH, window.innerHeight - box.getBoundingClientRect().top - 46);
-    box.style.setProperty('--wh', Math.max(minH, saved || fit) / weeks + 'px');
     const grip = $('.bc2-resize', main);
+    const minH = weeks * 70;
+    const sb = $('#sync-bar');
+    // 왼쪽 메뉴가 화면보다 길어 '동기화됨' 칸이 화면 밖이면 화면 아래에서 그 칸 높이만큼 띄움
+    const bottom = Math.min(sb.getBoundingClientRect().top, window.innerHeight - sb.offsetHeight);
+    const boxTop = box.getBoundingClientRect().top + main.scrollTop;      // 스크롤 맨 위 기준 위치
+    const fit = bottom - boxTop - $('.bc2-wds', box).offsetHeight - grip.offsetHeight - 3;
+    box.style.setProperty('--wh', Math.max(minH, this.userH || fit) / weeks + 'px');
+    let saved = 0;
     grip.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      const y0 = e.clientY, h0 = box.getBoundingClientRect().height - $('.bc2-wds', box).offsetHeight;
+      const y0 = e.clientY, h0 = box.getBoundingClientRect().height - $('.bc2-wds', box).offsetHeight - 2;
       document.body.classList.add('resizing');
       const mv = (ev) => {
         const nh = Math.max(minH, h0 + ev.clientY - y0);
@@ -219,11 +227,11 @@ const BigCal = {
       const up = () => {
         document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
         document.body.classList.remove('resizing');
-        if (saved) localStorage.setItem(this.LS_H, String(Math.round(saved)));
+        if (saved) this.userH = Math.round(saved);
       };
       document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
     });
-    grip.addEventListener('dblclick', () => { localStorage.removeItem(this.LS_H); App.render(); });
+    grip.addEventListener('dblclick', () => { this.userH = 0; App.render(); });
 
     main.onclick = (e) => {
       const a = e.target.closest('[data-a]');
@@ -371,10 +379,10 @@ const EventModal = {
   open(id, preset = {}) {
     const ev = id ? Store.get('events', id) : null;
     const d0 = preset.date || App.selDate;
-    const v = ev || Object.assign({ type: dowOf(d0) % 6 === 0 ? 'weekend' : 'pre', date: d0, endDate: '', start: '', end: '', school: '', grade: '', title: '', memo: '' }, preset);
+    const v = ev || Object.assign({ type: '', date: d0, endDate: '', start: '', end: '', school: '', grade: '', title: '', memo: '' }, preset);
     const ranged = isRange(v);
     const body = `<div class="form ev-form">
-      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
+      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type && evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
       <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
         <label class="chk"><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
@@ -396,7 +404,7 @@ const EventModal = {
         };
         chk.addEventListener('change', sync);
         const tl = $('[data-timelabel]', b);
-        const typeSync = () => { tl.classList.toggle('req', !!NEED_TIME[$('[name=type]:checked', b).value]); };
+        const typeSync = () => { const t = $('[name=type]:checked', b); tl.classList.toggle('req', !!(t && NEED_TIME[t.value])); };
         b.addEventListener('change', (e) => { if (e.target.name === 'type') typeSync(); });
         typeSync();
       },
@@ -409,6 +417,7 @@ const EventModal = {
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
           const b = m.body;
           const ranged2 = $('[name=ranged]', b).checked;
+          if (!$('[name=type]:checked', b)) { toast('종류를 선택하세요'); return false; }
           const rec = Object.assign({}, ev || { id: uid('EV'), createdAt: new Date().toISOString() }, {
             type: $('[name=type]:checked', b).value,
             date: $('[name=date]', b).value,
