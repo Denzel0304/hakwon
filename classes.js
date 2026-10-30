@@ -25,10 +25,42 @@ const Classes = {
       else Store.put('enrollments', Object.assign({}, e, { to: date }));
     });
   },
-  endTime(c) { return fromMin(toMin(c.start) + (+c.duration || 90)); },
-  timeLabel(c) { return daysLabel(c.days) + ' ' + c.start + '~' + this.endTime(c); },
-  autoName(days, start) { return start ? daysLabel(days) + ' ' + nameTime(start) : daysLabel(days); },
+  // 그 요일의 시간 { start, duration } — '요일마다 시간 다르게'면 요일별 값, 아니면 공통 값
+  timeOn(c, dow) {
+    const t = c.perDay && c.times && c.times[dow];
+    if (t && t.start) return { start: t.start, duration: +t.duration || 90 };
+    return { start: c.start, duration: +c.duration || 90 };
+  },
+  endTime(c, dow) { const t = this.timeOn(c, dow); return fromMin(toMin(t.start) + t.duration); },
+  // 같은 시간인 요일끼리 묶기: [{ days:[1,3], start, duration }, { days:[5], ... }]
+  groups(c) {
+    const out = [];
+    DAY_ORDER.filter(d => (c.days || []).includes(d)).forEach(d => {
+      const t = this.timeOn(c, d);
+      const g = out.find(x => x.start === t.start && x.duration === t.duration);
+      if (g) g.days.push(d); else out.push({ days: [d], start: t.start, duration: t.duration });
+    });
+    return out;
+  },
+  timeLabel(c) {
+    const gs = this.groups(c);
+    if (!gs.length) return '';
+    return gs.map(g => daysLabel(g.days) + ' ' + g.start + '~' + fromMin(toMin(g.start) + g.duration)).join(' / ');
+  },
+  dayTimeLabel(c, dow) { const t = this.timeOn(c, dow); return t.start + '~' + fromMin(toMin(t.start) + t.duration); },
+  // 반 이름: 요일 + 시작 시간 (요일마다 다르면 "월수 6시 30분 · 금 8시")
+  autoName(days, start, times) {
+    if (!times) return start ? daysLabel(days) + ' ' + nameTime(start) : daysLabel(days);
+    const gs = [];
+    DAY_ORDER.filter(d => days.includes(d)).forEach(d => {
+      const st = (times[d] && times[d].start) || start;
+      const g = gs.find(x => x.start === st);
+      if (g) g.days.push(d); else gs.push({ days: [d], start: st });
+    });
+    return gs.map(g => g.start ? daysLabel(g.days) + ' ' + nameTime(g.start) : daysLabel(g.days)).join(' · ');
+  },
   sorted(list) { return list.sort((a, b) => ko(a.start, b.start) || ko(daysLabel(a.days), daysLabel(b.days)) || ko(a.name, b.name)); },
+  sortedOn(list, dow) { return list.sort((a, b) => ko(this.timeOn(a, dow).start, this.timeOn(b, dow).start) || ko(a.name, b.name)); },
 
   /* ---------- 반 관리 화면 ---------- */
   render(main) {
@@ -38,7 +70,7 @@ const Classes = {
     const row = (c) => {
       const r = this.rosterAt(c.id, today);
       return `<tr class="click" data-id="${c.id}"><td class="nowrap"><b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
-        <td class="nowrap">${esc(this.timeLabel(c))} <span class="muted small">(${+c.duration || 90}분)</span></td>
+        <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
         <td class="num">${r.length}</td><td class="small">${r.map(s => esc(s.name) + `<span class="tag">${esc(stTag(s))}</span>`).join(', ') || '<span class="muted">-</span>'}</td>
         <td class="small soft">${esc(firstLine(c.memo))}</td></tr>`;
     };
@@ -64,12 +96,15 @@ const Classes = {
     const today = todayStr();
     const enrolled = c ? this.rosterAt(c.id, today).map(s => s.id) : [];
     let nameEdited = c ? !!c.nameEdited : false;
+    let m_times = {};
     const students = Store.where('students', s => s.status === 'active').sort((a, b) => Students.sortFn(a, b));
     const body = `<div class="form">
       <label class="req">요일</label><div class="day-picks">${DAY_ORDER.map(d => `<label><input type="checkbox" name="day" value="${d}" ${(v.days || []).includes(d) ? 'checked' : ''}>${DOW[d]}</label>`).join('')}</div>
       <label class="req">시작 시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}">
         <span>수업 길이</span><input type="number" name="duration" min="10" max="600" step="5" value="${+v.duration || 90}"><span>분</span>
         <span class="soft" data-end></span></div>
+      <label></label><div><label class="chk"><input type="checkbox" name="perDay" ${v.perDay ? 'checked' : ''}>요일마다 시간 다르게</label>
+        <div class="pd-rows" data-pd></div></div>
       <label class="req">반 이름</label><div class="row"><input type="text" name="name" value="${esc(v.name)}" style="flex:1" maxlength="40"><button class="btn sm" type="button" data-autoname>자동 이름</button></div>
       <label class="top">메모</label><textarea name="memo" rows="3">${esc(v.memo)}</textarea>
       <label>진행 상태</label><label class="chk"><input type="checkbox" name="ended" ${v.active === false ? 'checked' : ''}>종료된 반 (시간표·수업일지에서 숨김)</label>
@@ -84,22 +119,52 @@ const Classes = {
         enhanceAll(b);
         const nameIn = $('[name=name]', b);
         const readDays = () => $$('[name=day]:checked', b).map(i => +i.value);
-        const upd = () => {
-          const st = $('[name=start]', b).value, du = +$('[name=duration]', b).value || 90;
-          $('[data-end]', b).textContent = st ? '→ ' + fromMin(toMin(st) + du) + ' 종료' : '';
-          if (!nameEdited) nameIn.value = this.autoName(readDays(), st);
+        const pdChk = $('[name=perDay]', b), pdBox = $('[data-pd]', b);
+        const times = JSON.parse(JSON.stringify(v.times || {}));     // { 요일: { start, duration } }
+        const common = () => ({ start: $('[name=start]', b).value, duration: +$('[name=duration]', b).value || 90 });
+        const curName = () => this.autoName(readDays(), common().start, pdChk.checked ? times : null);
+        // 요일별 줄 그리기 (체크한 요일만, 없던 요일은 공통 시간으로 채움)
+        const drawPd = () => {
+          if (!pdChk.checked) { pdBox.innerHTML = ''; return; }
+          const cm = common();
+          pdBox.innerHTML = DAY_ORDER.filter(d => readDays().includes(d)).map(d => {
+            const t = times[d] = times[d] && times[d].start ? times[d] : { start: cm.start, duration: cm.duration };
+            return `<div class="pd-row"><b>${DOW[d]}</b><input type="time" step="300" data-ps="${d}" value="${esc(t.start)}">
+              <input type="number" min="10" max="600" step="5" data-pdu="${d}" value="${+t.duration || 90}"><span>분</span>
+              <span class="soft" data-pe="${d}">→ ${t.start ? fromMin(toMin(t.start) + (+t.duration || 90)) + ' 종료' : ''}</span></div>`;
+          }).join('') || '<div class="hint">요일을 먼저 고르세요.</div>';
         };
-        if (!c) upd(); else { const st = v.start; $('[data-end]', b).textContent = st ? '→ ' + this.endTime(v) + ' 종료' : ''; }
-        b.addEventListener('change', (e) => { if (e.target.matches('[name=day],[name=start],[name=duration]')) upd(); });
+        const upd = () => {
+          const cm = common();
+          $('[data-end]', b).textContent = cm.start ? '→ ' + fromMin(toMin(cm.start) + cm.duration) + ' 종료' : '';
+          if (!nameEdited) nameIn.value = curName();
+        };
+        drawPd();
+        if (!c) upd(); else { const cm = common(); $('[data-end]', b).textContent = cm.start ? '→ ' + fromMin(toMin(cm.start) + cm.duration) + ' 종료' : ''; }
+        b.addEventListener('change', (e) => {
+          if (e.target.matches('[name=day],[name=perDay]')) { drawPd(); upd(); }
+          else if (e.target.matches('[name=start],[name=duration]')) upd();
+        });
         b.addEventListener('input', (e) => {
-          if (e.target === nameIn) nameEdited = nameIn.value.trim() !== '' && nameIn.value.trim() !== this.autoName(readDays(), $('[name=start]', b).value);
-          if (e.target.matches('[name=start],[name=duration]')) upd();
+          const t = e.target;
+          if (t.matches('[data-ps],[data-pdu]')) {
+            const d = t.dataset.ps || t.dataset.pdu;
+            times[d] = times[d] || {};
+            if (t.dataset.ps) times[d].start = t.value; else times[d].duration = +t.value || 90;
+            const x = times[d];
+            $(`[data-pe="${d}"]`, b).textContent = x.start ? '→ ' + fromMin(toMin(x.start) + (+x.duration || 90)) + ' 종료' : '';
+            if (!nameEdited) nameIn.value = curName();
+            return;
+          }
+          if (t === nameIn) nameEdited = nameIn.value.trim() !== '' && nameIn.value.trim() !== curName();
+          if (t.matches('[name=start],[name=duration]')) upd();
           if (e.target.matches('[data-filter]')) {
             const q = e.target.value.trim().toLowerCase();
             $$('.pick-list label', b).forEach(l => { l.style.display = !q || l.dataset.nm.includes(q) ? '' : 'none'; });
           }
         });
         $('[data-autoname]', b).onclick = () => { nameEdited = false; upd(); };
+        m_times = times;
       },
       buttons: [
         ...(c ? [{ text: '완전 삭제', cls: 'danger', left: true, onClick: async () => {
@@ -113,13 +178,28 @@ const Classes = {
           const days = $$('[name=day]:checked', b).map(i => +i.value);
           const start = $('[name=start]', b).value;
           const duration = Math.max(10, Math.min(600, +$('[name=duration]', b).value || 90));
-          const name = $('[name=name]', b).value.trim() || this.autoName(days, start);
           const apply = $('[name=apply]', b).value;
           if (!days.length) { toast('요일을 하나 이상 고르세요'); return false; }
           if (!start) { toast('시작 시간을 입력하세요'); return false; }
           if (!isYmd(apply)) { toast('변경 적용일을 선택하세요'); return false; }
+          // 요일별 시간 정리: 체크한 요일만 남기고, 모두 같으면 공통 시간으로 저장
+          let perDay = $('[name=perDay]', b).checked, times = null;
+          if (perDay) {
+            times = {};
+            for (const d of days) {
+              const t = m_times[d] || {};
+              if (!t.start) { toast(DOW[d] + '요일 시작 시간을 입력하세요'); return false; }
+              times[d] = { start: t.start, duration: Math.max(10, Math.min(600, +t.duration || 90)) };
+            }
+            const vals = Object.values(times);
+            if (vals.every(t => t.start === vals[0].start && t.duration === vals[0].duration)) { perDay = false; times = null; }
+          }
+          const st0 = perDay ? times[DAY_ORDER.find(d => days.includes(d))].start : start;
+          const du0 = perDay ? times[DAY_ORDER.find(d => days.includes(d))].duration : duration;
+          const auto = this.autoName(days, st0, times);
+          const name = $('[name=name]', b).value.trim() || auto;
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
-            name, nameEdited: name !== this.autoName(days, start), days, start, duration,
+            name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
             memo: stripZws($('[name=memo]', b).value), active: !$('[name=ended]', b).checked,
           });
           Store.put('classes', rec);
@@ -162,7 +242,8 @@ const Timetable = {
     const classes = Store.all('classes').filter(c => c.active !== false);
     const cols = DAY_ORDER.map(dow => {
       const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
-        const s = toMin(c.start), e = s + (+c.duration || 90);
+        const t = Classes.timeOn(c, dow);
+        const s = toMin(t.start), e = s + t.duration;
         return { c, s, e, roster: Classes.rosterAt(c.id, today) };
       });
       return { dow, items: this.layout(items) };
@@ -186,7 +267,7 @@ const Timetable = {
         h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
           style="top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px)">
           <div class="nm"><b>${esc(c.name)}</b></div>
-          <div class="tm">${esc(c.start)}~${esc(Classes.endTime(c))} · ${it.roster.length}명</div>
+          <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명</div>
           <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}</div></div>`;
       });
       h += '</div>';

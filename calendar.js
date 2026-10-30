@@ -291,7 +291,7 @@ const DayPage = {
       const roster = Classes.rosterAt(c.id, date);
       const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
-      return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(c.start)}~${esc(Classes.endTime(c))}</span>
+      return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
         <div class="what"><b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
         ${les ? '<span class="badge green">작성 완료</span>' : '<span class="badge gray">일지 작성 전</span>'}
         ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div></div>`;

@@ -25,7 +25,7 @@ const Lessons = {
   isSaved(classId, date) { return !!Store.get('lessons', this.lessonId(classId, date)); },
   classesOn(date) {
     const dow = dowOf(date);
-    return Classes.sorted(Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)));
+    return Classes.sortedOn(Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)), dow);
   },
   // 다른 화면에서 반·날짜를 열 때: 저장된 수업이면 진도 탭, 아니면 수업일지
   open(date, classId) {
@@ -49,7 +49,7 @@ const Lessons = {
     const savedCnt = sched.filter(c => this.isSaved(c.id, date)).length;
     const opt = (c) => {
       const sv = this.isSaved(c.id, date);
-      return `<option value="${c.id}" ${sv ? 'disabled' : ''} ${c.id === classId ? 'selected' : ''}>${sv ? '✓ ' : ''}${esc(c.name)} (${esc(c.start)})${sv ? ' — 저장됨' : ''}</option>`;
+      return `<option value="${c.id}" ${sv ? 'disabled' : ''} ${c.id === classId ? 'selected' : ''}>${sv ? '✓ ' : ''}${esc(c.name)} (${esc(Classes.timeOn(c, dowOf(date)).start)})${sv ? ' — 저장됨' : ''}</option>`;
     };
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>수업일지</h1>
@@ -77,7 +77,7 @@ const Lessons = {
     roster.forEach(s => { const a = f.att[s.id]; if (a) cnt[a]++; else cnt.none++; });
 
     h += `<div class="grid-2"><div class="panel">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h2 style="margin:0;flex:1">출석 <span class="sub">${esc(c.name)} · ${esc(Classes.timeLabel(c))}</span></h2>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h2 style="margin:0;flex:1">출석 <span class="sub">${esc(c.name)} · ${DOW[dowOf(date)]} ${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span></h2>
       <button class="btn sm" data-allp ${roster.length ? '' : 'disabled'}>전원 출석</button>
       <button class="btn sm" data-clearatt>전체 해제</button></div>
       <div class="att-sum"><span>출석 ${cnt.P}</span><span>지각 ${cnt.L}</span><span>결석 ${cnt.A}</span><span>조퇴 ${cnt.E}</span><span class="muted">미체크 ${cnt.none}</span></div>`;
