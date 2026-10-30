@@ -449,14 +449,14 @@ const EventModal = {
 
 /* ---------- 일정 탭: 모든 일정을 모아 관리 ---------- */
 const EventsPage = {
-  type: '', q: '', showPast: false,
+  type: '', q: '', hidePast: false,
   render(main) {
     const today = todayStr();
     const q = this.q.trim();
     const all = Store.all('events').filter(ev => isYmd(ev.date));
     const pastCnt = all.filter(ev => evEnd(ev) < today).length;
     const list = all.filter(ev => (!this.type || evType(ev) === this.type))
-      .filter(ev => this.showPast || evEnd(ev) >= today)
+      .filter(ev => !this.hidePast || evEnd(ev) >= today)
       .filter(ev => !q || [ev.school, eventShort(ev), ev.title, ev.memo].some(v => String(v || '').includes(q)))
       .sort((a, b) => {
         const pa = evEnd(a) < today, pb = evEnd(b) < today;
@@ -466,7 +466,7 @@ const EventsPage = {
     let h = `<div class="page-head"><h1>일정</h1><button class="btn primary" data-a="add">+ 일정 추가</button><span class="sub">시험 일정 · 직전 보강 · 주말 보강 · 기타</span></div>
       <div class="toolbar"><select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
       <input type="search" data-q value="${esc(this.q)}" placeholder="학교, 제목, 메모 검색" style="width:240px">
-      <label class="chk small"><input type="checkbox" data-past ${this.showPast ? 'checked' : ''}>지난 일정 보기 (${pastCnt})</label>
+      <label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label>
       <span class="muted small">${list.length}건</span></div>`;
     h += list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>날짜</th><th>시간</th><th>종류</th><th>대상</th><th>제목·메모</th></tr></thead><tbody>${list.map(ev => {
       const past = evEnd(ev) < today;
@@ -482,7 +482,7 @@ const EventsPage = {
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-type]')) { this.type = e.target.value; App.render(); }
-      if (e.target.matches('[data-past]')) { this.showPast = e.target.checked; App.render(); }
+      if (e.target.matches('[data-past]')) { this.hidePast = e.target.checked; App.render(); }
     };
     main.oninput = debounce((e) => {
       if (e.target.matches('[data-q]')) { this.q = e.target.value; App.render(); const i = $('[data-q]', main); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }

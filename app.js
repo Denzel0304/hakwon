@@ -150,7 +150,6 @@ const App = {
     if (!b) return;
     const p = b.dataset.page;
     if (p === 'lessons') App.go('lessons', { date: App.selDate });
-    else if (p === 'timetable') App.go('timetable', { week: ymd(mondayOf(parseYmd(App.selDate))) });
     else App.go(p, {});
   });
   // 입력이 끝나면 미뤄 둔 화면 갱신
@@ -189,7 +188,7 @@ const App = {
   setInterval(() => { if (document.visibilityState === 'visible' && Auth.key()) Store.checkRemote(); }, CFG.POLL_MS);
 
   // 창 크기가 바뀌면 큰 달력 높이를 다시 맞춤 (직접 늘린 경우 제외)
-  window.addEventListener('resize', debounce(() => { if (App.page === 'calendar' && !BigCal.userH && !Modal.stack.length) App.render(); }, 200));
+  window.addEventListener('resize', debounce(() => { if (!Modal.stack.length && ((App.page === 'calendar' && !BigCal.userH) || (App.page === 'timetable' && !Timetable.userH))) App.render(); }, 200));
 
   // 창을 닫기 전 저장 대기분을 로컬에 기록
   window.addEventListener('beforeunload', () => { Store.persist(); });

@@ -181,6 +181,7 @@ const Lessons = {
 const AttBook = {
   classId: '',
   month: '',
+  allDays: true,       // true: 그 달 모든 날짜 / false: 정규 수업일 + 기록 있는 날
   CYCLE: ['', 'P', 'L', 'A', 'E'],
 
   render(main, p) {
@@ -192,14 +193,15 @@ const AttBook = {
     let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
       <select data-cls>${classes.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select>
       <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button></div>`;
+      <button class="btn sm" data-m="0">이번 달</button>
+      <label class="chk small"><input type="checkbox" data-alldays ${this.allDays ? '' : 'checked'}>정규 수업일만 보기</label></div>`;
     if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 관리에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
     const c = Store.get('classes', this.classId);
     const last = new Date(Y, M, 0).getDate();
     const dates = [];
     for (let d = 1; d <= last; d++) {
       const ds = Y + '-' + pad(M) + '-' + pad(d);
-      if ((c.days || []).includes(dowOf(ds)) || Lessons.isSaved(c.id, ds)) dates.push(ds);
+      if (this.allDays || (c.days || []).includes(dowOf(ds)) || Lessons.isSaved(c.id, ds)) dates.push(ds);
     }
     const sids = new Set();
     dates.forEach(d => {
@@ -211,24 +213,26 @@ const AttBook = {
     const enrolledOn = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.classId === c.id && Classes.enrollValid(e, d)).length > 0;
     const today = todayStr();
 
-    h += `<div class="toolbar small soft"><span>${esc(Classes.timeLabel(c))}</span><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다.</span></div>`;
+    h += `<div class="toolbar small soft"><span>${esc(Classes.timeLabel(c))}</span><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 정규 수업일이 아닌 날도 체크할 수 있습니다.</span></div>`;
     if (!dates.length || !studs.length) {
       h += `<div class="panel"><div class="empty">${!dates.length ? '이 달에 수업 날짜가 없습니다.' : '이 달에 이 반 수강생이 없습니다.'}</div></div></div>`;
       main.innerHTML = h; this.bind(main); return;
     }
-    h += `<div class="tbl-wrap"><table class="tbl compact ab"><thead><tr><th>이름</th>${dates.map(d => {
+    h += `<div class="tbl-wrap"><table class="tbl compact ab"><thead><tr><th class="ab-name">이름</th>${dates.map(d => {
       const sv = Lessons.isSaved(c.id, d);
-      return `<th class="ab-d ${d === today ? 'today' : ''} ${sv ? '' : 'unsaved'}" title="${sv ? '저장된 수업' : '수업일지 미입력'}">${+d.slice(8)}<small>${DOW[dowOf(d)]}</small></th>`;
+      const reg = (c.days || []).includes(dowOf(d));
+      return `<th class="ab-d ${d === today ? 'today' : ''} ${reg ? 'reg' : 'offday'} ${dowOf(d) === 0 ? 'sun' : ''}" title="${reg ? '정규 수업일' : '정규 수업일 아님'}${sv ? ' · 기록 있음' : ''}">${+d.slice(8)}<small>${DOW[dowOf(d)]}</small></th>`;
     }).join('')}<th class="num">출</th><th class="num">지</th><th class="num">결</th><th class="num">조</th></tr></thead><tbody>`;
     studs.forEach(s => {
       const sum = { P: 0, L: 0, A: 0, E: 0 };
-      h += `<tr><td class="nowrap"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span></td>`;
+      h += `<tr><td class="nowrap ab-name"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span></td>`;
       dates.forEach(d => {
         const l = Store.get('lessons', Lessons.lessonId(c.id, d));
         const st = l && l.att ? l.att[s.id] || '' : '';
         if (st) sum[st]++;
-        if (!st && !enrolledOn(s.id, d)) h += '<td class="ab-c na">-</td>';
-        else h += `<td class="ab-c ${st}" data-d="${d}" data-sid="${s.id}">${ATT_SHORT[st] || ''}</td>`;
+        const out = !enrolledOn(s.id, d);
+        const reg = (c.days || []).includes(dowOf(d));
+        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강 기간 밖' : ''}">${ATT_SHORT[st] || ''}</td>`;
       });
       h += `<td class="num">${sum.P}</td><td class="num">${sum.L}</td><td class="num">${sum.A}</td><td class="num">${sum.E}</td></tr>`;
     });
@@ -257,6 +261,7 @@ const AttBook = {
       }
     };
     main.onchange = (e) => {
+      if (e.target.matches('[data-alldays]')) { this.allDays = !e.target.checked; App.render(); return; }
       if (e.target.matches('[data-cls]')) { this.classId = e.target.value; App.render(); }
       if (e.target.matches('[data-month]') && /^\d{4}-\d{2}$/.test(e.target.value)) { this.month = e.target.value; App.render(); }
     };

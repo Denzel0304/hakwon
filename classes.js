@@ -149,113 +149,96 @@ const Classes = {
 };
 
 /* =========================================================
-   주간 시간표
+   시간표 — 요일별 고정 시간표 (날짜 없음, 15시~24시)
    ========================================================= */
 const Timetable = {
-  render(main, p) {
-    const mon = p.week ? parseYmd(p.week) : mondayOf(parseYmd(App.selDate));
-    const monStr = ymd(mon);
-    const dates = DAY_ORDER.map((_, i) => ymd(addDays(mon, i)));   // 월~일
+  START: 15 * 60,
+  END: 24 * 60,
+  userH: 0,                      // 끌어서 바꾼 높이 (시간표를 떠나면 초기화)
+  onLeave() { this.userH = 0; },
+
+  render(main) {
     const today = todayStr();
     const classes = Store.all('classes').filter(c => c.active !== false);
-    const events = Store.where('events', ev => isYmd(ev.date) && ev.start && ev.date <= dates[6] && evEnd(ev) >= dates[0]);
-    const idx = CalIndex.build();
-
-    // 날짜별 블록
-    const cols = dates.map(d => {
-      const dow = dowOf(d);
-      // 이번 주의 지난 요일은 오늘 기준 명단(현재 반 구성)으로 보여준다
-      const rosterDate = d < today && d >= ymd(mondayOf(new Date())) ? today : d;
-      const items = [];
-      classes.filter(c => (c.days || []).includes(dow)).forEach(c => {
+    const cols = DAY_ORDER.map(dow => {
+      const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
         const s = toMin(c.start), e = s + (+c.duration || 90);
-        items.push({ kind: 'class', c, s, e, roster: Classes.rosterAt(c.id, rosterDate) });
+        return { c, s, e, roster: Classes.rosterAt(c.id, today) };
       });
-      events.filter(ev => ev.date <= d && evEnd(ev) >= d).forEach(ev => {
-        const s = toMin(ev.start), e = ev.end ? Math.max(toMin(ev.end), s + 30) : s + 60;
-        items.push({ kind: 'event', ev, s, e });
-      });
-      return { date: d, items: this.layout(items) };
+      return { dow, items: this.layout(items) };
     });
-
-    // 시간 범위
-    let minS = 15 * 60, maxE = 22 * 60;
-    cols.forEach(c => c.items.forEach(it => { minS = Math.min(minS, it.s); maxE = Math.max(maxE, it.e); }));
-    minS = Math.floor(minS / 60) * 60; maxE = Math.min(24 * 60, Math.ceil(maxE / 60) * 60);
-    // 학생 명단이 다 보이도록 분당 높이를 정한다
-    let ppm = 1.6;
-    cols.forEach(c => c.items.forEach(it => {
-      if (it.kind !== 'class') return;
-      const need = 40 + it.roster.length * 16.5;
-      ppm = Math.max(ppm, need / (it.e - it.s) / (it.cols > 1 ? 0.8 : 1));
-    }));
-    ppm = Math.min(ppm, 6);
-    const H = (maxE - minS) * ppm;
-
-    const last = addDays(mon, 6);
-    let h = `<div class="page-head"><h1>시간표</h1>
-      <span class="sub">${mon.getFullYear()}.${pad(mon.getMonth() + 1)}.${pad(mon.getDate())} ~ ${pad(last.getMonth() + 1)}.${pad(last.getDate())}</span>
-      <button class="btn sm" data-a="prev">‹ 이전 주</button><button class="btn sm" data-a="this">이번 주</button><button class="btn sm" data-a="next">다음 주 ›</button>
-      <span class="grow"></span><span class="small muted">빈 칸을 누르면 그 시간에 일정을 추가합니다</span>
-      <button class="btn primary" data-a="add">+ 일정 추가</button></div>
-      <div class="tt-wrap"><div class="tt">
-      <div class="tt-head"></div>`;
-    dates.forEach(d => {
-      const o = idx[d];
-      const exams = o ? o.exam.map(ex => `<span class="ex">${esc(eventShort(ex))}</span>`).join('') : '';
-      h += `<div class="tt-head ${d === today ? 'today' : ''} ${dowOf(d) === 0 ? 'sun' : ''}"><span class="d">${DOW[dowOf(d)]} ${fmtMD(d).replace(/\(.+\)/, '')}</span>${exams}</div>`;
-    });
-    const hourLines = `background-image: repeating-linear-gradient(to bottom, var(--line) 0, var(--line) 1px, transparent 1px, transparent ${60 * ppm}px); background-size: 100% ${60 * ppm}px;`;
-    h += `<div class="tt-time" style="height:${H}px">`;
-    for (let t = minS; t < maxE; t += 60) h += `<span style="top:${(t - minS) * ppm + 8}px">${t / 60}시</span>`;
+    const span = this.END - this.START;
+    let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>
+      <div class="tt2"><div class="tt2-head"><div></div>${DAY_ORDER.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}">${DOW[d]}</div>`).join('')}</div>
+      <div class="tt2-body"><div class="tt2-time">`;
+    for (let t = this.START; t < this.END; t += 60) {
+      const hr = t / 60;
+      h += `<span style="top:calc(var(--ppm) * ${t - this.START})">${hr > 12 ? hr - 12 : hr}시</span>`;
+    }
     h += '</div>';
     cols.forEach(col => {
-      h += `<div class="tt-col ${col.date === today ? 'today' : ''}" data-col="${col.date}" style="height:${H}px;${hourLines}">`;
+      h += `<div class="tt2-col">`;
       col.items.forEach(it => {
-        const top = (it.s - minS) * ppm, ht = Math.max((it.e - it.s) * ppm - 2, 22);
-        const w = 100 / it.cols, left = it.col * w;
-        const pos = `top:${top}px;height:${ht}px;left:calc(${left}% + 2px);width:calc(${w}% - 4px)`;
-        if (it.kind === 'class') {
-          const c = it.c;
-          h += `<div class="tt-blk" style="${pos}" data-lesson="${c.id}" data-date="${col.date}" title="${esc(c.name)} — 눌러서 수업일지 열기">
-            <div class="nm"><b>${esc(c.name)}</b><button class="edit" data-editcls="${c.id}" title="반 수정">✎</button></div>
-            <div class="tm">${esc(c.start)}~${esc(Classes.endTime(c))} · ${it.roster.length}명</div>
-            ${it.roster.map(s => `<span class="st">${esc(s.name)}<small>${esc(stTag(s))}</small></span>`).join('')}</div>`;
-        } else {
-          const ev = it.ev;
-          h += `<div class="tt-blk ev ${esc(ev.type)}" style="${pos}" data-ev="${ev.id}">
-            <div class="nm"><b>${esc(eventShort(ev))}</b></div><div class="tm">${esc(eventTime(ev))}</div>
-            ${ev.memo ? `<div class="small soft pre">${esc(ev.memo)}</div>` : ''}</div>`;
-        }
+        const s = Math.max(it.s, this.START), e = Math.min(it.e, this.END);
+        if (e <= s) return;
+        const w = 100 / it.cols;
+        const c = it.c;
+        h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
+          style="top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px)">
+          <div class="nm"><b>${esc(c.name)}</b></div>
+          <div class="tm">${esc(c.start)}~${esc(Classes.endTime(c))} · ${it.roster.length}명</div>
+          <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}</div></div>`;
       });
       h += '</div>';
     });
-    h += '</div></div>';
+    h += `</div></div><div class="bc2-resize tt2-resize" title="끌어서 시간표 높이 조절"><span></span></div>`;
     main.innerHTML = h;
 
+    // 높이: 처음에는 아래 끝이 왼쪽 아래 '동기화됨' 칸 윗선에 오도록 맞춤
+    const box = $('.tt2', main), body = $('.tt2-body', main), grip = $('.tt2-resize', main);
+    const sb = $('#sync-bar');
+    const bottom = Math.min(sb.getBoundingClientRect().top, window.innerHeight - sb.offsetHeight);
+    const bodyTop = body.getBoundingClientRect().top + main.scrollTop;
+    const minH = span * 0.8;
+    const fit = bottom - bodyTop - grip.offsetHeight - 3;
+    const apply = (H) => { box.style.setProperty('--ppm', (Math.max(minH, H) / span) + 'px'); this.fitStudents(main); };
+    apply(this.userH || fit);
+
+    grip.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const y0 = e.clientY, h0 = body.getBoundingClientRect().height;
+      let nh = h0;
+      document.body.classList.add('resizing');
+      const mv = (ev) => {
+        nh = Math.max(minH, h0 + ev.clientY - y0);
+        box.style.setProperty('--ppm', (nh / span) + 'px');
+        if (ev.clientY > window.innerHeight - 30) main.scrollTop += 20;
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+        document.body.classList.remove('resizing');
+        this.userH = Math.round(nh);
+        this.fitStudents(main);
+      };
+      document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    });
+    grip.addEventListener('dblclick', () => { this.userH = 0; App.render(); });
+
     main.onclick = (e) => {
-      const a = e.target.closest('[data-a]');
-      if (a) {
-        if (a.dataset.a === 'add') { EventModal.open(null, { date: App.selDate >= dates[0] && App.selDate <= dates[6] ? App.selDate : dates[0] }); return; }
-        const nm = a.dataset.a === 'this' ? mondayOf(new Date()) : addDays(mon, a.dataset.a === 'prev' ? -7 : 7);
-        App.go('timetable', { week: ymd(nm) });
-        return;
-      }
-      const ed = e.target.closest('[data-editcls]'); if (ed) { e.stopPropagation(); Classes.openModal(ed.dataset.editcls); return; }
-      const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
-      const ls = e.target.closest('[data-lesson]');
-      if (ls) { Lessons.open(ls.dataset.date, ls.dataset.lesson); return; }
-      const col = e.target.closest('[data-col]');
-      if (col) {
-        const r = col.getBoundingClientRect();
-        const min = minS + Math.round(((e.clientY - r.top) / ppm) / 30) * 30;
-        const d = col.dataset.col;
-        const dur = dowOf(d) % 6 === 0 ? 180 : 90;
-        EventModal.open(null, { date: d, start: fromMin(min), end: fromMin(Math.min(min + dur, 24 * 60 - 1)), type: dowOf(d) % 6 === 0 ? 'weekend' : 'pre' });
-      }
+      const b = e.target.closest('[data-cls]');
+      if (b) Classes.openModal(b.dataset.cls);
     };
     main.onchange = null;
-    void monStr;
+  },
+
+  // 학생 명단이 세로로 다 들어가지 않으면 가로로 나열하며 내려간다
+  fitStudents(main) {
+    // 1단계: 가로로 나열(학교는 마우스를 올리면 표시) → 2단계: 그래도 넘치면 글씨를 줄임
+    $$('.tt-blk', main).forEach(b => {
+      b.classList.remove('wrap', 'tiny');
+      if (b.scrollHeight > b.clientHeight + 1) b.classList.add('wrap');
+      if (b.scrollHeight > b.clientHeight + 1) b.classList.add('tiny');
+    });
   },
 
   // 겹치는 블록을 옆으로 나눠 배치
