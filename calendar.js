@@ -1,35 +1,56 @@
 /* =========================================================
-   calendar.js — 미니 달력 / 큰 달력 / 날짜 상세 / 일정(직전·주말보강)
+   calendar.js — 일정(시험 일정·직전 보강·주말 보강·기타) / 미니 달력 / 큰 달력 / 날짜 요약 / 일정 탭
+   event: { type:'exam'|'pre'|'weekend'|'etc', date(시작일), endDate(기간일 때 끝날, 아니면 ''),
+            start, end(시간, 선택), school, grade, title, memo }
+   ※ 시험정보 탭(시험 범위 기록)과 일정의 '시험 일정'(달력 알림)은 서로 별개
    ========================================================= */
 const EVENT_TYPES = {
-  pre: { label: '직전보강', dot: 'dot-pre' },
-  weekend: { label: '주말보강', dot: 'dot-weekend' },
-  etc: { label: '기타 일정', dot: 'dot-etc' },
+  exam: { label: '시험 일정' },
+  pre: { label: '직전 보강' },
+  weekend: { label: '주말 보강' },
+  etc: { label: '기타 일정' },
 };
 const EXAM_KIND = { mid: '중간', final: '기말' };
+const NEED_TIME = { pre: true, weekend: true };   // 보강은 시간 필수
 
+// 시험정보(시험 범위 기록) 표시용
 function examTitle(ex) {
   return schoolGradeLabel(ex.school, ex.grade).replace(/^학교미정 /, '') + ' ' + (EXAM_KIND[ex.kind] || '') + '고사';
 }
+function evType(ev) { return EVENT_TYPES[ev.type] ? ev.type : 'etc'; }
 function eventTarget(ev) {
   if (ev.school) return schoolShort(ev.school) + (ev.grade ? gradeNum(ev.grade) : '');
   return ev.grade ? gradeLabel(ev.grade) : '';
 }
 function eventTitle(ev) {
-  const t = EVENT_TYPES[ev.type] || EVENT_TYPES.etc;
   const tg = eventTarget(ev);
-  return t.label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
+  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
+}
+// 달력 띠·칸에 쓰는 짧은 이름: "금천고1 기말" / "주말 보강 금천고1"
+function eventShort(ev) {
+  const tg = eventTarget(ev);
+  if (evType(ev) === 'exam') return (tg ? tg + ' ' : '') + (ev.title || '시험');
+  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
 }
 function eventTime(ev) { return ev.start ? ev.start + (ev.end ? '~' + ev.end : '') : ''; }
-
-// 시험이 걸친 날짜들 (최대 31일)
-function examDates(ex) {
-  if (!isYmd(ex.start)) return [];
-  const end = isYmd(ex.end) && ex.end >= ex.start ? ex.end : ex.start;
-  const out = [];
-  let d = ex.start;
-  for (let i = 0; i < 31 && d <= end; i++) { out.push(d); d = addDaysStr(d, 1); }
+function evEnd(ev) { return isYmd(ev.endDate) && ev.endDate > ev.date ? ev.endDate : ev.date; }
+function isRange(ev) { return evEnd(ev) !== ev.date; }
+function eventDates(ev) {
+  if (!isYmd(ev.date)) return [];
+  const end = evEnd(ev), out = [];
+  let d = ev.date;
+  for (let i = 0; i < 62 && d <= end; i++) { out.push(d); d = addDaysStr(d, 1); }
   return out;
+}
+function eventRangeLabel(ev) { return isRange(ev) ? fmtMD(ev.date) + ' ~ ' + fmtMD(evEnd(ev)) : fmtMD(ev.date); }
+
+// 기간 띠 색: 같은 학교·학년의 같은 종류(·제목)는 같은 색
+const BAR_COLORS = ['#DC5359', '#2B7FC1', '#2A9468', '#8A6CCB', '#D68A1C', '#1F98A6', '#C2537C', '#5C7F2C', '#3E5FBF', '#A0662B'];
+function barColor(ev) {
+  const key = evType(ev) + '|' + (ev.school || '') + '|' + (ev.grade || '') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id);
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return BAR_COLORS[h % BAR_COLORS.length];
 }
 
 /* 날짜별 일정 색인: { 'YYYY-MM-DD': { exam:[], pre:[], weekend:[], etc:[] } } */
@@ -37,16 +58,8 @@ const CalIndex = {
   build() {
     const idx = {};
     const slot = (d) => (idx[d] = idx[d] || { exam: [], pre: [], weekend: [], etc: [] });
-    Store.all('exams').forEach(ex => examDates(ex).forEach(d => slot(d).exam.push(ex)));
-    Store.all('events').forEach(ev => {
-      if (!isYmd(ev.date)) return;
-      const k = EVENT_TYPES[ev.type] ? ev.type : 'etc';
-      slot(ev.date)[k].push(ev);
-    });
-    Object.values(idx).forEach(o => {
-      ['pre', 'weekend', 'etc'].forEach(k => o[k].sort((a, b) => ko(a.start, b.start)));
-      o.exam.sort((a, b) => ko(examTitle(a), examTitle(b)));
-    });
+    Store.all('events').forEach(ev => eventDates(ev).forEach(d => slot(d)[evType(ev)].push(ev)));
+    Object.values(idx).forEach(o => Object.keys(o).forEach(k => o[k].sort((a, b) => ko(a.start, b.start) || ko(eventShort(a), eventShort(b)))));
     return idx;
   },
 };
@@ -74,7 +87,7 @@ const MiniCal = {
     let h = `<div class="mc-head">
       <button class="mc-nav" data-mc="prev" aria-label="이전 달">‹</button>
       <div class="mc-title">${y}년 ${m + 1}월</div>
-      <button class="mc-today" data-mc="today">오늘</button>
+      <button class="mc-today" data-mc="today">오늘</button><button class="mc-today" data-mc="big">큰 달력</button>
       <button class="mc-nav" data-mc="next" aria-label="다음 달">›</button>
     </div><div class="mc-grid">`;
     DOW.forEach((w, i) => { h += `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
@@ -101,6 +114,7 @@ const MiniCal = {
         const nav = e.target.closest('[data-mc]');
         if (nav) {
           const a = nav.dataset.mc;
+          if (a === 'big') { App.go('calendar', { month: this.month.getFullYear() + '-' + pad(this.month.getMonth() + 1) }); return; }
           if (a === 'prev') this.month = new Date(this.month.getFullYear(), this.month.getMonth() - 1, 1);
           else if (a === 'next') this.month = new Date(this.month.getFullYear(), this.month.getMonth() + 1, 1);
           else { const t = new Date(); this.month = new Date(t.getFullYear(), t.getMonth(), 1); App.pickDate(todayStr()); return; }
@@ -115,54 +129,102 @@ const MiniCal = {
   showMonthOf(dateStr) { const d = parseYmd(dateStr); this.month = new Date(d.getFullYear(), d.getMonth(), 1); },
 };
 
+
 /* ---------- 큰 달력 ---------- */
 const BigCal = {
   filters: { exam: true, pre: true, weekend: true, etc: true },
+  LS_H: 'mg77_bigcal_h',
   render(main, p) {
     const base = p.month ? parseYmd(p.month + '-01') : parseYmd(App.selDate);
     const y = base.getFullYear(), m = base.getMonth();
     const mKey = y + '-' + pad(m + 1);
-    const idx = CalIndex.build();
     const first = new Date(y, m, 1);
     const start = addDays(first, -first.getDay());
     const weeks = Math.ceil((first.getDay() + new Date(y, m + 1, 0).getDate()) / 7);
     const today = todayStr();
     const f = this.filters;
+    const evs = Store.all('events').filter(ev => isYmd(ev.date) && f[evType(ev)]);
+    const ranges = evs.filter(isRange).sort((a, b) => ko(a.date, b.date) || ko(evEnd(b), evEnd(a)));
+    const singles = evs.filter(ev => !isRange(ev));
+
     let h = `<div class="page-head">
       <h1>${y}년 ${m + 1}월</h1>
       <button class="btn sm" data-a="prev">‹ 이전 달</button>
       <button class="btn sm" data-a="this">이번 달</button>
       <button class="btn sm" data-a="next">다음 달 ›</button>
-      <span class="grow"></span>
-      <label class="chk"><input type="checkbox" data-f="exam" ${f.exam ? 'checked' : ''}>시험</label>
-      <label class="chk"><input type="checkbox" data-f="pre" ${f.pre ? 'checked' : ''}>직전보강</label>
-      <label class="chk"><input type="checkbox" data-f="weekend" ${f.weekend ? 'checked' : ''}>주말보강</label>
-      <label class="chk"><input type="checkbox" data-f="etc" ${f.etc ? 'checked' : ''}>기타</label>
       <button class="btn primary" data-a="add">+ 일정 추가</button>
-    </div><div class="bc">`;
-    DOW.forEach((w, i) => { h += `<div class="bc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
-    for (let i = 0; i < weeks * 7; i++) {
-      const d = addDays(start, i), k = ymd(d), o = idx[k];
-      const cls = ['bc-cell'];
-      if (d.getMonth() !== m) cls.push('other');
-      if (d.getDay() === 0) cls.push('sun');
-      if (d.getDay() === 6) cls.push('sat');
-      if (k === today) cls.push('today');
-      let items = '';
-      if (o) {
-        if (f.exam) o.exam.forEach(ex => { items += `<span class="bc-item exam" data-exam="${ex.id}" title="${esc(examTitle(ex))}">${esc(examTitle(ex))}</span>`; });
-        ['pre', 'weekend', 'etc'].forEach(t => {
-          if (!f[t]) return;
-          o[t].forEach(ev => {
-            const txt = (ev.start ? ev.start + ' ' : '') + eventTitle(ev);
-            items += `<span class="bc-item ${t}" data-ev="${ev.id}" title="${esc(txt)}">${esc(txt)}</span>`;
-          });
-        });
-      }
-      h += `<div class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span>${items}</div>`;
+      <span class="grow"></span>
+      ${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="checkbox" data-f="${k}" ${f[k] ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}
+    </div><div class="bc2"><div class="bc2-wds">${DOW.map((w, i) => `<div class="bc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('')}</div>`;
+
+    for (let w = 0; w < weeks; w++) {
+      const wd = Array.from({ length: 7 }, (_, i) => ymd(addDays(start, w * 7 + i)));
+      const ws = wd[0], we = wd[6];
+      // 이 주에 걸치는 기간 일정 → 줄(lane) 배정
+      const lanes = [];
+      const segs = [];
+      ranges.forEach(ev => {
+        const s = ev.date, e = evEnd(ev);
+        if (e < ws || s > we) return;
+        const c0 = s < ws ? 0 : wd.indexOf(s), c1 = e > we ? 6 : wd.indexOf(e);
+        let ln = lanes.findIndex(end => end < c0);
+        if (ln < 0) { ln = lanes.length; lanes.push(-1); }
+        lanes[ln] = c1;
+        segs.push({ ev, c0, c1, ln, contL: s < ws, contR: e > we });
+      });
+      h += `<div class="bc2-week" style="--lanes:${lanes.length}">`;
+      wd.forEach((k, i) => {
+        const d = parseYmd(k);
+        const cls = ['bc2-cell'];
+        if (d.getMonth() !== m) cls.push('other');
+        if (i === 0) cls.push('sun');
+        if (i === 6) cls.push('sat');
+        if (k === today) cls.push('today');
+        const items = singles.filter(ev => ev.date === k).sort((a, b) => ko(a.start, b.start)).map(ev => {
+          const txt = (ev.start ? ev.start + ' ' : '') + eventShort(ev);
+          return `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}" title="${esc(txt)}">${esc(txt)}</span>`;
+        }).join('');
+        h += `<div class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><div class="bc2-items">${items}</div></div>`;
+      });
+      segs.forEach(sg => {
+        const col = barColor(sg.ev);
+        const label = (sg.contL ? '→ ' : '') + eventShort(sg.ev) + (sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : '');
+        h += `<div class="bc2-bar ${sg.contL ? 'cont-l' : ''} ${sg.contR ? 'cont-r' : 'tip'}" data-ev="${sg.ev.id}"
+          style="left:calc(${sg.c0 / 7 * 100}% + 3px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 6px);top:calc(var(--bar-top) + ${sg.ln} * var(--bar-h));background:${col}"
+          title="${esc(eventShort(sg.ev) + ' (' + eventRangeLabel(sg.ev) + ')')}">${esc(label)}</div>`;
+      });
+      h += '</div>';
     }
-    h += '</div>';
+    h += `</div><div class="bc2-resize" title="끌어서 달력 높이 조절"><span></span></div>`;
     main.innerHTML = h;
+
+    // 높이: 저장된 값 → 없으면 화면에 꽉 차게
+    const box = $('.bc2', main);
+    const minH = weeks * 90;
+    let saved = +localStorage.getItem(this.LS_H) || 0;
+    const fit = Math.max(minH, window.innerHeight - box.getBoundingClientRect().top - 46);
+    box.style.setProperty('--wh', Math.max(minH, saved || fit) / weeks + 'px');
+    const grip = $('.bc2-resize', main);
+    grip.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const y0 = e.clientY, h0 = box.getBoundingClientRect().height - $('.bc2-wds', box).offsetHeight;
+      document.body.classList.add('resizing');
+      const mv = (ev) => {
+        const nh = Math.max(minH, h0 + ev.clientY - y0);
+        box.style.setProperty('--wh', nh / weeks + 'px');
+        saved = nh;
+        // 아래로 끌면 화면도 따라 내려간다
+        if (ev.clientY > window.innerHeight - 30) main.scrollTop += 20;
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+        document.body.classList.remove('resizing');
+        if (saved) localStorage.setItem(this.LS_H, String(Math.round(saved)));
+      };
+      document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    });
+    grip.addEventListener('dblclick', () => { localStorage.removeItem(this.LS_H); App.render(); });
+
     main.onclick = (e) => {
       const a = e.target.closest('[data-a]');
       if (a) {
@@ -175,12 +237,10 @@ const BigCal = {
         App.go('calendar', { month: nm.getFullYear() + '-' + pad(nm.getMonth() + 1) });
         return;
       }
-      const ex = e.target.closest('[data-exam]');
-      if (ex) { Exams.openModal(ex.dataset.exam); return; }
       const ev = e.target.closest('[data-ev]');
       if (ev) { EventModal.open(ev.dataset.ev); return; }
       const cell = e.target.closest('[data-date]');
-      if (cell) { App.selDate = cell.dataset.date; MiniCal.showMonthOf(cell.dataset.date); App.go('day', { date: cell.dataset.date }); }
+      if (cell) App.pickDate(cell.dataset.date);
     };
     main.onchange = (e) => {
       const fi = e.target.closest('[data-f]');
@@ -199,18 +259,14 @@ const DayPage = {
     const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [] };
     const evs = [...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
     const classes = Lessons.classesOn(date);
-    const counsels = Store.where('counsels', c => c.date === date);
     const todos = Store.where('todos', t => t.date === date).sort(Todos.sortFn);
     const late = isToday ? Store.where('todos', t => !t.done && isYmd(t.date) && t.date < today).sort((a, b) => ko(a.date, b.date) || Todos.sortFn(a, b)) : [];
-    const mks = Store.where('makeups', m => m.status === 'plan' && m.date && (isToday ? m.date <= date : m.date === date)).sort((a, b) => ko(a.date, b.date) || ko(a.time, b.time));
     const pending = isToday ? Promo.pendingStudents() : [];
-    const upcoming = [];
-    for (let i = 1; i <= 14; i++) {
-      const d = addDaysStr(date, i), x = idx[d];
-      if (!x) continue;
-      x.exam.forEach(ex => { if (ex.start === d) upcoming.push({ d, kind: 'exam', item: ex }); });
-      [...x.pre, ...x.weekend, ...x.etc].forEach(ev => upcoming.push({ d, kind: 'ev', item: ev }));
-    }
+    const end14 = addDaysStr(date, 14);
+    const upcoming = Store.all('events').filter(ev => isYmd(ev.date) && ev.date > date && ev.date <= end14)
+      .sort((a, b) => ko(a.date, b.date) || ko(a.start, b.start));
+    const evRow = (ev) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
+      <div class="what"><b>${esc(eventShort(ev))}</b>${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
 
     let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
@@ -229,36 +285,17 @@ const DayPage = {
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(c.start)}~${esc(Classes.endTime(c))}</span>
         <div class="what"><b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
-        ${les ? '<span class="badge green">일지 저장</span>' : '<span class="badge gray">일지 전</span>'}
+        ${les ? '<span class="badge green">작성 완료</span>' : '<span class="badge gray">일지 작성 전</span>'}
         ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div></div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
-    h += `</div><div class="panel"><h2>보강 예정</h2>`;
-    h += mks.length ? '<div class="list">' + mks.map(m => {
-      const s = Store.get('students', m.studentId), c = Store.get('classes', m.classId);
-      return `<div class="list-item click" data-mk="${esc(s ? s.name : '')}"><span class="when">${m.date === today ? '오늘' : fmtMD(m.date)} ${esc(m.time || '')}</span>
-        <div class="what"><b>${esc(s ? s.name : '(삭제된 학생)')}</b> <span class="small soft">${esc(c ? c.name : '')} · ${fmtMD(m.absentDate)} 결석분</span></div></div>`;
-    }).join('') + '</div>' : '<div class="empty">예정된 보강이 없습니다.</div>';
-    h += `</div></div><div><div class="panel"><h2>시험</h2>`;
-    h += o.exam.length ? '<div class="list">' + o.exam.map(ex => `
-        <div class="list-item click" data-exam="${ex.id}"><span class="when"><span class="badge red">시험</span></span>
-        <div class="what"><b>${esc(examTitle(ex))}</b> <span class="muted small">${esc(ex.year)}년 ${esc(ex.semester)}학기 · ${fmtMD(ex.start)}${ex.end && ex.end !== ex.start ? ' ~ ' + fmtMD(ex.end) : ''}</span>
-        ${ex.range ? `<div class="pre small soft">${esc(ex.range)}</div>` : ''}</div></div>`).join('') + '</div>'
-      : '<div class="empty">이 날 시험이 없습니다.</div>';
+    h += `</div></div><div><div class="panel"><h2>시험 일정</h2>`;
+    h += o.exam.length ? '<div class="list">' + o.exam.map(evRow).join('') + '</div>' : '<div class="empty">이 날 시험 일정이 없습니다.</div>';
     h += `</div><div class="panel"><h2>일정</h2>`;
-    h += evs.length ? '<div class="list">' + evs.map(ev => `
-        <div class="list-item click" data-ev="${ev.id}"><span class="when">${esc(eventTime(ev)) || '시간 미정'}</span>
-        <div class="what"><b>${esc(eventTitle(ev))}</b>${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`).join('') + '</div>'
-      : '<div class="empty">이 날 일정이 없습니다.</div>';
-    h += `</div><div class="panel"><h2>상담</h2>`;
-    h += counsels.length ? '<div class="list">' + counsels.map(c => {
-      const s = Store.get('students', c.studentId);
-      return `<div class="list-item click" data-counsel="${c.id}"><span class="when">${esc(s ? s.name : '(삭제된 학생)')}</span><div class="what pre small">${esc(c.content)}</div></div>`;
-    }).join('') + '</div>' : '<div class="empty">이 날 상담 기록이 없습니다.</div>';
+    h += evs.length ? '<div class="list">' + evs.map(evRow).join('') + '</div>' : '<div class="empty">이 날 일정이 없습니다.</div>';
     h += `</div><div class="panel"><h2>다가오는 일정 <span class="sub">2주</span></h2>`;
-    h += upcoming.length ? '<div class="list">' + upcoming.map(u => u.kind === 'exam'
-      ? `<div class="list-item click" data-exam="${u.item.id}"><span class="when">${fmtMD(u.d)}</span><div class="what"><span class="badge red">시험</span> <b>${esc(examTitle(u.item))}</b>${u.item.end && u.item.end !== u.item.start ? ` <span class="small muted">~${fmtMD(u.item.end)}</span>` : ''}</div></div>`
-      : `<div class="list-item click" data-ev="${u.item.id}"><span class="when">${fmtMD(u.d)} ${esc(u.item.start || '')}</span><div class="what"><b>${esc(eventTitle(u.item))}</b></div></div>`).join('') + '</div>'
-      : '<div class="empty">2주 안에 시험이나 일정이 없습니다.</div>';
+    h += upcoming.length ? '<div class="list">' + upcoming.map(ev => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${fmtMD(ev.date)} ${esc(ev.start || '')}</span>
+        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) ? ` <span class="small muted">~${fmtMD(evEnd(ev))}</span>` : ''}</div></div>`).join('') + '</div>'
+      : '<div class="empty">2주 안에 일정이 없습니다.</div>';
     h += '</div></div></div>';
     main.innerHTML = h;
     const list = $('[data-todolist]', main);
@@ -273,11 +310,8 @@ const DayPage = {
         return;
       }
       if (Todos.handleClick(e)) return;
-      const ex = e.target.closest('[data-exam]'); if (ex) { Exams.openModal(ex.dataset.exam); return; }
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
-      const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); return; }
-      const mk = e.target.closest('[data-mk]'); if (mk) { Makeups.q = mk.dataset.mk; Makeups.tab = 'open'; App.go('makeups'); return; }
-      const co = e.target.closest('[data-counsel]'); if (co) { Counsels.openModal(co.dataset.counsel); }
+      const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); }
     };
     main.onchange = null;
   },
@@ -331,22 +365,41 @@ const DatePicker = {
   },
 };
 
-/* ---------- 일정 입력 모달 (직전보강 / 주말보강 / 기타) ---------- */
+
+/* ---------- 일정 입력 모달 ---------- */
 const EventModal = {
   open(id, preset = {}) {
     const ev = id ? Store.get('events', id) : null;
-    const v = ev || Object.assign({ type: dowOf(preset.date || App.selDate) % 6 === 0 ? 'weekend' : 'pre', date: App.selDate, start: '', end: '', school: '', grade: '', title: '', memo: '' }, preset);
-    const body = `<div class="form">
-      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
-      <label class="req">날짜</label><div class="row"><input type="date" name="date" value="${esc(v.date)}"></div>
-      <label class="req">시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}"> ~ <input type="time" name="end" step="300" value="${esc(v.end)}"></div>
-      <label>학교</label><div class="row"><input type="text" name="school" list="dl-schools" value="${esc(v.school)}" placeholder="예: 금천고" style="flex:1"><select name="grade">${gradeOptions(v.grade, '학년 선택 안 함')}</select></div>
-      <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 3과 집중)">
+    const d0 = preset.date || App.selDate;
+    const v = ev || Object.assign({ type: dowOf(d0) % 6 === 0 ? 'weekend' : 'pre', date: d0, endDate: '', start: '', end: '', school: '', grade: '', title: '', memo: '' }, preset);
+    const ranged = isRange(v);
+    const body = `<div class="form ev-form">
+      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
+      <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
+        <label class="chk"><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
+        <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
+      <label data-timelabel>시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}"> ~ <input type="time" name="end" step="300" value="${esc(v.end)}"></div>
+      <label>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><select name="grade">${gradeOptions(v.grade, '학년 선택 안 함')}</select></div>
+      <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>
     </div>`;
     Modal.open({
       title: ev ? '일정 수정' : '일정 추가', body,
-      onMount: (b) => enhanceAll(b),
+      onMount: (b) => {
+        enhanceAll(b);
+        bindCombo($('[name=school]', b), schoolOptions);
+        const chk = $('[name=ranged]', b), endIn = $('[name=endDate]', b), wrap = $('[data-endwrap]', b), dIn = $('[name=date]', b);
+        const sync = () => {
+          endIn.disabled = !chk.checked;
+          wrap.classList.toggle('off', !chk.checked);
+          if (chk.checked && (!endIn.value || endIn.value <= dIn.value) && isYmd(dIn.value)) endIn.value = addDaysStr(dIn.value, 1);
+        };
+        chk.addEventListener('change', sync);
+        const tl = $('[data-timelabel]', b);
+        const typeSync = () => { tl.classList.toggle('req', !!NEED_TIME[$('[name=type]:checked', b).value]); };
+        b.addEventListener('change', (e) => { if (e.target.name === 'type') typeSync(); });
+        typeSync();
+      },
       buttons: [
         ...(ev ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
           if (!await confirmDlg('이 일정을 삭제할까요?', '삭제', true)) return false;
@@ -355,9 +408,11 @@ const EventModal = {
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
           const b = m.body;
+          const ranged2 = $('[name=ranged]', b).checked;
           const rec = Object.assign({}, ev || { id: uid('EV'), createdAt: new Date().toISOString() }, {
             type: $('[name=type]:checked', b).value,
             date: $('[name=date]', b).value,
+            endDate: ranged2 ? $('[name=endDate]', b).value : '',
             start: $('[name=start]', b).value,
             end: $('[name=end]', b).value,
             school: $('[name=school]', b).value.trim(),
@@ -366,13 +421,62 @@ const EventModal = {
             memo: stripZws($('[name=memo]', b).value),
           });
           if (!isYmd(rec.date)) { toast('날짜를 선택하세요'); return false; }
-          if (!rec.start) { toast('시작 시간을 입력하세요'); return false; }
-          if (rec.end && rec.end <= rec.start) { toast('종료 시간이 시작 시간보다 늦어야 합니다'); return false; }
+          if (ranged2) {
+            if (!isYmd(rec.endDate)) { toast('끝나는 날짜를 선택하세요'); return false; }
+            if (rec.endDate < rec.date) { toast('끝나는 날짜가 시작일보다 빠릅니다'); return false; }
+            if (rec.endDate === rec.date) rec.endDate = '';
+          }
+          if (NEED_TIME[rec.type] && !rec.start) { toast('보강은 시작 시간을 입력하세요'); return false; }
+          if (rec.end && !rec.start) { toast('시작 시간을 입력하세요'); return false; }
+          if (rec.start && rec.end && rec.end <= rec.start) { toast('종료 시간이 시작 시간보다 늦어야 합니다'); return false; }
           Store.put('events', rec);
           toast('일정을 저장했습니다');
           App.render();
         } },
       ],
     });
+  },
+};
+
+/* ---------- 일정 탭: 모든 일정을 모아 관리 ---------- */
+const EventsPage = {
+  type: '', q: '', showPast: false,
+  render(main) {
+    const today = todayStr();
+    const q = this.q.trim();
+    const all = Store.all('events').filter(ev => isYmd(ev.date));
+    const pastCnt = all.filter(ev => evEnd(ev) < today).length;
+    const list = all.filter(ev => (!this.type || evType(ev) === this.type))
+      .filter(ev => this.showPast || evEnd(ev) >= today)
+      .filter(ev => !q || [ev.school, eventShort(ev), ev.title, ev.memo].some(v => String(v || '').includes(q)))
+      .sort((a, b) => {
+        const pa = evEnd(a) < today, pb = evEnd(b) < today;
+        if (pa !== pb) return pa ? 1 : -1;                 // 다가오는 일정 먼저
+        return pa ? ko(b.date, a.date) : ko(a.date, b.date) || ko(a.start, b.start);
+      });
+    let h = `<div class="page-head"><h1>일정</h1><button class="btn primary" data-a="add">+ 일정 추가</button><span class="sub">시험 일정 · 직전 보강 · 주말 보강 · 기타</span></div>
+      <div class="toolbar"><select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
+      <input type="search" data-q value="${esc(this.q)}" placeholder="학교, 제목, 메모 검색" style="width:240px">
+      <label class="chk small"><input type="checkbox" data-past ${this.showPast ? 'checked' : ''}>지난 일정 보기 (${pastCnt})</label>
+      <span class="muted small">${list.length}건</span></div>`;
+    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>날짜</th><th>시간</th><th>종류</th><th>대상</th><th>제목·메모</th></tr></thead><tbody>${list.map(ev => {
+      const past = evEnd(ev) < today;
+      const tcls = { exam: 'red', pre: '', weekend: 'green', etc: 'purple' }[evType(ev)];
+      return `<tr class="click ${past ? 'past' : ''}" data-ev="${ev.id}"><td class="nowrap"><b>${esc(eventRangeLabel(ev))}</b></td><td class="nowrap">${esc(eventTime(ev)) || '<span class="muted">-</span>'}</td>
+        <td class="nowrap"><span class="badge ${tcls}">${EVENT_TYPES[evType(ev)].label}</span></td><td class="nowrap">${highlight(eventTarget(ev), q) || '<span class="muted">-</span>'}</td>
+        <td>${ev.title ? `<b>${highlight(ev.title, q)}</b> ` : ''}<span class="small soft">${highlight(firstLine(ev.memo), q)}</span></td></tr>`;
+    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 일정이 없습니다.' : '등록된 일정이 없습니다. “일정 추가”로 시험 일정이나 보강을 등록하세요.'}</div></div>`;
+    main.innerHTML = h;
+    main.onclick = (e) => {
+      if (e.target.closest('[data-a=add]')) { EventModal.open(null, { date: today }); return; }
+      const tr = e.target.closest('[data-ev]'); if (tr) EventModal.open(tr.dataset.ev);
+    };
+    main.onchange = (e) => {
+      if (e.target.matches('[data-type]')) { this.type = e.target.value; App.render(); }
+      if (e.target.matches('[data-past]')) { this.showPast = e.target.checked; App.render(); }
+    };
+    main.oninput = debounce((e) => {
+      if (e.target.matches('[data-q]')) { this.q = e.target.value; App.render(); const i = $('[data-q]', main); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+    }, 250);
   },
 };

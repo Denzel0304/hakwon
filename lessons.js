@@ -333,7 +333,8 @@ const ProgressBook = {
       <button type="button" class="icon-btn" data-rdel="${i}" title="삭제">✕</button></div>`).join('');
     Modal.open({
       title: `${c ? c.name : ''} · ${fmtDate(l.date)}`, size: 'lg',
-      body: `<div class="lesson-field"><label>진도</label><textarea name="progress" rows="4">${esc(l.progress)}</textarea></div>
+      body: `<div class="lesson-field"><label>수업 날짜</label><input type="date" name="ldate" value="${esc(l.date)}"></div>
+        <div class="lesson-field"><label>진도</label><textarea name="progress" rows="4">${esc(l.progress)}</textarea></div>
         <div class="lesson-field"><label>숙제</label><textarea name="homework" rows="3">${esc(l.homework)}</textarea></div>
         <div class="lesson-field"><label>메모</label><textarea name="memo" rows="3">${esc(l.memo)}</textarea></div>
         <div class="lesson-field"><label>할일</label><div data-rows>${todoHtml()}</div>
@@ -365,7 +366,24 @@ const ProgressBook = {
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
           const g = (n) => stripZws($(`[name=${n}]`, m.body).value);
-          Store.put('lessons', Object.assign({}, Store.get('lessons', id) || l, { progress: g('progress'), homework: g('homework'), memo: g('memo') }));
+          const nd = $('[name=ldate]', m.body).value;
+          if (!isYmd(nd)) { toast('수업 날짜를 선택하세요'); return false; }
+          let lid = id;
+          if (nd !== l.date) {
+            const nid = Lessons.lessonId(l.classId, nd);
+            if (Store.get('lessons', nid)) { toast(fmtDate(nd) + '에 이 반 수업일지가 이미 있습니다'); return false; }
+            lid = nid;
+          }
+          Store.put('lessons', Object.assign({}, Store.get('lessons', id) || l, { id: lid, date: nd, progress: g('progress'), homework: g('homework'), memo: g('memo') }));
+          if (lid !== id) {
+            // 날짜를 옮기면 딸린 할일·보강 기록도 새 날짜 수업으로 옮긴다
+            Store.where('todos', t => t.lessonId === id).forEach(t => Store.put('todos', Object.assign({}, t, { lessonId: lid })));
+            Store.where('makeups', mk => mk.lessonId === id).forEach(mk => {
+              Store.del('makeups', mk.id);
+              Store.put('makeups', Object.assign({}, mk, { id: Makeups.id(lid, mk.studentId), lessonId: lid, absentDate: nd }));
+            });
+            Store.del('lessons', id);
+          }
           const now = Date.now();
           rows.forEach((r, i) => {
             const text = r.text.trim();
@@ -374,10 +392,11 @@ const ProgressBook = {
               if (r.del || !text) Store.del('todos', r.id);
               else Store.put('todos', Object.assign({}, t, { text, date: isYmd(r.date) ? r.date : t.date, done: r.done }));
             } else if (!r.del && text) {
-              Store.put('todos', { id: uid('TD'), lessonId: id, classId: l.classId, date: isYmd(r.date) ? r.date : l.date, text, done: false, createdAt: new Date(now + i).toISOString() });
+              Store.put('todos', { id: uid('TD'), lessonId: lid, classId: l.classId, date: isYmd(r.date) ? r.date : nd, text, done: false, createdAt: new Date(now + i).toISOString() });
             }
           });
-          toast('저장했습니다'); App.render();
+          toast(lid !== id ? `저장했습니다 (${fmtMD(nd)}로 이동)` : '저장했습니다');
+          if (lid !== id) App.go('progress', { classId: l.classId, date: nd }); else App.render();
         } },
       ],
     });

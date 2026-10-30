@@ -77,7 +77,7 @@ mark { background: #FFE89A; color: inherit; border-radius: 2px; padding: 0 1px; 
 #mg-app { display: none; height: 100vh; }
 body.app-on #mg-app { display: flex; }
 #side {
-  width: 300px; flex: 0 0 300px; display: flex; flex-direction: column;
+  width: 330px; flex: 0 0 330px; display: flex; flex-direction: column;
   background: var(--side); border-right: 1px solid var(--line);
   overflow-y: auto;
 }
@@ -88,23 +88,23 @@ body.app-on #mg-app { display: flex; }
 /* 미니 달력 */
 #mini-cal { padding: 18px 16px 12px; border-bottom: 1px solid var(--line-strong); }
 .mc-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
-.mc-title { flex: 1; font-weight: 800; font-size: 17px; color: var(--accent-ink); }
+.mc-title { flex: 1; white-space: nowrap; font-weight: 800; font-size: 17px; color: var(--accent-ink); }
 .mc-nav {
   width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent;
   font-size: 20px; line-height: 1; color: var(--ink-soft);
 }
 .mc-nav:hover { background: var(--side-strong); }
-.mc-today { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 7px; font-size: 13px; font-weight: 600; padding: 3px 10px; }
+.mc-today { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 7px; font-size: 13px; font-weight: 600; padding: 3px 9px; }
 .mc-today:hover { border-color: var(--accent); color: var(--accent-ink); }
 .mc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
-.mc-wd { text-align: center; font-size: 12.5px; color: var(--ink-mute); padding: 2px 0; }
+.mc-wd { text-align: center; font-size: 13.5px; color: var(--ink-mute); padding: 2px 0; }
 .mc-wd.sun, .mc-day.sun .n { color: var(--danger); }
 .mc-wd.sat, .mc-day.sat .n { color: var(--accent); }
 .mc-day {
-  height: 42px; border: 0; background: transparent; border-radius: 8px;
+  height: 48px; border: 0; background: transparent; border-radius: 8px;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 3px;
 }
-.mc-day .n { font-size: 14.5px; line-height: 19px; }
+.mc-day .n { font-size: 16px; line-height: 21px; }
 .mc-day.other .n { opacity: .35; }
 .mc-day:hover { background: var(--side-strong); }
 .mc-day.today .n { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
@@ -408,6 +408,38 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .mk-ctl input[type=text] { flex: 1; min-width: 160px; }
 
 /* ---------- 큰 달력 ---------- */
+.bc2 { --wh: 130px; --bar-top: 30px; --bar-h: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px 12px 0 0; overflow: hidden; }
+.bc2-wds { display: grid; grid-template-columns: repeat(7, 1fr); }
+.bc2 .bc-wd { padding: 8px; font-size: 15px; font-weight: 700; }
+.bc2-week { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); height: var(--wh); border-bottom: 1px solid var(--line); }
+.bc2-week:last-child { border-bottom: 0; }
+.bc2-cell { border-right: 1px solid var(--line); padding: 5px 6px; cursor: pointer; overflow: hidden; min-width: 0; }
+.bc2-cell:last-child { border-right: 0; }
+.bc2-cell:hover { background: #F9FCFF; }
+.bc2-cell.other { background: #FAFCFD; }
+.bc2-cell.other .n { opacity: .35; }
+.bc2-cell .n { display: inline-block; font-size: 17px; font-weight: 800; line-height: 22px; min-width: 24px; text-align: center; }
+.bc2-cell.sun .n { color: var(--danger); } .bc2-cell.sat .n { color: var(--accent); }
+.bc2-cell.today .n { background: var(--accent); color: #fff !important; border-radius: 12px; padding: 0 7px; }
+.bc2-items { margin-top: calc(var(--lanes) * var(--bar-h) + 4px); }
+.bc2-items .bc-item { font-size: 13px; padding: 2px 6px; margin-top: 3px; }
+.bc2-bar {
+  position: absolute; height: calc(var(--bar-h) - 4px); line-height: calc(var(--bar-h) - 4px);
+  color: #fff; font-size: 12.5px; font-weight: 700; padding: 0 14px 0 8px; border-radius: 5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; z-index: 2;
+}
+.bc2-bar:hover { filter: brightness(1.08); }
+.bc2-bar.tip { clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); border-radius: 5px 0 0 5px; }
+.bc2-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.bc2-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.bc2-resize { height: 14px; background: var(--surface); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; cursor: ns-resize; display: flex; align-items: center; justify-content: center; }
+.bc2-resize span { width: 48px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.bc2-resize:hover span { background: var(--accent); }
+body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none; }
+.ev-form { grid-template-columns: 64px 1fr; }
+[data-endwrap].off { opacity: .4; }
+.tbl tr.past td { color: var(--ink-mute); }
+
 .bc { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .bc-wd { padding: 6px; text-align: center; font-size: 12.5px; color: var(--ink-soft); background: #F7FBFE; border-bottom: 1px solid var(--line-strong); }
 .bc-wd.sun { color: var(--danger); } .bc-wd.sat { color: var(--accent); }

@@ -158,7 +158,7 @@ const Timetable = {
     const dates = DAY_ORDER.map((_, i) => ymd(addDays(mon, i)));   // 월~일
     const today = todayStr();
     const classes = Store.all('classes').filter(c => c.active !== false);
-    const events = Store.where('events', ev => ev.date >= dates[0] && ev.date <= dates[6] && ev.start);
+    const events = Store.where('events', ev => isYmd(ev.date) && ev.start && ev.date <= dates[6] && evEnd(ev) >= dates[0]);
     const idx = CalIndex.build();
 
     // 날짜별 블록
@@ -171,7 +171,7 @@ const Timetable = {
         const s = toMin(c.start), e = s + (+c.duration || 90);
         items.push({ kind: 'class', c, s, e, roster: Classes.rosterAt(c.id, rosterDate) });
       });
-      events.filter(ev => ev.date === d).forEach(ev => {
+      events.filter(ev => ev.date <= d && evEnd(ev) >= d).forEach(ev => {
         const s = toMin(ev.start), e = ev.end ? Math.max(toMin(ev.end), s + 30) : s + 60;
         items.push({ kind: 'event', ev, s, e });
       });
@@ -202,7 +202,7 @@ const Timetable = {
       <div class="tt-head"></div>`;
     dates.forEach(d => {
       const o = idx[d];
-      const exams = o ? o.exam.map(ex => `<span class="ex">${esc(examTitle(ex))}</span>`).join('') : '';
+      const exams = o ? o.exam.map(ex => `<span class="ex">${esc(eventShort(ex))}</span>`).join('') : '';
       h += `<div class="tt-head ${d === today ? 'today' : ''} ${dowOf(d) === 0 ? 'sun' : ''}"><span class="d">${DOW[dowOf(d)]} ${fmtMD(d).replace(/\(.+\)/, '')}</span>${exams}</div>`;
     });
     const hourLines = `background-image: repeating-linear-gradient(to bottom, var(--line) 0, var(--line) 1px, transparent 1px, transparent ${60 * ppm}px); background-size: 100% ${60 * ppm}px;`;
@@ -224,7 +224,7 @@ const Timetable = {
         } else {
           const ev = it.ev;
           h += `<div class="tt-blk ev ${esc(ev.type)}" style="${pos}" data-ev="${ev.id}">
-            <div class="nm"><b>${esc(eventTitle(ev))}</b></div><div class="tm">${esc(eventTime(ev))}</div>
+            <div class="nm"><b>${esc(eventShort(ev))}</b></div><div class="tm">${esc(eventTime(ev))}</div>
             ${ev.memo ? `<div class="small soft pre">${esc(ev.memo)}</div>` : ''}</div>`;
         }
       });
