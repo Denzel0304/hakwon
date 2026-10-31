@@ -281,30 +281,32 @@ const DayPage = {
       ${isToday ? '' : '<button class="btn sm" data-a="today">오늘</button>'}
       <button class="btn primary" data-a="add">+ 일정 추가</button></div>`;
     if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
-    h += `<div class="grid-2"><div>
-      <div class="panel todo-panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
-      ${todos.length ? `<div data-todolist>${Todos.rowsHtml(todos, { drag: true })}</div><p class="small muted" style="margin:6px 0 0">끌어서 순서를 바꿀 수 있습니다.</p>` : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
-      ${late.length ? `<div class="panel todo-panel late"><h2>밀린 할일 <span class="sub">${late.length}개</span></h2>${Todos.rowsHtml(late, { showDate: true })}</div>` : ''}
+    // 시험 일정 · 일정 · 다가오는 일정: 있을 때만 위에 가로로 표시
+    const tops = [];
+    if (o.exam.length) tops.push(`<div class="panel"><h2>시험 일정</h2><div class="list">${o.exam.map(evRow).join('')}</div></div>`);
+    if (evs.length) tops.push(`<div class="panel"><h2>일정</h2><div class="list">${evs.map(evRow).join('')}</div></div>`);
+    if (upcoming.length) tops.push(`<div class="panel"><h2>다가오는 일정 <span class="sub">2주</span></h2><div class="list">${upcoming.map(ev => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${fmtMD(ev.date)} ${esc(ev.start || '')}</span>
+        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) ? ` <span class="small muted">~${fmtMD(evEnd(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`);
+    if (tops.length) h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;align-items:start">${tops.map(t => t.replace('<div class="panel">', '<div class="panel" style="margin-top:0">')).join('')}</div>`;
+
+    // 왼쪽: 수업 / 오른쪽: 할일 (+ 밀린 할일). 내용이 많으면 아래로 늘어난다.
+    h += `<div class="grid-2" style="align-items:start"><div>
       <div class="panel"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span></h2>`;
     h += classes.length ? '<div class="list">' + classes.map(c => {
-      const les = Store.get('lessons', Lessons.lessonId(c.id, date));
+      const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
       const roster = Classes.rosterAt(c.id, date);
       const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
-        <div class="what"><b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
+        <div class="what">${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
         ${les ? '<span class="badge green">작성 완료</span>' : '<span class="badge gray">일지 작성 전</span>'}
         ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div></div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
-    h += `</div></div><div><div class="panel"><h2>시험 일정</h2>`;
-    h += o.exam.length ? '<div class="list">' + o.exam.map(evRow).join('') + '</div>' : '<div class="empty">이 날 시험 일정이 없습니다.</div>';
-    h += `</div><div class="panel"><h2>일정</h2>`;
-    h += evs.length ? '<div class="list">' + evs.map(evRow).join('') + '</div>' : '<div class="empty">이 날 일정이 없습니다.</div>';
-    h += `</div><div class="panel"><h2>다가오는 일정 <span class="sub">2주</span></h2>`;
-    h += upcoming.length ? '<div class="list">' + upcoming.map(ev => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${fmtMD(ev.date)} ${esc(ev.start || '')}</span>
-        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) ? ` <span class="small muted">~${fmtMD(evEnd(ev))}</span>` : ''}</div></div>`).join('') + '</div>'
-      : '<div class="empty">2주 안에 일정이 없습니다.</div>';
-    h += '</div></div></div>';
+    h += `</div></div><div>
+      <div class="panel todo-panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
+      ${todos.length ? `<div data-todolist>${Todos.rowsHtml(todos, { drag: true })}</div><p class="small muted" style="margin:6px 0 0">끌어서 순서를 바꿀 수 있습니다.</p>` : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
+      ${late.length ? `<div class="panel todo-panel late"><h2>밀린 할일 <span class="sub">${late.length}개</span></h2>${Todos.rowsHtml(late, { showDate: true })}</div>` : ''}
+    </div></div>`;
     main.innerHTML = h;
     const list = $('[data-todolist]', main);
     if (list) Todos.bindDrag(list);

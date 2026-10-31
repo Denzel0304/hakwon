@@ -85,7 +85,9 @@ const App = {
   },
 
   afterFirstPull() {
-    if (this.applySchedules()) { this.render(); this.refreshModals(); }
+    // 빈 수업일지 기록 정리 + 색 없는 반에 색 배정 + 날짜가 된 예약 적용
+    const n = Lessons.cleanEmpty() + Classes.assignColors() + this.applySchedules();
+    if (n) { this.render(); this.refreshModals(); }
     Promo.check();
   },
 

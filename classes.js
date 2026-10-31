@@ -6,6 +6,41 @@
 const Classes = {
   showEnded: false,
 
+  /* ---------- 반 색 ---------- */
+  // 서로 확연히 구분되는 16색 (색상·밝기를 함께 벌려 고름). 진행 중인 반끼리는 같은 색을 쓸 수 없다.
+  PALETTE: [
+    { c: '#1F6FD1', n: '파랑' }, { c: '#D93025', n: '빨강' }, { c: '#1E9E45', n: '초록' }, { c: '#8A3FD1', n: '보라' },
+    { c: '#F28C00', n: '주황' }, { c: '#00A6A6', n: '청록' }, { c: '#E0458F', n: '분홍' }, { c: '#8B5A2B', n: '갈색' },
+    { c: '#7CB300', n: '연두' }, { c: '#22336B', n: '남색' }, { c: '#D4AC0D', n: '겨자' }, { c: '#6B7280', n: '회색' },
+    { c: '#8E1B4A', n: '와인' }, { c: '#4FB3F0', n: '하늘' }, { c: '#5F6B1E', n: '올리브' }, { c: '#F08F6E', n: '살구' },
+  ],
+  NO_COLOR: '#A8B3BF',
+  colorOf(c) { return (c && c.color) || this.NO_COLOR; },
+  dot(c) { return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${this.colorOf(c)};margin-right:6px;vertical-align:middle;flex:none"></span>`; },
+  // 다른 진행 중인 반이 쓰는 색 { 색: 반 }
+  usedColors(exceptId) {
+    const o = {};
+    Store.all('classes').forEach(c => { if (c.id !== exceptId && c.active !== false && c.color) o[c.color] = c; });
+    return o;
+  },
+  freeColor(exceptId) { const u = this.usedColors(exceptId); const f = this.PALETTE.find(p => !u[p.c]); return f ? f.c : ''; },
+  // 색이 없거나 다른 진행 중인 반과 겹치는 반에 남는 색을 준다 (만든 순서대로). 바꾼 개수를 돌려준다.
+  assignColors() {
+    let n = 0;
+    const list = Store.all('classes').filter(c => c.active !== false).sort((a, b) => ko(a.createdAt, b.createdAt) || ko(a.id, b.id));
+    const taken = {};
+    list.forEach(c => { if (c.color && !taken[c.color] && this.PALETTE.some(p => p.c === c.color)) taken[c.color] = c.id; });
+    list.forEach(c => {
+      if (c.color && taken[c.color] === c.id) return;
+      const f = this.PALETTE.find(p => !taken[p.c]);
+      if (!f) return;
+      taken[f.c] = c.id;
+      Store.put('classes', Object.assign({}, c, { color: f.c }));
+      n++;
+    });
+    return n;
+  },
+
   /* ---------- 공용 ---------- */
   enrollValid(e, date) { return e.from <= date && (!e.to || date < e.to); },
   rosterAt(classId, date) {
@@ -93,7 +128,7 @@ const Classes = {
       const up = this.upcomingAt(c.id, today, r.map(s => s.id));
       const names = r.map(s => esc(s.name) + `<span class="tag">${esc(stTag(s))}</span>`)
         .concat(up.map(o => `<span style="opacity:.55" title="${esc(fmtDate(o.from))}부터 수강 예정">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span></span>`));
-      return `<tr class="click" data-id="${c.id}"><td class="nowrap"><b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
+      return `<tr class="click" data-id="${c.id}"><td class="nowrap">${this.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
         <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
         <td class="num">${r.length}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td>
         <td class="small soft">${esc(firstLine(c.memo))}</td></tr>`;
@@ -119,6 +154,16 @@ const Classes = {
     const v = c || { name: '', days: [], start: '20:00', duration: 90, memo: '', active: true };
     const today = todayStr();
     let nameEdited = c ? !!c.nameEdited : false;
+    let pickedColor = (c && c.color && !this.usedColors(c.id)[c.color]) ? c.color : this.freeColor(c && c.id);
+    const colorsHtml = () => {
+      const used = this.usedColors(c && c.id);
+      return this.PALETTE.map(p => {
+        const u = used[p.c];
+        return `<button type="button" data-color="${p.c}" ${u ? 'disabled' : ''} title="${esc(p.n + (u ? ' — ' + u.name + ' 사용 중' : ''))}"
+          style="width:26px;height:26px;border-radius:50%;background:${p.c};cursor:${u ? 'not-allowed' : 'pointer'};opacity:${u ? .18 : 1};
+          border:3px solid ${p.c === pickedColor ? 'var(--ink)' : '#fff'};box-shadow:0 0 0 1px ${p.c === pickedColor ? 'var(--ink)' : 'var(--line)'};padding:0"></button>`;
+      }).join('');
+    };
     let m_times = {};
     // 학생 체크 목록: 적용일 기준 명단으로 체크하고, 그 날 수강 중이거나 예정인 학생은 상태와 관계없이 보여 준다
     const picksHtml = (date) => {
@@ -138,6 +183,8 @@ const Classes = {
         <div class="pd-rows" data-pd></div></div>
       <label class="req">반 이름</label><div class="row"><input type="text" name="name" value="${esc(v.name)}" style="flex:1" maxlength="40"><button class="btn sm" type="button" data-autoname>자동 이름</button></div>
       <label class="top">메모</label><textarea name="memo" rows="3">${esc(v.memo)}</textarea>
+      <label>시간표 색</label><div><div data-colors style="display:flex;gap:6px;flex-wrap:wrap">${colorsHtml()}</div>
+        <div class="hint" data-colorhint style="margin-top:4px">${pickedColor ? '흐린 색은 다른 진행 중인 반이 쓰고 있어 고를 수 없습니다.' : '남은 색이 없습니다. 다른 반을 종료하면 그 색을 쓸 수 있습니다.'}</div></div>
       <label>진행 상태</label><label class="chk"><input type="checkbox" name="ended" ${v.active === false ? 'checked' : ''}>종료된 반 (시간표·수업일지에서 숨김)</label>
       <label class="top">학생</label><div>
         <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">변경 적용일</span><input type="date" name="apply" value="${today}"></div>
@@ -209,6 +256,12 @@ const Classes = {
           }
         });
         $('[data-autoname]', b).onclick = () => { nameEdited = false; upd(); };
+        $('[data-colors]', b).addEventListener('click', (e) => {
+          const k = e.target.closest('[data-color]');
+          if (!k || k.disabled) return;
+          pickedColor = k.dataset.color;
+          $('[data-colors]', b).innerHTML = colorsHtml();
+        });
         m_times = times;
       },
       buttons: [
@@ -243,9 +296,12 @@ const Classes = {
           const du0 = perDay ? times[DAY_ORDER.find(d => days.includes(d))].duration : duration;
           const auto = this.autoName(days, st0, times);
           const name = $('[name=name]', b).value.trim() || auto;
+          const active = !$('[name=ended]', b).checked;
+          // 진행 중인 반끼리 색이 겹치면 저장하지 않는다 (종료된 반을 다시 진행할 때 등)
+          if (active && pickedColor && this.usedColors(c && c.id)[pickedColor]) { toast('다른 진행 중인 반이 이 색을 쓰고 있습니다. 다른 색을 고르세요'); return false; }
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
-            memo: stripZws($('[name=memo]', b).value), active: !$('[name=ended]', b).checked,
+            memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '',
           });
           Store.put('classes', rec);
           const shown = $$('[name=st]', b).map(i => i.value);
@@ -312,9 +368,10 @@ const Timetable = {
         if (e <= s) return;
         const w = 100 / it.cols;
         const c = it.c;
+        const col = Classes.colorOf(c);
         h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
-          style="top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px)">
-          <div class="nm"><b>${esc(c.name)}</b></div>
+          style="top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${col}1F;border-color:${col}73;box-shadow:inset 5px 0 0 ${col}">
+          <div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
           <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div>
           <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}${it.up.map(o => `<span class="st" style="opacity:.55" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}<small>${Classes.md(o.from)}~</small></span>`).join('')}</div></div>`;
       });
