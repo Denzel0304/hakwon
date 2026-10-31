@@ -294,7 +294,7 @@ const DayPage = {
       <div class="panel"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span></h2>`;
     h += classes.length ? '<div class="list">' + classes.map(c => {
       const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
-      const roster = Classes.rosterAt(c.id, date);
+      const roster = Classes.rosterOn(c.id, date);
       const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>

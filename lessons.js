@@ -87,7 +87,7 @@ const Lessons = {
     }
 
     const c = Store.get('classes', classId);
-    const roster = Classes.rosterAt(classId, date);
+    const roster = Classes.rosterOn(classId, date);
     const cnt = { P: 0, L: 0, A: 0, E: 0, none: 0 };
     roster.forEach(s => { const a = f.att[s.id]; if (a) cnt[a]++; else cnt.none++; });
 
@@ -130,7 +130,7 @@ const Lessons = {
       if (e.target.closest('[data-save]')) { this.save(); return; }
       if (e.target.closest('[data-clearatt]')) { f.att = {}; App.render(); return; }
       if (e.target.closest('[data-allp]')) {
-        Classes.rosterAt(classId, date).forEach(s => { if (!f.att[s.id]) f.att[s.id] = 'P'; });
+        Classes.rosterOn(classId, date).forEach(s => { if (!f.att[s.id]) f.att[s.id] = 'P'; });
         App.render();
         return;
       }
@@ -222,12 +222,12 @@ const AttBook = {
     }
     const sids = new Set();
     dates.forEach(d => {
-      Classes.rosterAt(c.id, d).forEach(s => sids.add(s.id));
+      Classes.rosterOn(c.id, d).forEach(s => sids.add(s.id));
       const l = Store.get('lessons', Lessons.lessonId(c.id, d));
       if (l) Object.keys(l.att || {}).forEach(id => sids.add(id));
     });
     const studs = [...sids].map(id => Store.get('students', id)).filter(Boolean).sort((a, b) => Students.sortFn(a, b));
-    const enrolledOn = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.classId === c.id && Classes.enrollValid(e, d)).length > 0;
+    const enrolledOn = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.classId === c.id && Classes.attendsOn(e, d, c)).length > 0;
     const today = todayStr();
 
     h += `<div class="toolbar small soft"><span>${esc(Classes.timeLabel(c))}</span><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 보강 등 다른 날은 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요.</span></div>`;
@@ -249,7 +249,7 @@ const AttBook = {
         if (st) sum[st]++;
         const out = !enrolledOn(s.id, d);
         const reg = (c.days || []).includes(dowOf(d));
-        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강 기간 밖' : ''}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
+        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강하지 않는 날' : ''}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
       });
       h += `<td class="num">${sum.P}</td><td class="num">${sum.L}</td><td class="num">${sum.A}</td><td class="num">${sum.E}</td></tr>`;
     });

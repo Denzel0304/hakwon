@@ -1,7 +1,8 @@
 /* =========================================================
    classes.js — 반 관리 + 주간 시간표
    class: { name, nameEdited, days:[0~6], start:'HH:MM', duration(분), memo, active }
-   enrollment: { studentId, classId, from, to }   ← from <= 날짜 < to 이면 수강 중
+   enrollment: { studentId, classId, from, to, days? }   ← from <= 날짜 < to 이면 수강 중
+               days: 반의 일부 요일만 수강할 때 그 요일 [1] 등 (없으면 반의 모든 요일)
    ========================================================= */
 const Classes = {
   showEnded: false,
@@ -43,6 +44,75 @@ const Classes = {
 
   /* ---------- 공용 ---------- */
   enrollValid(e, date) { return e.from <= date && (!e.to || date < e.to); },
+
+  /* ---------- 일부 요일 수강 ---------- */
+  // 수강 요일 정리: 반 요일 안에서만, 반의 모든 요일이면(또는 남는 요일이 없으면) null = 전체 수강
+  normDays(days, c) {
+    if (!days || !days.length || !c) return null;
+    const cd = c.days || [];
+    const d = DAY_ORDER.filter(x => days.includes(x) && cd.includes(x));
+    return d.length && d.length < cd.length ? d : null;
+  },
+  sameDays(a, b) { return String(a || '') === String(b || ''); },
+  // 이 학생이 date에 이 반을 일부 요일만 수강하면 그 요일, 아니면 null
+  partDays(classId, studentId, date) {
+    const c = Store.get('classes', classId);
+    const e = Store.where('enrollments', x => x.studentId === studentId && x.classId === classId && this.enrollValid(x, date))[0];
+    return e && c ? this.normDays(e.days, c) : null;
+  },
+  // 반 이름 뒤에 붙이는 요일 표시: "(월)" (전체 수강이면 빈 문자열)
+  daysTag(classId, studentId, date) { const d = this.partDays(classId, studentId, date); return d ? '(' + daysLabel(d) + ')' : ''; },
+  // 그 날짜 수업에 오는지: 기간 + 요일 (반의 정규 요일이 아닌 날(보강 등)은 기간만 본다)
+  attendsOn(e, date, c) {
+    if (!this.enrollValid(e, date)) return false;
+    c = c || Store.get('classes', e.classId);
+    const dw = dowOf(date);
+    if (!c || !(c.days || []).includes(dw)) return true;
+    const d = this.normDays(e.days, c);
+    return !d || d.includes(dw);
+  },
+  // 그 날짜 수업 명단 (출석·수업일지·달력용) — 그 요일에 오지 않는 학생은 뺀다
+  rosterOn(classId, date) {
+    const c = Store.get('classes', classId);
+    const seen = {};
+    return Store.where('enrollments', e => e.classId === classId && this.attendsOn(e, date, c))
+      .map(e => Store.get('students', e.studentId)).filter(s => s && !seen[s.id] && (seen[s.id] = 1))
+      .sort((a, b) => Students.sortFn(a, b));
+  },
+  // date 기준 소속 학생 중 dow 요일에 오는 학생 (시간표용)
+  rosterOnDow(classId, dow, date) {
+    return this.rosterAt(classId, date).filter(s => { const d = this.partDays(classId, s.id, date); return !d || d.includes(dow); });
+  },
+  // from 날짜부터 이 반을 days 요일만(null = 모든 요일) 수강하도록 맞춘다. 요일이 바뀌면 기록을 그 날짜에서 나눈다.
+  // openEnd: true면 끝날짜(빠짐 예정)를 없애 계속 수강하게 한다 (학생 화면의 '반 추가')
+  // 돌려주는 값: 'added' / 'extended' / 'changed' 요일 변경 / 'exists' 이미 같은 요일로 수강 중
+  enrollDays(studentId, classId, from, days, openEnd) {
+    const c = Store.get('classes', classId);
+    days = this.normDays(days, c);
+    const withDays = (rec) => { const r = Object.assign({}, rec); if (days) r.days = days; else delete r.days; return r; };
+    const mine = Store.where('enrollments', e => e.studentId === studentId && e.classId === classId);
+    const cur = mine.find(e => this.enrollValid(e, from));
+    const later = mine.filter(e => e.from > from && e !== cur);
+    if (!cur) {
+      later.forEach(e => Store.del('enrollments', e.id));
+      const adj = mine.find(e => e.to === from && this.sameDays(this.normDays(e.days, c), days));   // 바로 앞 기록에 이어 붙임
+      if (adj) { Store.put('enrollments', Object.assign({}, adj, { to: null })); return 'extended'; }
+      Store.put('enrollments', withDays({ id: uid('EN'), studentId, classId, from, to: null }));
+      return 'added';
+    }
+    if (openEnd) later.forEach(e => Store.del('enrollments', e.id));
+    const to = openEnd ? null : (cur.to || null);
+    if (this.sameDays(this.normDays(cur.days, c), days)) {
+      if (openEnd && cur.to) { Store.put('enrollments', Object.assign({}, cur, { to: null })); return 'extended'; }
+      return 'exists';
+    }
+    if (cur.from >= from) Store.put('enrollments', withDays(Object.assign({}, cur, { to })));
+    else {
+      Store.put('enrollments', Object.assign({}, cur, { to: from }));
+      Store.put('enrollments', withDays({ id: uid('EN'), studentId, classId, from, to }));
+    }
+    return 'changed';
+  },
   rosterAt(classId, date) {
     const seen = {};
     return Store.where('enrollments', e => e.classId === classId && this.enrollValid(e, date))
@@ -126,11 +196,16 @@ const Classes = {
     const row = (c) => {
       const r = this.rosterAt(c.id, today);
       const up = this.upcomingAt(c.id, today, r.map(s => s.id));
-      const names = r.map(s => esc(s.name) + `<span class="tag">${esc(stTag(s))}</span>`)
-        .concat(up.map(o => `<span style="opacity:.55" title="${esc(fmtDate(o.from))}부터 수강 예정">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span></span>`));
+      const pday = (sid, date) => { const d = this.partDays(c.id, sid, date); return d ? `<span class="pday" title="${esc(daysLabel(d))}요일만 수강">${esc(daysLabel(d))}만</span>` : ''; };
+      const names = r.map(s => `<span class="nw">${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${pday(s.id, today)}</span>`)
+        .concat(up.map(o => `<span class="nw" style="opacity:.55" title="${esc(fmtDate(o.from))}부터 수강 예정">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span>${pday(o.s.id, o.from)}</span>`));
+      // 일부 요일 수강생이 있으면 요일별 인원도 보여 준다
+      const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
+      const byDay = cd.length > 1 && r.some(s => this.partDays(c.id, s.id, today))
+        ? `<div class="small soft nowrap">${cd.map(d => DOW[d] + ' ' + this.rosterOnDow(c.id, d, today).length).join(' · ')}</div>` : '';
       return `<tr class="click" data-id="${c.id}"><td class="nowrap">${this.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
         <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
-        <td class="num">${r.length}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
+        <td class="num">${r.length}${byDay}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
     };
     let h = `<div class="page-narrow"><div class="page-head"><h1>반 관리</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
@@ -164,14 +239,27 @@ const Classes = {
       }).join('');
     };
     let m_times = {};
+    // 학생별 수강 요일 { 학생: [요일] | null(전체) } — 체크 목록을 그릴 때 그 날짜 기준으로 채운다
+    let pd = {};
+    let modalDays = (v.days || []).slice();
+    const pkdHtml = (sid) => {
+      const cd = DAY_ORDER.filter(d => modalDays.includes(d));
+      if (cd.length < 2) return '';
+      const sel = pd[sid] ? cd.filter(d => pd[sid].includes(d)) : cd;
+      const part = sel.length && sel.length < cd.length;
+      return cd.map(d => `<button type="button" data-pkday="${d}" class="${(part ? sel.includes(d) : true) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('')
+        + (part ? `<em>${esc(daysLabel(sel))}만</em>` : '');
+    };
     // 학생 체크 목록: 적용일 기준 명단으로 체크하고, 그 날 수강 중이거나 예정인 학생은 상태와 관계없이 보여 준다
     const picksHtml = (date) => {
       const inIds = c ? this.rosterAt(c.id, date).map(s => s.id) : [];
       const upFrom = {};
       if (c) this.upcomingAt(c.id, date, inIds).forEach(o => { upFrom[o.s.id] = o.from; });
       const students = Store.where('students', s => s.status === 'active' || inIds.includes(s.id) || upFrom[s.id]).sort((a, b) => Students.sortFn(a, b));
+      pd = {};
+      if (c) inIds.forEach(sid => { pd[sid] = this.partDays(c.id, sid, date); });
       if (!students.length) return '<div class="muted small" style="padding:6px">재원 중인 학생이 없습니다.</div>';
-      return students.map(s => `<label data-nm="${esc((s.name + ' ' + stTag(s)).toLowerCase())}"><input type="checkbox" name="st" value="${s.id}" ${inIds.includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${s.status !== 'active' ? ' ' + Students.statusBadge(s) : ''}${upFrom[s.id] ? ` <span class="small muted">${this.md(upFrom[s.id])}~ 예정</span>` : ''}</label>`).join('');
+      return students.map(s => `<label data-nm="${esc((s.name + ' ' + stTag(s)).toLowerCase())}"><input type="checkbox" name="st" value="${s.id}" ${inIds.includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${s.status !== 'active' ? ' ' + Students.statusBadge(s) : ''}${upFrom[s.id] ? ` <span class="small muted">${this.md(upFrom[s.id])}~ 예정</span>` : ''}<span class="pkd" data-pkd="${s.id}">${pkdHtml(s.id)}</span></label>`).join('');
     };
     const body = `<div class="form">
       <label class="req">요일</label><div class="day-picks">${DAY_ORDER.map(d => `<label><input type="checkbox" name="day" value="${d}" ${(v.days || []).includes(d) ? 'checked' : ''}>${DOW[d]}</label>`).join('')}</div>
@@ -188,7 +276,7 @@ const Classes = {
       <label class="top">학생</label><div>
         <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">변경 적용일</span><input type="date" name="apply" value="${today}"></div>
         <div class="pick-list" data-picks>${picksHtml(today)}</div>
-        <div class="hint" style="margin-top:4px">체크 상태는 적용일 기준 명단입니다. 체크한 학생은 적용일부터 출석부에 들어가고, 체크를 푼 학생은 적용일부터 빠집니다.</div></div>
+        <div class="hint" style="margin-top:4px">체크 상태는 적용일 기준 명단입니다. 체크한 학생은 적용일부터 출석부에 들어가고, 체크를 푼 학생은 적용일부터 빠집니다.<br>이름 오른쪽 요일 버튼을 끄면 그 요일은 빠지고 나머지 요일만 수강합니다 (예: 월수반을 월요일만).</div></div>
     </div>`;
     Modal.open({
       title: c ? '반 수정' : '반 만들기', size: 'lg', body,
@@ -226,7 +314,10 @@ const Classes = {
           if (q) $$('.pick-list label', b).forEach(l => { l.style.display = l.dataset.nm.includes(q) ? '' : 'none'; });
         };
         b.addEventListener('change', async (e) => {
-          if (e.target.matches('[name=day],[name=perDay]')) { drawPd(); upd(); }
+          if (e.target.matches('[name=day],[name=perDay]')) {
+            drawPd(); upd();
+            if (e.target.matches('[name=day]')) { modalDays = readDays(); $$('[data-pkd]', b).forEach(x => { x.innerHTML = pkdHtml(x.dataset.pkd); }); }
+          }
           else if (e.target.matches('[name=start],[name=duration]')) upd();
           else if (e.target.matches('[name=st]')) picksTouched = true;
           else if (e.target.matches('[name=apply]')) {
@@ -255,6 +346,21 @@ const Classes = {
           }
         });
         $('[data-autoname]', b).onclick = () => { nameEdited = false; upd(); };
+        // 학생별 요일 버튼 (마지막 하루는 끌 수 없음)
+        b.addEventListener('click', (e) => {
+          const k = e.target.closest('[data-pkday]');
+          if (!k) return;
+          e.preventDefault();
+          const box = k.closest('[data-pkd]'), sid = box.dataset.pkd, d = +k.dataset.pkday;
+          const cd = DAY_ORDER.filter(x => modalDays.includes(x));
+          let sel = pd[sid] ? cd.filter(x => pd[sid].includes(x)) : cd.slice();
+          if (!sel.length) sel = cd.slice();
+          sel = sel.includes(d) ? sel.filter(x => x !== d) : DAY_ORDER.filter(x => x === d || sel.includes(x));
+          if (!sel.length) { toast('최소 하루는 수강해야 합니다. 빼려면 체크를 푸세요'); return; }
+          pd[sid] = sel.length === cd.length ? null : sel;
+          box.innerHTML = pkdHtml(sid);
+          picksTouched = true;
+        });
         $('[data-colors]', b).addEventListener('click', (e) => {
           const k = e.target.closest('[data-color]');
           if (!k || k.disabled) return;
@@ -270,7 +376,7 @@ const Classes = {
           this.hardDelete(c.id); toast('반을 삭제했습니다'); App.render();
         } }] : []),
         { text: '취소' },
-        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
+        { text: '저장', cls: 'primary', primary: true, onClick: async (m) => {
           const b = m.body;
           const days = $$('[name=day]:checked', b).map(i => +i.value);
           const start = $('[name=start]', b).value;
@@ -298,6 +404,14 @@ const Classes = {
           const active = !$('[name=ended]', b).checked;
           // 진행 중인 반끼리 색이 겹치면 저장하지 않는다 (종료된 반을 다시 진행할 때 등)
           if (active && pickedColor && this.usedColors(c && c.id)[pickedColor]) { toast('다른 진행 중인 반이 이 색을 쓰고 있습니다. 다른 색을 고르세요'); return false; }
+          // 반 요일을 바꿔서 수강하던 요일이 모두 없어지는 학생 → 모든 요일 수강으로 바뀐다는 확인
+          const checked0 = $$('[name=st]:checked', b).map(i => i.value);
+          const lost = checked0.filter(sid => pd[sid] && !pd[sid].some(d => days.includes(d)));
+          if (lost.length) {
+            const nm = lost.map(sid => (Store.get('students', sid) || {}).name).filter(Boolean).join(', ');
+            if (!await confirmDlg(`${nm} 학생은 수강하던 요일이 반에서 빠집니다.\n이 학생은 남은 모든 요일을 수강하도록 바뀝니다. 계속할까요?`, '계속')) return false;
+            lost.forEach(sid => { pd[sid] = null; });
+          }
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
             memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '',
@@ -306,7 +420,8 @@ const Classes = {
           const shown = $$('[name=st]', b).map(i => i.value);
           const checked = $$('[name=st]:checked', b).map(i => i.value);
           const nowIn = this.rosterAt(rec.id, apply).map(s => s.id);
-          checked.filter(sid => !nowIn.includes(sid)).forEach(sid => this.enroll(sid, rec.id, apply));
+          // 새로 체크한 학생은 추가, 이미 수강 중인 학생은 요일이 바뀐 경우만 적용일부터 바꾼다
+          checked.forEach(sid => this.enrollDays(sid, rec.id, apply, pd[sid] || null));
           // 목록에 보이는 학생 중 체크를 푼 학생만 뺀다 (목록에 없는 학생은 건드리지 않음)
           nowIn.filter(sid => shown.includes(sid) && !checked.includes(sid)).forEach(sid => {
             Store.where('enrollments', e => e.studentId === sid && e.classId === rec.id && (!e.to || e.to > apply)).forEach(e => {
@@ -347,8 +462,11 @@ const Timetable = {
       const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
         const t = Classes.timeOn(c, dow);
         const s = toMin(t.start), e = s + t.duration;
-        const roster = Classes.rosterAt(c.id, today);
-        return { c, s, e, roster, up: Classes.upcomingAt(c.id, today, roster.map(x => x.id)) };
+        // 이 요일에 오는 학생만 (일부 요일 수강생은 그 요일 블록에만 나온다)
+        const roster = Classes.rosterOnDow(c.id, dow, today);
+        const up = Classes.upcomingAt(c.id, today, Classes.rosterAt(c.id, today).map(x => x.id))
+          .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
+        return { c, s, e, roster, up };
       });
       return { dow, items: this.layout(items) };
     });
@@ -372,9 +490,8 @@ const Timetable = {
         const cc = Classes.colorOf(c);
         h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
           style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
-          <div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
-          <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div>
-          <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}${it.up.map(o => `<span class="st" style="opacity:.55" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}<small>${Classes.md(o.from)}~</small></span>`).join('')}</div>
+          <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
+          <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
           <div class="sts-g">${this.groupedHtml(it.roster, it.up)}</div></div>`;
       });
       h += '</div>';
@@ -436,13 +553,15 @@ const Timetable = {
     return out;
   },
 
-  // 학생 명단이 세로로 다 들어가지 않으면 가로로 나열하며 내려간다
+  // 학생 명단 글씨 크기: 블록 안에 다 들어가는 가장 큰 크기 (최대 15px → 넘치면 0.5px씩 줄여 최소 10px)
+  // 인원이 적으면 크게, 많으면 작게. 블록 높이(수업 길이·시간표 높이 조절)에 따라 자동으로 맞춰진다.
+  FS_MAX: 15,
+  FS_MIN: 10,
   fitStudents(main) {
-    // 1단계: 가로로 나열(학교는 마우스를 올리면 표시) → 2단계: 그래도 넘치면 글씨를 줄임
     $$('.tt-blk', main).forEach(b => {
-      b.classList.remove('wrap', 'tiny');
-      if (b.scrollHeight > b.clientHeight + 1) b.classList.add('wrap');
-      if (b.scrollHeight > b.clientHeight + 1) b.classList.add('tiny');
+      let fs = this.FS_MAX;
+      b.style.setProperty('--fs', fs + 'px');
+      while (fs > this.FS_MIN && b.scrollHeight > b.clientHeight + 1) { fs -= 0.5; b.style.setProperty('--fs', fs + 'px'); }
     });
   },
 

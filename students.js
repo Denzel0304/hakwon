@@ -111,7 +111,7 @@ const Students = {
         ${this.sortTh('name', '이름')}${this.sortTh('school', '학교·학년')}${this.tab === 'active' ? this.sortTh('cls', '수강반') : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th>${this.sortTh('join', '등록일')}</tr></thead><tbody>`;
       list.forEach(s => {
         const third = this.tab === 'active'
-          ? [esc(this.activeClassesOf(s.id).map(c => c.name).join(', '))].concat(this.upcomingClassesOf(s.id).map(o => `<span class="muted">${esc(o.c.name)} (${Classes.md(o.from)}~)</span>`)).filter(Boolean).join(', ') || '<span class="muted">-</span>'
+          ? [esc(this.activeClassesOf(s.id).map(c => c.name + Classes.daysTag(c.id, s.id, todayStr())).join(', '))].concat(this.upcomingClassesOf(s.id).map(o => `<span class="muted">${esc(o.c.name + Classes.daysTag(o.c.id, s.id, o.from))} (${Classes.md(o.from)}~)</span>`)).filter(Boolean).join(', ') || '<span class="muted">-</span>'
           : `${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate, false)}</span>${s.statusReason ? `<div class="small muted">${esc(firstLine(s.statusReason))}</div>` : ''}`;
         h += `<tr class="click" data-id="${s.id}">
           <td class="nowrap"><b>${highlight(s.name, this.q)}</b>${this.schedBadge(s)}</td>
@@ -463,15 +463,19 @@ const Students = {
     let h = '<h2 style="font-size:14px;margin:0 0 6px">현재 수강반</h2>';
     h += cur.length ? '<div class="list">' + cur.map(e => {
       const c = Store.get('classes', e.classId);
-      return `<div class="list-item"><div class="what"><b>${esc(c ? c.name : '(삭제된 반)')}</b> ${c && c.active === false ? '<span class="badge gray">종료된 반</span>' : ''}${e.from > today ? '<span class="badge orange">예정</span>' : ''}
+      const pd = c ? Classes.normDays(e.days, c) : null;
+      const canDays = c && c.active !== false && (c.days || []).length > 1;
+      return `<div class="list-item"><div class="what"><b>${esc(c ? c.name : '(삭제된 반)')}</b> ${pd ? `<span class="pday">${esc(daysLabel(pd))}만</span> ` : ''}${c && c.active === false ? '<span class="badge gray">종료된 반</span>' : ''}${e.from > today ? '<span class="badge orange">예정</span>' : ''}
         <span class="muted small">${fmtDate(e.from, false)}부터${e.to ? ' · ' + fmtDate(e.to, false) + '에 빠짐 예정' : ''}</span></div>
+        ${canDays ? `<button class="btn sm" data-days="${e.id}" title="이 반의 일부 요일만 수강하도록 바꿉니다">수강 요일</button>` : ''}
         <button class="btn sm" data-leave="${e.id}">반에서 빼기</button></div>`;
     }).join('') + '</div>' : '<div class="empty">수강 중인 반이 없습니다.</div>';
     if (canAdd) {
       h += `<div class="row" style="display:flex;gap:8px;align-items:center;margin:10px 0 4px;flex-wrap:wrap">
         <select data-addcls>${addable.length ? addable.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') : '<option value="">추가할 반 없음</option>'}</select>
+        <span class="day-picks" data-adddays></span>
         <input type="date" data-adddate value="${today}"><button class="btn primary sm" data-add ${addable.length ? '' : 'disabled'}>반 추가</button>
-        <span class="muted small">선택한 날짜부터 출석부에 들어갑니다.</span></div>`;
+        <span class="muted small">선택한 날짜부터 출석부에 들어갑니다. 요일을 끄면 그 요일은 빼고 수강합니다.</span></div>`;
     } else {
       h += `<div class="muted small" style="margin-top:8px">${STATUS_LABEL[s.status]} 상태에서는 반을 배정할 수 없습니다. 상태·이력 탭에서 복귀 또는 재등록하면서 반을 고르세요.</div>`;
     }
@@ -482,7 +486,28 @@ const Students = {
         <button class="icon-btn" data-delen="${e.id}" title="기록 삭제">✕</button></div>`;
     }).join('') + '</div>' : '<div class="empty">지난 기록이 없습니다.</div>';
     pane.innerHTML = h;
+    // 반 추가: 고른 반의 요일 (기본 전부 켜짐, 요일이 하나뿐인 반은 표시하지 않음)
+    const drawAddDays = () => {
+      const box = $('[data-adddays]', pane), sel = $('[data-addcls]', pane);
+      if (!box || !sel) return;
+      const c = Store.get('classes', sel.value);
+      const cd = c ? DAY_ORDER.filter(d => (c.days || []).includes(d)) : [];
+      box.innerHTML = cd.length > 1 ? cd.map(d => `<label><input type="checkbox" value="${d}" checked>${DOW[d]}</label>`).join('') : '';
+    };
+    drawAddDays();
+    pane.onchange = (e) => { if (e.target.matches('[data-addcls]')) drawAddDays(); };
     pane.onclick = async (e) => {
+      const dy = e.target.closest('[data-days]');
+      if (dy) {
+        const en = Store.get('enrollments', dy.dataset.days), c = en && Store.get('classes', en.classId);
+        if (!c) return;
+        const r = await this.askDays(c, en, today);
+        if (!r) return;
+        const res = Classes.enrollDays(s.id, c.id, r.date, r.days);
+        toast(res === 'exists' ? '수강 요일이 그대로입니다' : (r.days && Classes.normDays(r.days, c) ? daysLabel(Classes.normDays(r.days, c)) + '요일만 수강하도록 바꿨습니다' : '모든 요일 수강으로 바꿨습니다'));
+        this.renderPane(m, s.id); App.render();
+        return;
+      }
       const lv = e.target.closest('[data-leave]');
       if (lv) {
         const en = Store.get('enrollments', lv.dataset.leave);
@@ -497,9 +522,12 @@ const Students = {
       if (e.target.closest('[data-add]')) {
         const cid = $('[data-addcls]', pane).value, d = $('[data-adddate]', pane).value;
         if (!cid || !isYmd(d)) return;
-        const r = Classes.enroll(s.id, cid, d);
+        const dbox = $$('[data-adddays] input', pane);
+        const days = dbox.filter(i => i.checked).map(i => +i.value);
+        if (dbox.length && !days.length) { toast('수강할 요일을 하나 이상 고르세요'); return; }
+        const r = Classes.enrollDays(s.id, cid, d, dbox.length ? days : null, true);
         if (r === 'exists') { toast('그 날짜에 이미 이 반을 수강 중입니다'); return; }
-        toast(r === 'extended' ? '기존 수강 기록에 이어서 반을 추가했습니다' : (d > today ? fmtDate(d, false) + '부터 수강하도록 예약했습니다' : '반을 추가했습니다'));
+        toast(r === 'extended' ? '기존 수강 기록에 이어서 반을 추가했습니다' : r === 'changed' ? '수강 요일을 바꿨습니다' : (d > today ? fmtDate(d, false) + '부터 수강하도록 예약했습니다' : '반을 추가했습니다'));
         this.renderPane(m, s.id); App.render();
         return;
       }
@@ -508,6 +536,31 @@ const Students = {
         Store.del('enrollments', de.dataset.delen); this.renderPane(m, s.id); App.render();
       }
     };
+  },
+
+  // 수강 요일 변경: { date, days } (모든 요일이면 days = null)
+  askDays(c, en, today) {
+    const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
+    const cur = Classes.normDays(en.days, c) || cd;
+    const def = en.from > today ? en.from : today;
+    return new Promise(res => {
+      Modal.open({
+        title: '수강 요일 — ' + c.name, size: 'sm',
+        body: `<div class="form"><label>수강 요일</label><div class="day-picks">${cd.map(d => `<label><input type="checkbox" name="pd" value="${d}" ${cur.includes(d) ? 'checked' : ''}>${DOW[d]}</label>`).join('')}</div>
+          <label>적용일</label><input type="date" name="pdate" value="${def}"></div>
+          <p class="small muted">끈 요일은 적용일부터 시간표·출석부·수업일지에서 빠집니다. 적용일 전 기록은 그대로 남습니다.</p>`,
+        buttons: [{ text: '취소', onClick() { res(null); } }, { text: '저장', cls: 'primary', primary: true, onClick(mm) {
+          const days = $$('[name=pd]:checked', mm.body).map(i => +i.value);
+          const date = $('[name=pdate]', mm.body).value;
+          if (!days.length) { toast('최소 하루는 수강해야 합니다. 그만두려면 “반에서 빼기”를 쓰세요'); return false; }
+          if (!isYmd(date)) { toast('적용일을 선택하세요'); return false; }
+          if (date < en.from) { toast('적용일은 수강 시작일(' + fmtDate(en.from, false) + ') 이후여야 합니다'); return false; }
+          if (en.to && date >= en.to) { toast('적용일이 이 반에서 빠지는 날(' + fmtDate(en.to, false) + ')보다 앞이어야 합니다'); return false; }
+          res({ date, days: days.length === cd.length ? null : days });
+        } }],
+        onClose() { res(null); },
+      });
+    });
   },
 
   askDate(title, hint, def) {
