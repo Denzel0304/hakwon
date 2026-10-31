@@ -20,6 +20,11 @@
     <div id="login-msg" class="login-msg"></div>
   </div>
 </div>
+<script>
+  // 저장된 접속 키가 있으면(자동 로그인) 로그인 화면을 그리기 전에 바로 앱 화면으로 시작한다.
+  // (키 이름은 config.js의 LS_AK 'mg77_ak'와 같아야 함. 키가 무효면 기존처럼 로그인 화면으로 돌아감)
+  try { if (localStorage.getItem('mg77_ak')) { document.getElementById('mg-login').classList.remove('active'); document.body.classList.add('app-on'); } } catch (e) {}
+</script>
 
 <!-- 앱 -->
 <div id="mg-app">
