@@ -130,14 +130,13 @@ const Classes = {
         .concat(up.map(o => `<span style="opacity:.55" title="${esc(fmtDate(o.from))}부터 수강 예정">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span></span>`));
       return `<tr class="click" data-id="${c.id}"><td class="nowrap">${this.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
         <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
-        <td class="num">${r.length}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td>
-        <td class="small soft">${esc(firstLine(c.memo))}</td></tr>`;
+        <td class="num">${r.length}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
     };
     let h = `<div class="page-narrow"><div class="page-head"><h1>반 관리</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;
-    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th><th>메모</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
+    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
       : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 위의 “반 만들기”로 시작하세요.</div></div>';
     h += '</div>';
     main.innerHTML = h;
@@ -342,6 +341,7 @@ const Timetable = {
 
   render(main) {
     const today = todayStr();
+    const tdow = dowOf(today);
     const classes = Store.all('classes').filter(c => c.active !== false);
     const cols = DAY_ORDER.map(dow => {
       const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
@@ -354,7 +354,7 @@ const Timetable = {
     });
     const span = this.END - this.START;
     let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>
-      <div class="tt2"><div class="tt2-head"><div></div>${DAY_ORDER.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}">${DOW[d]}</div>`).join('')}</div>
+      <div class="tt2"><div class="tt2-head"><div></div>${DAY_ORDER.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<span class="tt2-today">오늘</span>' : ''}</div>`).join('')}</div>
       <div class="tt2-body"><div class="tt2-time">`;
     for (let t = this.START; t < this.END; t += 60) {
       const hr = t / 60;
@@ -362,18 +362,20 @@ const Timetable = {
     }
     h += '</div>';
     cols.forEach(col => {
-      h += `<div class="tt2-col">`;
+      const isToday = col.dow === tdow;
+      h += `<div class="tt2-col${isToday ? ' today' : ''}">`;
       col.items.forEach(it => {
         const s = Math.max(it.s, this.START), e = Math.min(it.e, this.END);
         if (e <= s) return;
         const w = 100 / it.cols;
         const c = it.c;
-        const col = Classes.colorOf(c);
+        const cc = Classes.colorOf(c);
         h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
-          style="top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${col}1F;border-color:${col}73;box-shadow:inset 5px 0 0 ${col}">
+          style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
           <div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
           <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div>
-          <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}${it.up.map(o => `<span class="st" style="opacity:.55" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}<small>${Classes.md(o.from)}~</small></span>`).join('')}</div></div>`;
+          <div class="sts">${it.roster.map(s2 => `<span class="st" title="${esc(s2.name + ' ' + stTag(s2))}">${esc(s2.name)}<small>${esc(stTag(s2))}</small></span>`).join('')}${it.up.map(o => `<span class="st" style="opacity:.55" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}<small>${Classes.md(o.from)}~</small></span>`).join('')}</div>
+          <div class="sts-g">${this.groupedHtml(it.roster, it.up)}</div></div>`;
       });
       h += '</div>';
     });
@@ -415,6 +417,23 @@ const Timetable = {
       if (b) Classes.openModal(b.dataset.cls);
     };
     main.onchange = null;
+  },
+
+  // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
+  groupedHtml(roster, up) {
+    const groups = [];
+    roster.forEach(s => {
+      const t = stTag(s);
+      const g = groups[groups.length - 1];
+      if (g && g.t === t) g.list.push(s); else groups.push({ t, list: [s] });
+    });
+    const chip = (t) => t ? `<i class="sc">${esc(t)}</i>` : '';
+    let out = groups.map(g => {
+      const multi = g.list.length > 1, last = g.list.length - 1;
+      return g.list.map((s, i) => `<span class="n${i === last ? ' gl' : ''}" title="${esc(s.name + ' ' + g.t)}">${multi && i === 0 ? '(' : ''}${esc(s.name)}${i === last ? (multi ? ')' : '') + chip(g.t) : ''}</span>`).join(' ');
+    }).join(' ');
+    if (up.length) out += ' ' + up.map(o => `<span class="n gl up" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}${chip(stTag(o.s))}<em>${Classes.md(o.from)}~</em></span>`).join(' ');
+    return out;
   },
 
   // 학생 명단이 세로로 다 들어가지 않으면 가로로 나열하며 내려간다

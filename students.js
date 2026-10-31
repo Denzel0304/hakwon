@@ -13,6 +13,8 @@ const Students = {
   tab: 'active',
   q: '',
   grade: '',
+  sortKey: '',      // '' 기본 정렬 / name / school / cls / join
+  sortDir: 0,       // 1 오름차순, -1 내림차순
 
   statusBadge(s) {
     if (s.status === 'pause') return '<span class="badge orange">휴원</span>';
@@ -41,6 +43,50 @@ const Students = {
 
   sortFn(a, b) { return (+a.grade || 99) - (+b.grade || 99) || ko(a.school, b.school) || ko(a.name, b.name); },
 
+  // 머리글 정렬 (값이 없는 학생은 오름·내림 모두 맨 아래, 같으면 기본 정렬)
+  sortList(list) {
+    const base = (a, b) => this.sortFn(a, b);
+    const k = this.sortKey, d = this.sortDir;
+    if (!k || !d || (k === 'cls' && this.tab !== 'active')) return list.sort(base);
+    let keyOf, cmp;
+    if (k === 'name') { keyOf = s => (s.name || '').trim() || null; cmp = ko; }
+    else if (k === 'school') { keyOf = s => +s.grade ? s : null; cmp = (a, b) => (+a.grade) - (+b.grade) || ko(a.school, b.school); }
+    else if (k === 'join') { keyOf = s => { const j = this.joinDateOf(s); return isYmd(j) ? j : null; }; cmp = ko; }
+    else {   // 수강반: 반 관리의 반 순서(시간순) 기준, 여러 반이면 가장 앞선 반
+      const order = {};
+      Classes.sorted(Store.all('classes')).forEach((c, i) => { order[c.id] = i; });
+      keyOf = s => {
+        let ids = this.activeClassesOf(s.id).map(c => c.id);
+        if (!ids.length) ids = this.upcomingClassesOf(s.id).map(o => o.c.id);
+        return ids.length ? Math.min(...ids.map(id => order[id])) : null;
+      };
+      cmp = (a, b) => a - b;
+    }
+    const key = new Map(list.map(s => [s.id, keyOf(s)]));
+    return list.sort((a, b) => {
+      const x = key.get(a.id), y = key.get(b.id);
+      if (x == null || y == null) return (x == null) - (y == null) || base(a, b);
+      return cmp(x, y) * d || base(a, b);
+    });
+  },
+  // 등록일 + 수강 기간: 26.3.4 (3개월)  — 30일이 찰 때마다 1개월
+  joinCell(s) {
+    const j = this.joinDateOf(s);
+    if (!isYmd(j)) return '<span class="muted">-</span>';
+    const jd = parseYmd(j);
+    const label = String(jd.getFullYear()).slice(2) + '.' + (jd.getMonth() + 1) + '.' + jd.getDate();
+    const end = (s.status === 'left' && isYmd(s.statusDate)) ? s.statusDate : todayStr();
+    const days = Math.round((parseYmd(end) - jd) / 86400000);
+    const m = Math.floor(days / 30);
+    const per = days < 0 ? '등록 예정' : m < 1 ? '1개월 미만' : m + '개월';
+    return `${label} <span class="small soft">(${per})</span>`;
+  },
+
+  sortTh(k, label) {
+    const on = this.sortKey === k && this.sortDir;
+    return `<th class="sortable${on ? ' on' : ''}" data-sort="${k}" title="눌러서 정렬 (오름차순 → 내림차순 → 기본)">${label}<span class="ar">${on ? (this.sortDir === 1 ? '▲' : '▼') : '↕'}</span></th>`;
+  },
+
   render(main) {
     const all = Store.all('students');
     const counts = { active: 0, pause: 0, left: 0 };
@@ -48,8 +94,8 @@ const Students = {
     const q = this.q.trim().toLowerCase();
     const list = all.filter(s => (s.status || 'active') === this.tab)
       .filter(s => !this.grade || +s.grade === +this.grade)
-      .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)))
-      .sort((a, b) => this.sortFn(a, b));
+      .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)));
+    this.sortList(list);
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button><button class="btn" data-a="gimport">구글 연락처 가져오기</button></div>
       <div class="tabs">${['active', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
@@ -62,7 +108,7 @@ const Students = {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 학생이 없습니다.' : '등록된 학생이 없습니다. 오른쪽 위 “학생 등록”으로 시작하세요.'}</div></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>
-        <th>이름</th><th>학교·학년</th>${this.tab === 'active' ? '<th>수강반</th>' : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th><th>메모</th></tr></thead><tbody>`;
+        ${this.sortTh('name', '이름')}${this.sortTh('school', '학교·학년')}${this.tab === 'active' ? this.sortTh('cls', '수강반') : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th>${this.sortTh('join', '등록일')}</tr></thead><tbody>`;
       list.forEach(s => {
         const third = this.tab === 'active'
           ? [esc(this.activeClassesOf(s.id).map(c => c.name).join(', '))].concat(this.upcomingClassesOf(s.id).map(o => `<span class="muted">${esc(o.c.name)} (${Classes.md(o.from)}~)</span>`)).filter(Boolean).join(', ') || '<span class="muted">-</span>'
@@ -73,7 +119,7 @@ const Students = {
           <td>${third}</td>
           <td class="nowrap">${highlight(s.phone || '', this.q)}</td>
           <td class="nowrap">${highlight(s.parentPhone || '', this.q)}</td>
-          <td class="small soft">${highlight(firstLine(s.memo), this.q)}</td></tr>`;
+          <td class="nowrap">${this.joinCell(s)}</td></tr>`;
       });
       h += '</tbody></table></div>';
     }
@@ -82,6 +128,14 @@ const Students = {
     main.onclick = (e) => {
       if (e.target.closest('[data-a=add]')) { this.openNew(); return; }
       if (e.target.closest('[data-a=gimport]')) { this.importContacts(); return; }
+      const th = e.target.closest('th[data-sort]');
+      if (th) {   // 오름차순 → 내림차순 → 기본 정렬
+        const k = th.dataset.sort;
+        if (this.sortKey !== k) { this.sortKey = k; this.sortDir = 1; }
+        else if (this.sortDir === 1) this.sortDir = -1;
+        else { this.sortKey = ''; this.sortDir = 0; }
+        App.render(); return;
+      }
       const tb = e.target.closest('[data-tab]');
       if (tb) { this.tab = tb.dataset.tab; App.render(); return; }
       const tr = e.target.closest('tr[data-id]');
