@@ -51,7 +51,7 @@ const Students = {
       .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)))
       .sort((a, b) => this.sortFn(a, b));
 
-    let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button></div>
+    let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button><button class="btn" data-a="gimport">구글 연락처 가져오기</button></div>
       <div class="tabs">${['active', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
       <div class="toolbar">
         <input type="search" data-q placeholder="이름, 학교, 연락처, 메모 검색" value="${esc(this.q)}" style="width:280px">
@@ -81,6 +81,7 @@ const Students = {
     main.innerHTML = h;
     main.onclick = (e) => {
       if (e.target.closest('[data-a=add]')) { this.openNew(); return; }
+      if (e.target.closest('[data-a=gimport]')) { this.importContacts(); return; }
       const tb = e.target.closest('[data-tab]');
       if (tb) { this.tab = tb.dataset.tab; App.render(); return; }
       const tr = e.target.closest('tr[data-id]');
@@ -95,6 +96,101 @@ const Students = {
       }
     }, 250);
     main.onchange = (e) => { if (e.target.matches('[data-grade]')) { this.grade = e.target.value; App.render(); } };
+  },
+
+  /* ---------- 구글 연락처 가져오기 (재원생, 빈 칸만 채움) ---------- */
+  // 구글 주소록 번호 → 프로그램 형식 (+82 → 0)
+  normGPhone(v) {
+    let d = String(v || '').replace(/\D/g, '');
+    if (d.startsWith('82')) d = '0' + d.slice(2);
+    return d;
+  },
+
+  async importContacts() {
+    if (this.importing) { toast('가져오기가 진행 중입니다'); return; }
+    if (!CFG.GAS_CONTACT_URL) { toast('연락처 저장 주소(GAS_CONTACT_URL)가 설정되지 않았습니다'); return; }
+    const key = Auth.key();
+    if (!key) { toast('로그인이 필요합니다'); return; }
+
+    const active = Store.all('students').filter(s => (s.status || 'active') === 'active');
+    const targets = active.filter(s => (s.name || '').trim() && (!s.phone || !s.parentPhone));   // 둘 다 차 있으면 건너뜀
+    if (!targets.length) { toast('연락처가 비어 있는 재원생이 없습니다'); return; }
+
+    // 프로그램 안 같은 이름(재원생 기준) → 안내만
+    const cnt = {};
+    active.forEach(s => { const n = (s.name || '').trim(); if (n) cnt[n] = (cnt[n] || 0) + 1; });
+    const dupInApp = [...new Set(targets.map(s => s.name.trim()).filter(n => cnt[n] > 1))];
+    const work = targets.filter(s => cnt[s.name.trim()] === 1);
+
+    if (!await confirmDlg(`연락처가 비어 있는 재원생 ${targets.length}명을 구글 주소록에서 찾아 빈 칸을 채울까요?`, '가져오기')) return;
+
+    this.importing = true;
+    const btn = $('[data-a=gimport]');
+    if (btn) { btn.disabled = true; btn.textContent = '가져오는 중…'; }
+    toast('구글 주소록에서 가져오는 중…');
+
+    let d = null;
+    if (work.length) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 120000);
+      try {
+        const r = await fetch(CFG.GAS_CONTACT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ key, action: 'fetch', names: work.map(s => s.name.trim()) }),
+          signal: ctl.signal,
+        });
+        d = await r.json();
+      } catch (e) {
+        toast(e.name === 'AbortError' ? '가져오기 실패: 응답 시간 초과' : '가져오기 실패: 네트워크 오류');
+      } finally {
+        clearTimeout(timer);
+      }
+      if (d && !d.ok) {
+        toast(d.reason === 'unauthorized' ? '로그인 키가 유효하지 않습니다. 다시 로그인하세요'
+          : d.reason === 'busy' ? '다른 작업이 진행 중입니다. 잠시 후 다시 누르세요'
+          : '가져오기 실패: ' + (d.message || d.reason || '알 수 없는 오류'));
+        d = null;
+      }
+    }
+    this.importing = false;
+    const btn2 = $('[data-a=gimport]');
+    if (btn2) { btn2.disabled = false; btn2.textContent = '구글 연락처 가져오기'; }
+    if (work.length && !d) return;
+
+    const contacts = (d && d.contacts) || {};
+    const res = { students: 0, phone: 0, parent: 0, notFound: [], dupInGoogle: [], multiNum: [] };
+    // 주소록에서 한 이름의 번호 하나를 고른다. 애매하면 안내 목록에 넣고 null
+    const pick = (cn) => {
+      const list = contacts[cn] || [];
+      if (!list.length) { res.notFound.push(cn); return null; }
+      if (list.length > 1) { res.dupInGoogle.push(cn); return null; }
+      const nums = [...new Set((list[0] || []).map(v => this.normGPhone(v)).filter(Boolean))];
+      if (!nums.length) { res.notFound.push(cn); return null; }
+      if (nums.length > 1) { res.multiNum.push(cn); return null; }
+      return fmtPhone(nums[0]);
+    };
+
+    work.forEach(s => {
+      const name = s.name.trim();
+      const rec = Object.assign({}, s);
+      let changed = false;
+      if (!s.phone) { const v = pick(name); if (v) { rec.phone = v; res.phone++; changed = true; } }
+      if (!s.parentPhone) { const v = pick(name + ' 어머님'); if (v) { rec.parentPhone = v; res.parent++; changed = true; } }
+      if (changed) { Store.put('students', rec); res.students++; }
+    });
+    App.render();
+
+    const sec = (title, arr, note) => arr.length
+      ? `<div style="margin-top:14px"><b>${esc(title)} (${arr.length})</b>${note ? ` <span class="muted small">${esc(note)}</span>` : ''}<div style="margin-top:4px;user-select:text">${arr.map(esc).join(', ')}</div></div>` : '';
+    const body = `<div style="line-height:1.7">
+      <div>채운 학생: <b>${res.students}명</b> <span class="muted small">(학생 번호 ${res.phone}건 · 어머님 번호 ${res.parent}건)</span></div>
+      ${sec('프로그램에 같은 이름의 재원생이 여러 명', dupInApp, '건너뜀 — 직접 처리')}
+      ${sec('구글 주소록에 같은 이름이 여러 개', res.dupInGoogle, '건너뜀 — 직접 처리')}
+      ${sec('한 연락처에 번호가 여러 개', res.multiNum, '건너뜀 — 직접 처리')}
+      ${sec('구글 주소록에 없음', res.notFound, '')}
+    </div>`;
+    Modal.open({ title: '구글 연락처 가져오기 결과', size: 'md', autofocus: false, body, buttons: [{ text: '닫기', cls: 'primary' }] });
   },
 
   /* ---------- 기본 정보 폼 ---------- */
