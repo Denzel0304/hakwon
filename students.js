@@ -145,6 +145,7 @@ const Students = {
       onMount: (b) => { enhanceAll(b); this.bindPhones(b); },
       buttons: [
         { text: '취소' },
+        { text: '연락처 저장', onClick: (m) => this.sendContact(m, m.body) },
         { text: '등록', cls: 'primary', primary: true, onClick: (m) => {
           const b = m.body, info = this.readInfo(b);
           const joinDate = $('[name=joinDate]', b).value;
@@ -257,9 +258,13 @@ const Students = {
 
   // 연락처 저장: 기본정보 화면의 이름·번호를 GAS 웹앱으로 보내 구글 주소록에 등록/업데이트한다
   // (항상 false를 돌려줘 모달은 닫지 않는다)
-  async sendContact(m) {
-    if (m.tab !== 'info') return false;
-    const info = this.readInfo($('[data-pane]', m.body));
+  // root: 입력칸이 들어 있는 영역 (신규 등록 모달은 m.body, 학생 상세 모달은 생략 → 기본정보 탭)
+  async sendContact(m, root) {
+    if (!root) {
+      if (m.tab !== 'info') return false;
+      root = $('[data-pane]', m.body);
+    }
+    const info = this.readInfo(root);
     if (!info.name) { toast('이름을 입력하세요'); return false; }
     if (!info.phone && !info.parentPhone) { toast('저장할 연락처가 없습니다'); return false; }
     if (!CFG.GAS_CONTACT_URL) { toast('연락처 저장 주소(GAS_CONTACT_URL)가 설정되지 않았습니다'); return false; }
