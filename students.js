@@ -182,11 +182,13 @@ const Students = {
           toast('학생을 삭제했습니다');
           App.render();
         } },
+        { text: '연락처 저장', onClick: (mm) => this.sendContact(mm) },
         { text: '정보 저장', cls: 'primary', primary: true, onClick: (mm) => (mm.tab === 'info' ? this.saveInfo(mm, s.id) : false) },
         { text: '닫기' },
       ],
     });
     m.tab = tab;
+    m.contactBtn = $$('.btn', m.foot).find(x => x.textContent === '연락처 저장');
     m.body.addEventListener('click', (e) => {
       const t = e.target.closest('[data-t]');
       if (t) { m.tab = t.dataset.t; this.renderPane(m, id); }
@@ -215,6 +217,7 @@ const Students = {
     pane.onclick = null;
     const saveBtn = $('[data-primary]', m.foot);
     if (saveBtn) saveBtn.style.display = m.tab === 'info' ? '' : 'none';
+    if (m.contactBtn) m.contactBtn.style.display = m.tab === 'info' ? '' : 'none';
     this['pane_' + m.tab](pane, s, m);
   },
 
@@ -250,6 +253,47 @@ const Students = {
       toast('저장했습니다');
       App.render();
     }
+  },
+
+  // 연락처 저장: 기본정보 화면의 이름·번호를 GAS 웹앱으로 보내 구글 주소록에 등록/업데이트한다
+  // (항상 false를 돌려줘 모달은 닫지 않는다)
+  async sendContact(m) {
+    if (m.tab !== 'info') return false;
+    const info = this.readInfo($('[data-pane]', m.body));
+    if (!info.name) { toast('이름을 입력하세요'); return false; }
+    if (!info.phone && !info.parentPhone) { toast('저장할 연락처가 없습니다'); return false; }
+    if (!CFG.GAS_CONTACT_URL) { toast('연락처 저장 주소(GAS_CONTACT_URL)가 설정되지 않았습니다'); return false; }
+    const key = Auth.key();
+    if (!key) { toast('로그인이 필요합니다'); return false; }
+    toast('연락처 전송 중…');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 60000);
+    try {
+      const r = await fetch(CFG.GAS_CONTACT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 사전 요청(CORS preflight) 없이 GAS로 보내기 위함
+        body: JSON.stringify({ key, name: info.name, phone: info.phone, parentPhone: info.parentPhone }),
+        signal: ctl.signal,
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        toast(d.reason === 'unauthorized' ? '로그인 키가 유효하지 않습니다. 다시 로그인하세요'
+          : d.reason === 'busy' ? '다른 저장이 진행 중입니다. 잠시 후 다시 누르세요'
+          : '연락처 저장 실패: ' + (d.message || d.reason || '알 수 없는 오류'));
+        return false;
+      }
+      const parts = [];
+      if (d.added) parts.push(`등록 ${d.added}건`);
+      if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
+      if (d.skipped) parts.push(`변경 없음 ${d.skipped}건`);
+      if (d.errors && d.errors.length) toast(`일부 실패 (${parts.join(' · ') || '처리 0건'}) — ${d.errors[0]}`);
+      else toast('연락처 저장 완료 · ' + parts.join(' · '));
+    } catch (e) {
+      toast(e.name === 'AbortError' ? '연락처 저장 실패: 응답 시간 초과' : '연락처 저장 실패: 네트워크 오류');
+    } finally {
+      clearTimeout(timer);
+    }
+    return false;
   },
 
   pane_cls(pane, s, m) {
