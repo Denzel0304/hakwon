@@ -42,8 +42,18 @@ const App = {
 
   // 서버에서 바뀐 내용이 들어왔을 때: 입력 중이면 입력이 끝난 뒤 다시 그린다
   onRemoteChange() {
+    this.applySchedules();
     if (this.isEditingMain()) this._needRender = true;
     else this.render();
+    this.refreshModals();
+  },
+  // 열려 있는 모달 중 다시 그릴 수 있는 것(학생 상세)은 다시 그린다 (입력 중이면 모달이 알아서 미룸)
+  refreshModals() { Modal.stack.forEach(m => { if (m.refresh) m.refresh(); }); },
+  // 날짜가 된 예약(미래 날짜 휴원·퇴원·복귀·재등록)을 실제 상태로 바꾼다.
+  // 서버 내용을 처음 받은 뒤에만 실행 (다른 기기에서 취소한 예약을 옛 캐시로 적용하지 않도록)
+  applySchedules() {
+    if (!Store.firstPullDone) return 0;
+    return Students.applyDue();
   },
   isEditingMain() {
     const a = document.activeElement;
@@ -74,7 +84,10 @@ const App = {
     this.setSync(n ? `● 저장 대기 ${n}개` : (Store.lastSyncAt ? '✓ 동기화됨 ' + new Date(Store.lastSyncAt).toTimeString().slice(0, 5) : ''));
   },
 
-  afterFirstPull() { Promo.check(); },
+  afterFirstPull() {
+    if (this.applySchedules()) { this.render(); this.refreshModals(); }
+    Promo.check();
+  },
 
   /* ---------- 로그인 ---------- */
   showLogin() {
@@ -201,7 +214,9 @@ const App = {
     if (App.selDate === _today) App.selDate = t;
     _today = t;
     if (!Auth.key()) return;
+    App.applySchedules();
     App.render();
+    App.refreshModals();
     Promo.check();
   }, 60000);
 })();

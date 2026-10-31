@@ -25,6 +25,20 @@ const Students = {
       .map(e => Store.get('classes', e.classId)).filter(Boolean).sort((a, b) => ko(a.name, b.name));
   },
 
+  // 오늘 이후 수강을 시작할 예정인 반 [{ c, from }] (오늘 이미 수강 중인 반은 제외)
+  upcomingClassesOf(sid, date = todayStr()) {
+    const now = new Set(this.activeClassesOf(sid, date).map(c => c.id));
+    const best = {};
+    Store.where('enrollments', e => e.studentId === sid && e.from > date).forEach(e => {
+      if (now.has(e.classId)) return;
+      if (!best[e.classId] || e.from < best[e.classId]) best[e.classId] = e.from;
+    });
+    return Object.keys(best).map(id => ({ c: Store.get('classes', id), from: best[id] })).filter(o => o.c).sort((a, b) => ko(a.from, b.from));
+  },
+  schedBadge(s) {
+    return s.sched && isYmd(s.sched.date) ? ` <span class="badge orange">${Classes.md(s.sched.date)} ${LOG_LABEL[s.sched.act] || ''} 예정</span>` : '';
+  },
+
   sortFn(a, b) { return (+a.grade || 99) - (+b.grade || 99) || ko(a.school, b.school) || ko(a.name, b.name); },
 
   render(main) {
@@ -51,10 +65,10 @@ const Students = {
         <th>이름</th><th>학교·학년</th>${this.tab === 'active' ? '<th>수강반</th>' : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th><th>메모</th></tr></thead><tbody>`;
       list.forEach(s => {
         const third = this.tab === 'active'
-          ? esc(this.activeClassesOf(s.id).map(c => c.name).join(', ')) || '<span class="muted">-</span>'
+          ? [esc(this.activeClassesOf(s.id).map(c => c.name).join(', '))].concat(this.upcomingClassesOf(s.id).map(o => `<span class="muted">${esc(o.c.name)} (${Classes.md(o.from)}~)</span>`)).filter(Boolean).join(', ') || '<span class="muted">-</span>'
           : `${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate, false)}</span>${s.statusReason ? `<div class="small muted">${esc(firstLine(s.statusReason))}</div>` : ''}`;
         h += `<tr class="click" data-id="${s.id}">
-          <td class="nowrap"><b>${highlight(s.name, this.q)}</b></td>
+          <td class="nowrap"><b>${highlight(s.name, this.q)}</b>${this.schedBadge(s)}</td>
           <td class="nowrap">${highlight(stTag(s), this.q)}${s.schoolPending ? ' <span class="badge orange">학교 입력 필요</span>' : ''}</td>
           <td>${third}</td>
           <td class="nowrap">${highlight(s.phone || '', this.q)}</td>
@@ -177,12 +191,24 @@ const Students = {
       const t = e.target.closest('[data-t]');
       if (t) { m.tab = t.dataset.t; this.renderPane(m, id); }
     });
+    // 기본정보에서 입력한 내용이 있으면 자동 갱신으로 지우지 않는다
+    m.body.addEventListener('input', () => { if (m.tab === 'info') m.dirty = true; });
+    // 다른 곳(다른 기기 포함)에서 데이터가 바뀌면 입력 중이 아닐 때 다시 그린다
+    m.refresh = () => {
+      if (m.closed) return;
+      const a = document.activeElement;
+      const editing = a && m.el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+      if (editing || (m.tab === 'info' && m.dirty) || Modal.top() !== m) { m.stale = true; return; }
+      this.renderPane(m, id);
+    };
+    m.el.addEventListener('focusout', () => setTimeout(() => { if (m.stale) m.refresh(); }, 0));
     this.renderPane(m, id);
   },
 
   renderPane(m, id) {
     const s = Store.get('students', id);
     if (!s) { m.close(); return; }
+    m.stale = false; m.dirty = false;
     $('.mg-modal-head h3', m.el).textContent = s.name + (stTag(s) ? '  ' + stTag(s) : '');
     $$('[data-t]', m.body).forEach(b => b.classList.toggle('active', b.dataset.t === m.tab));
     const pane = $('[data-pane]', m.body);
@@ -209,6 +235,12 @@ const Students = {
       if (!isYmd(joinDate)) { toast('등록일을 선택하세요'); return false; }
       const cur = Store.get('students', s.id);
       const rec = Object.assign({}, cur, info, { joinDate });
+      // 등록일이 바뀌면 옛 등록일에 시작한 수강 기록의 시작일도 함께 옮긴다
+      const oldJoin = this.joinDateOf(cur);
+      if (isYmd(oldJoin) && oldJoin !== joinDate) {
+        Store.where('enrollments', e => e.studentId === s.id && e.from === oldJoin && (!e.to || joinDate < e.to))
+          .forEach(e => Store.put('enrollments', Object.assign({}, e, { from: joinDate })));
+      }
       if (cur.status === 'active' && cur.statusDate === this.joinDateOf(cur)) rec.statusDate = joinDate;
       const jl = Store.where('student_log', l => l.studentId === s.id && l.type === 'join').sort((a, b) => ko(a.date, b.date))[0];
       if (jl) { if (jl.date !== joinDate) Store.put('student_log', Object.assign({}, jl, { date: joinDate })); }
@@ -225,13 +257,14 @@ const Students = {
     const ens = Store.where('enrollments', e => e.studentId === s.id).sort((a, b) => ko(b.from, a.from));
     const cur = ens.filter(e => !e.to || e.to > today);
     const past = ens.filter(e => e.to && e.to <= today);
-    const curIds = cur.map(e => e.classId);
+    // 오늘 수강 중이면서 끝날짜가 없는 반만 추가 목록에서 뺀다 (예정·빠짐 예정인 반은 날짜를 바꿔 다시 추가 가능)
+    const curIds = cur.filter(e => !e.to && e.from <= today).map(e => e.classId);
     const canAdd = s.status === 'active';
     const addable = Store.all('classes').filter(c => c.active !== false && !curIds.includes(c.id)).sort((a, b) => ko(a.start, b.start));
     let h = '<h2 style="font-size:14px;margin:0 0 6px">현재 수강반</h2>';
     h += cur.length ? '<div class="list">' + cur.map(e => {
       const c = Store.get('classes', e.classId);
-      return `<div class="list-item"><div class="what"><b>${esc(c ? c.name : '(삭제된 반)')}</b> ${c && c.active === false ? '<span class="badge gray">종료된 반</span>' : ''}
+      return `<div class="list-item"><div class="what"><b>${esc(c ? c.name : '(삭제된 반)')}</b> ${c && c.active === false ? '<span class="badge gray">종료된 반</span>' : ''}${e.from > today ? '<span class="badge orange">예정</span>' : ''}
         <span class="muted small">${fmtDate(e.from, false)}부터${e.to ? ' · ' + fmtDate(e.to, false) + '에 빠짐 예정' : ''}</span></div>
         <button class="btn sm" data-leave="${e.id}">반에서 빼기</button></div>`;
     }).join('') + '</div>' : '<div class="empty">수강 중인 반이 없습니다.</div>';
@@ -256,8 +289,8 @@ const Students = {
         const en = Store.get('enrollments', lv.dataset.leave);
         const d = await this.askDate('반에서 빼기', '이 날짜부터 출석부에서 빠집니다.', today);
         if (!d) return;
-        if (d < en.from) { toast('수강 시작일보다 앞선 날짜는 선택할 수 없습니다'); return; }
-        if (d === en.from) Store.del('enrollments', en.id);
+        if (d < en.from && !await confirmDlg(`선택한 날짜가 수강 시작일(${fmtDate(en.from, false)})보다 앞입니다.\n이 수강 기록을 삭제할까요?`, '삭제', true)) return;
+        if (d <= en.from) Store.del('enrollments', en.id);
         else Store.put('enrollments', Object.assign({}, en, { to: d }));
         toast('반에서 뺐습니다'); this.renderPane(m, s.id); App.render();
         return;
@@ -265,8 +298,10 @@ const Students = {
       if (e.target.closest('[data-add]')) {
         const cid = $('[data-addcls]', pane).value, d = $('[data-adddate]', pane).value;
         if (!cid || !isYmd(d)) return;
-        Classes.enroll(s.id, cid, d);
-        toast('반을 추가했습니다'); this.renderPane(m, s.id); App.render();
+        const r = Classes.enroll(s.id, cid, d);
+        if (r === 'exists') { toast('그 날짜에 이미 이 반을 수강 중입니다'); return; }
+        toast(r === 'extended' ? '기존 수강 기록에 이어서 반을 추가했습니다' : (d > today ? fmtDate(d, false) + '부터 수강하도록 예약했습니다' : '반을 추가했습니다'));
+        this.renderPane(m, s.id); App.render();
         return;
       }
       const de = e.target.closest('[data-delen]');
@@ -289,11 +324,13 @@ const Students = {
   pane_status(pane, s, m) {
     const logs = Store.where('student_log', l => l.studentId === s.id).sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt));
     let acts = '';
-    if (s.status === 'active') acts = '<button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button>';
+    if (s.sched && isYmd(s.sched.date)) acts = `<span class="badge orange">${fmtDate(s.sched.date)} ${LOG_LABEL[s.sched.act] || ''} 예정</span><button class="btn" data-act="cancelsched">예약 취소</button>`;
+    else if (s.status === 'active') acts = '<button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button>';
     else if (s.status === 'pause') acts = '<button class="btn primary" data-act="resume">복귀 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button>';
     else acts = '<button class="btn primary" data-act="rejoin">재등록</button>';
     let h = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       <span>현재 상태</span> ${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate)}</span><span class="grow" style="flex:1"></span>${acts}</div>`;
+    if (s.sched && s.sched.reason) h += `<div class="panel" style="margin-bottom:12px"><div class="small soft">예약 사유</div><div class="pre">${esc(s.sched.reason)}</div></div>`;
     if (s.status !== 'active' && s.statusReason) h += `<div class="panel" style="margin-bottom:12px"><div class="small soft">사유</div><div class="pre">${esc(s.statusReason)}</div></div>`;
     h += '<h2 style="font-size:14px;margin:0 0 6px">이력</h2>';
     h += logs.length ? '<div class="list">' + logs.map(l => `<div class="list-item"><span class="when">${fmtDate(l.date, false)}</span>
@@ -302,10 +339,29 @@ const Students = {
     pane.innerHTML = h;
     pane.onclick = async (e) => {
       const a = e.target.closest('[data-act]');
+      if (a && a.dataset.act === 'cancelsched') {
+        const cur = Store.get('students', s.id);
+        if (!cur.sched || !await confirmDlg(`${fmtDate(cur.sched.date)} ${LOG_LABEL[cur.sched.act] || ''} 예약을 취소할까요?\n예약하면서 바뀐 수강 기록도 원래대로 돌아갑니다.`, '예약 취소', true)) return;
+        this.cancelSched(s.id);
+        toast('예약을 취소했습니다'); this.renderPane(m, s.id); App.render();
+        return;
+      }
       if (a) { this.openStatusAction(a.dataset.act, s.id, () => { this.renderPane(m, s.id); App.render(); }); return; }
       const dl = e.target.closest('[data-dellog]');
-      if (dl && await confirmDlg('이 이력을 삭제할까요?\n(이력만 지워지고 현재 상태는 바뀌지 않습니다)', '삭제', true)) {
-        Store.del('student_log', dl.dataset.dellog); this.renderPane(m, s.id);
+      if (!dl) return;
+      const lg = Store.get('student_log', dl.dataset.dellog);
+      if (!lg) return;
+      if (this.isRevertible(Store.get('students', s.id), lg)) {
+        const how = await this.askLogDelete(lg);
+        if (!how) return;
+        if (how === 'revert') this.revertStatus(s.id, lg);
+        Store.del('student_log', lg.id);
+        toast(how === 'revert' ? '이력을 삭제하고 상태를 되돌렸습니다' : '이력을 삭제했습니다');
+        this.renderPane(m, s.id); App.render();
+        return;
+      }
+      if (await confirmDlg('이 이력을 삭제할까요?\n(이력만 지워지고 현재 상태는 바뀌지 않습니다)', '삭제', true)) {
+        Store.del('student_log', lg.id); this.renderPane(m, s.id); App.render();
       }
     };
   },
@@ -325,20 +381,117 @@ const Students = {
         const d = $('[name=d]', m.body).value;
         if (!isYmd(d)) { toast('날짜를 선택하세요'); return false; }
         const cur = Store.get('students', sid);
+        const future = d > todayStr();          // 미래 날짜면 예약 → 그 날짜가 되면 자동으로 상태가 바뀜
+        const before = this.enSnap(sid);
         if (act === 'pause' || act === 'leave') {
           const reason = stripZws($('[name=reason]', m.body).value);
           Classes.closeEnrollments(sid, d);
-          Store.put('students', Object.assign({}, cur, { status: act === 'pause' ? 'pause' : 'left', leftKind: act === 'leave' ? 'leave' : (cur.leftKind || ''), statusDate: d, statusReason: reason }));
-          this.addLog(sid, act, d, reason);
+          const undo = this.enDiff(before, sid);
+          if (future) Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason, undo } }));
+          else {
+            Store.put('students', Object.assign({}, cur, { status: act === 'pause' ? 'pause' : 'left', leftKind: act === 'leave' ? 'leave' : (cur.leftKind || ''), statusDate: d, statusReason: reason, sched: null }));
+            this.addLog(sid, act, d, reason, { undo });
+          }
         } else {
-          Store.put('students', Object.assign({}, cur, { status: 'active', leftKind: '', statusDate: d, statusReason: '' }));
-          this.addLog(sid, act, d, '');
           $$('[name=cls]:checked', m.body).forEach(i => Classes.enroll(sid, i.value, d));
+          if (future) Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason: '', undo: this.enDiff(before, sid) } }));
+          else {
+            Store.put('students', Object.assign({}, cur, { status: 'active', leftKind: '', statusDate: d, statusReason: '', sched: null }));
+            this.addLog(sid, act, d, '');
+          }
         }
-        toast(titles[act] + '했습니다');
+        toast(future ? fmtDate(d, false) + ' ' + titles[act] + '를 예약했습니다' : titles[act] + '했습니다');
         if (done) done();
       } }],
     });
+  },
+
+  /* ---------- 예약(미래 날짜 상태 변경) · 되돌리기 ---------- */
+  // 학생의 수강 기록 사진 { id: JSON }
+  enSnap(sid) {
+    const o = {};
+    Store.where('enrollments', e => e.studentId === sid).forEach(e => { o[e.id] = JSON.stringify(e); });
+    return o;
+  },
+  // 사진 이후 바뀐 내용 → 되돌리기 정보 { created:[새로 생긴 id], prev:[바뀌거나 지워진 원래 기록] }
+  enDiff(before, sid) {
+    const after = this.enSnap(sid);
+    return {
+      created: Object.keys(after).filter(id => !before[id]),
+      prev: Object.keys(before).filter(id => after[id] !== before[id]).map(id => JSON.parse(before[id])),
+    };
+  },
+  mergeUndo(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    const prevIds = new Set((a.prev || []).map(r => r.id));
+    return {
+      created: [...new Set([...(a.created || []), ...(b.created || [])])],
+      prev: (a.prev || []).concat((b.prev || []).filter(r => !prevIds.has(r.id) && !(a.created || []).includes(r.id))),
+    };
+  },
+  undoApply(u) {
+    if (!u) return;
+    (u.created || []).forEach(id => Store.del('enrollments', id));
+    (u.prev || []).forEach(r => Store.put('enrollments', r));
+  },
+  cancelSched(sid) {
+    const s = Store.get('students', sid);
+    if (!s || !s.sched) return;
+    this.undoApply(s.sched.undo);
+    Store.put('students', Object.assign({}, s, { sched: null }));
+  },
+  // 날짜가 된 예약을 실제 상태로 바꾼다. 바꾼 학생 수를 돌려준다. (여러 기기에서 동시에 해도 결과가 같도록 이력 id 고정)
+  applyDue() {
+    const today = todayStr();
+    let n = 0;
+    Store.where('students', s => s.sched && isYmd(s.sched.date) && s.sched.date <= today).forEach(s => {
+      const sc = s.sched, d = sc.date;
+      const logId = 'LG_sc_' + s.id + '_' + compactDate(d) + '_' + sc.act;
+      if (sc.act === 'pause' || sc.act === 'leave') {
+        const before = this.enSnap(s.id);
+        Classes.closeEnrollments(s.id, d);          // 예약 뒤에 추가된 수강도 정리
+        const undo = this.mergeUndo(sc.undo, this.enDiff(before, s.id));
+        Store.put('students', Object.assign({}, s, { status: sc.act === 'pause' ? 'pause' : 'left', leftKind: sc.act === 'leave' ? 'leave' : (s.leftKind || ''), statusDate: d, statusReason: sc.reason || '', sched: null }));
+        this.addLog(s.id, sc.act, d, sc.reason || '', { undo }, logId);
+      } else {
+        Store.put('students', Object.assign({}, s, { status: 'active', leftKind: '', statusDate: d, statusReason: '', sched: null }));
+        this.addLog(s.id, sc.act, d, '', {}, logId);
+      }
+      n++;
+    });
+    return n;
+  },
+  // 가장 최근의 휴원·퇴원·졸업 이력이고 지금 상태가 그 이력 때문인지
+  isRevertible(s, l) {
+    if (!s || !['pause', 'leave', 'graduate'].includes(l.type)) return false;
+    if (!((l.type === 'pause' && s.status === 'pause') || (l.type !== 'pause' && s.status === 'left'))) return false;
+    if (s.statusDate !== l.date) return false;
+    const top = Store.where('student_log', x => x.studentId === s.id && ['join', 'pause', 'resume', 'leave', 'rejoin', 'graduate'].includes(x.type))
+      .sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt))[0];
+    return !!top && top.id === l.id;
+  },
+  askLogDelete(l) {
+    return new Promise(res => {
+      Modal.open({
+        title: '이력 삭제', size: 'sm', autofocus: false,
+        body: `<p class="confirm-msg">${esc(fmtDate(l.date, false) + ' ' + (LOG_LABEL[l.type] || l.type))} 이력을 삭제합니다.\n현재 상태도 이 처리 전(재원)으로 되돌릴까요?\n되돌리면 이 처리로 빠졌던 수강반도 다시 들어갑니다.</p>`,
+        buttons: [
+          { text: '취소', onClick() { res(null); } },
+          { text: '이력만 삭제', onClick() { res('log'); } },
+          { text: '상태도 되돌리기', cls: 'primary', primary: true, onClick() { res('revert'); } },
+        ],
+        onClose() { res(null); },
+      });
+    });
+  },
+  revertStatus(sid, l) {
+    const s = Store.get('students', sid);
+    if (l.undo) this.undoApply(l.undo);
+    else Store.where('enrollments', e => e.studentId === sid && e.to === l.date).forEach(e => Store.put('enrollments', Object.assign({}, e, { to: null })));
+    const prev = Store.where('student_log', x => x.studentId === sid && x.id !== l.id && ['join', 'resume', 'rejoin'].includes(x.type) && x.date <= l.date)
+      .sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt))[0];
+    Store.put('students', Object.assign({}, s, { status: 'active', leftKind: '', statusDate: prev ? prev.date : this.joinDateOf(s), statusReason: '' }));
   },
 
   pane_score(pane, s) {
