@@ -563,7 +563,7 @@ const Timetable = {
   },
 
   // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
-  // partOf(학생ID, 날짜): 일부 요일 수강이면 그 요일 → 이름에 점선 밑줄
+  // partOf(학생ID, 날짜): 일부 요일 수강이면 그 요일 → 이름에 실선 밑줄
   groupedHtml(roster, up, partOf) {
     const nm = (s, date) => {
       const d = partOf ? partOf(s.id, date) : null;
