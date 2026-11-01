@@ -535,6 +535,8 @@ const Timetable = {
     const fit = bottom - bodyTop - grip.offsetHeight - 3;
     const apply = (H) => { box.style.setProperty('--ppm', (Math.max(minH, H) / span) + 'px'); this.fitStudents(main); };
     apply(this.userH || fit);
+    // 웹폰트(Pretendard)가 늦게 받아지면 글자 폭이 바뀌므로, 다 받아진 뒤 한 번 더 맞춤
+    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) this.fitStudents(main); });
 
     grip.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -585,15 +587,27 @@ const Timetable = {
     return out;
   },
 
-  // 학생 명단 글씨 크기: 블록 안에 다 들어가는 가장 큰 크기 (최대 15px → 넘치면 0.5px씩 줄여 최소 10px)
-  // 인원이 적으면 크게, 많으면 작게. 블록 높이(수업 길이·시간표 높이 조절)에 따라 자동으로 맞춰진다.
+  // 학생 명단 글씨 크기: 시간표 전체를 같은 크기로 통일
+  //  1) 블록마다 들어가는 가장 큰 크기를 구한다 (15px에서 0.5px씩 줄여 최소 10px)
+  //  2) 그중 가장 작은 값을 공통 크기로 전체에 적용 (단, 공통 크기는 11px 밑으로 내려가지 않음)
+  //  3) 11px로도 안 들어가는 블록만 따로 10px까지 줄이고, 그래도 넘치면 그 블록만 스크롤
   FS_MAX: 15,
+  FS_COMMON_MIN: 11,
   FS_MIN: 10,
   fitStudents(main) {
-    $$('.tt-blk', main).forEach(b => {
+    const blks = $$('.tt-blk', main);
+    // 재는 동안은 스크롤바를 숨겨서, 스크롤바 폭 때문에 줄바꿈이 바뀌는 일이 없게 한다
+    const best = blks.map(b => {
+      b.style.overflow = 'hidden';
       let fs = this.FS_MAX;
       b.style.setProperty('--fs', fs + 'px');
-      while (fs > this.FS_MIN && b.scrollHeight > b.clientHeight + 1) { fs -= 0.5; b.style.setProperty('--fs', fs + 'px'); }
+      while (fs > this.FS_MIN && b.scrollHeight > b.clientHeight) { fs -= 0.5; b.style.setProperty('--fs', fs + 'px'); }
+      return fs;
+    });
+    const common = Math.max(this.FS_COMMON_MIN, Math.min(this.FS_MAX, ...best));
+    blks.forEach((b, i) => {
+      b.style.setProperty('--fs', Math.min(common, best[i]) + 'px');
+      b.style.overflow = '';   // CSS 기본(auto)으로 복귀 → 정말 넘칠 때만 스크롤
     });
   },
 
