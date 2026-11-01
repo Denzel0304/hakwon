@@ -271,8 +271,9 @@ const Classes = {
       if (cd.length < 2) return '';
       const sel = pd[sid] ? cd.filter(d => pd[sid].includes(d)) : cd;
       const part = sel.length && sel.length < cd.length;
-      return cd.map(d => `<button type="button" data-pkday="${d}" class="${(part ? sel.includes(d) : true) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('')
-        + (part ? `<em>${esc(daysLabel(sel))}만</em>` : '');
+      // '월만' 표시는 버튼 왼쪽에 둔다 (오른쪽 정렬이라 버튼 위치가 바뀌지 않음)
+      return (part ? `<em>${esc(daysLabel(sel))}만</em>` : '')
+        + cd.map(d => `<button type="button" data-pkday="${d}" class="${(part ? sel.includes(d) : true) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('');
     };
     // 학생 체크 목록: 적용일 기준 명단으로 체크하고, 그 날 수강 중이거나 예정인 학생은 상태와 관계없이 보여 준다
     const picksHtml = (date) => {

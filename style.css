@@ -213,7 +213,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .pick-list label:not(:has(input:checked)) .pkd { display: none; }
 .pick-list .pkd button { border: 1px solid var(--line-strong); background: #fff; color: var(--ink-mute); font-size: 12px; line-height: 1.5; padding: 0 7px; border-radius: 10px; cursor: pointer; }
 .pick-list .pkd button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-.pick-list .pkd em { font-style: normal; font-size: 11.5px; font-weight: 700; color: #A9650B; margin-left: 3px; }
+.pick-list .pkd em { font-style: normal; font-size: 11.5px; font-weight: 700; color: #A9650B; margin-right: 3px; }
 .tbl th.sortable:hover { color: var(--accent-ink); }
 .tbl th.sortable .ar { margin-left: 3px; font-size: 10.5px; color: var(--ink-mute); }
 .tbl th.sortable.on { color: var(--accent-ink); }

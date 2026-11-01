@@ -290,8 +290,9 @@ const Students = {
     const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
     if (cd.length < 2) return '';
     const part = sel && sel.length && sel.length < cd.length;
-    return cd.map(d => `<button type="button" data-ckday="${d}" class="${!part || sel.includes(d) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('')
-      + (part ? `<em>${esc(daysLabel(sel))}만</em>` : '');
+    // '월만' 표시는 버튼 왼쪽에 둔다 (오른쪽 정렬이라 버튼 위치가 바뀌지 않음)
+    return (part ? `<em>${esc(daysLabel(sel))}만</em>` : '')
+      + cd.map(d => `<button type="button" data-ckday="${d}" class="${!part || sel.includes(d) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('');
   },
   bindClassPick(b) {
     b.addEventListener('click', (e) => {
