@@ -83,6 +83,30 @@ const Classes = {
   rosterOnDow(classId, dow, date) {
     return this.rosterAt(classId, date).filter(s => { const d = this.partDays(classId, s.id, date); return !d || d.includes(dow); });
   },
+  // 적용일 이후, 이번에 빠지는 요일에 이미 출석 기록이 있는 날짜들 (요일이 실제로 바뀌는 경우만 확인)
+  // classDays: 반 수정 창처럼 아직 저장 전인 반 요일을 기준으로 볼 때
+  attConflicts(sid, cid, from, days, classDays) {
+    const c = Object.assign({}, Store.get('classes', cid) || {}, classDays ? { days: classDays } : {});
+    const nd = this.normDays(days, c);
+    if (!nd) return [];
+    const cur = Store.where('enrollments', e => e.studentId === sid && e.classId === cid && this.enrollValid(e, from))[0];
+    if (cur && this.sameDays(this.normDays(cur.days, c), nd)) return [];
+    return Store.where('lessons', l => l.classId === cid && l.date >= from && l.att && l.att[sid]
+      && (c.days || []).includes(dowOf(l.date)) && !nd.includes(dowOf(l.date))).map(l => l.date).sort();
+  },
+  // 위 기록이 있으면 확인 창 (기록은 지우지 않음). list: [{ sid, cid, from, days, classDays? }] → 진행하면 true
+  async confirmAttConflicts(list) {
+    const lines = [];
+    list.forEach(o => {
+      const ds = this.attConflicts(o.sid, o.cid, o.from, o.days, o.classDays);
+      if (!ds.length) return;
+      const st = Store.get('students', o.sid), c = Store.get('classes', o.cid);
+      const shown = ds.slice(0, 4).map(d => this.md(d) + '(' + DOW[dowOf(d)] + ')').join(', ');
+      lines.push(`· ${st ? st.name : ''}${c ? ' — ' + c.name : ''}: ${shown}${ds.length > 4 ? ` 외 ${ds.length - 4}건` : ''}`);
+    });
+    if (!lines.length) return true;
+    return confirmDlg(`적용일 이후, 빼는 요일에 이미 출석 기록이 있습니다.\n${lines.join('\n')}\n\n기록은 지우지 않고 그대로 둡니다.\n(출석부에는 “수강하지 않는 날” 칸에 그대로 보이고, 결석이면 보강 목록에도 남습니다)\n계속할까요?`, '계속');
+  },
   // from 날짜부터 이 반을 days 요일만(null = 모든 요일) 수강하도록 맞춘다. 요일이 바뀌면 기록을 그 날짜에서 나눈다.
   // openEnd: true면 끝날짜(빠짐 예정)를 없애 계속 수강하게 한다 (학생 화면의 '반 추가')
   // 돌려주는 값: 'added' / 'extended' / 'changed' 요일 변경 / 'exists' 이미 같은 요일로 수강 중
@@ -412,6 +436,8 @@ const Classes = {
             if (!await confirmDlg(`${nm} 학생은 수강하던 요일이 반에서 빠집니다.\n이 학생은 남은 모든 요일을 수강하도록 바뀝니다. 계속할까요?`, '계속')) return false;
             lost.forEach(sid => { pd[sid] = null; });
           }
+          // 과거 적용일: 빠지는 요일에 이미 출석 기록이 있으면 확인
+          if (c && !await this.confirmAttConflicts(checked0.filter(sid => pd[sid]).map(sid => ({ sid, cid: c.id, from: apply, days: pd[sid], classDays: days })))) return false;
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
             memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '',

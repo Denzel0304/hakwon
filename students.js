@@ -283,7 +283,38 @@ const Students = {
   classPickHtml(selected = []) {
     const cls = Store.all('classes').filter(c => c.active !== false).sort((a, b) => ko(a.start, b.start) || ko(a.name, b.name));
     if (!cls.length) return '<div class="muted small">만들어진 반이 없습니다. 반 관리에서 먼저 반을 만드세요.</div>';
-    return '<div class="pick-list">' + cls.map(c => `<label><input type="checkbox" name="cls" value="${c.id}" ${selected.includes(c.id) ? 'checked' : ''}>${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('') + '</div>';
+    return '<div class="pick-list">' + cls.map(c => `<label><input type="checkbox" name="cls" value="${c.id}" ${selected.includes(c.id) ? 'checked' : ''}>${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span><span class="pkd" data-ckd="${c.id}">${this.ckdHtml(c, null)}</span></label>`).join('') + '</div>';
+  },
+  // 수강반 목록의 요일 버튼 (반을 체크하면 보임, 끈 요일은 빼고 수강). sel: 켜진 요일, null = 전부
+  ckdHtml(c, sel) {
+    const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
+    if (cd.length < 2) return '';
+    const part = sel && sel.length && sel.length < cd.length;
+    return cd.map(d => `<button type="button" data-ckday="${d}" class="${!part || sel.includes(d) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('')
+      + (part ? `<em>${esc(daysLabel(sel))}만</em>` : '');
+  },
+  bindClassPick(b) {
+    b.addEventListener('click', (e) => {
+      const k = e.target.closest('[data-ckday]');
+      if (!k) return;
+      e.preventDefault();
+      const box = k.closest('[data-ckd]'), c = Store.get('classes', box.dataset.ckd);
+      if (!c) return;
+      const cd = DAY_ORDER.filter(d => (c.days || []).includes(d)), d = +k.dataset.ckday;
+      let sel = $$('button.on', box).map(x => +x.dataset.ckday);
+      sel = sel.includes(d) ? sel.filter(x => x !== d) : DAY_ORDER.filter(x => x === d || sel.includes(x));
+      if (!sel.length) { toast('최소 하루는 수강해야 합니다. 빼려면 반 체크를 푸세요'); return; }
+      box.innerHTML = this.ckdHtml(c, sel.length === cd.length ? null : sel);
+    });
+  },
+  // 체크한 반과 수강 요일: [{ cid, days }] (days = null 이면 모든 요일)
+  readClassPicks(b) {
+    return $$('[name=cls]:checked', b).map(i => {
+      const box = $(`[data-ckd="${i.value}"]`, b);
+      const all = box ? $$('button', box).length : 0;
+      const on = box ? $$('button.on', box).map(x => +x.dataset.ckday) : [];
+      return { cid: i.value, days: all && on.length < all ? on : null };
+    });
   },
 
   /* ---------- 신규 등록 ---------- */
@@ -292,7 +323,7 @@ const Students = {
       <label class="top">수강반</label><div>${this.classPickHtml()}</div></div>`;
     Modal.open({
       title: '학생 등록', body, size: 'md',
-      onMount: (b) => { enhanceAll(b); this.bindPhones(b); },
+      onMount: (b) => { enhanceAll(b); this.bindPhones(b); this.bindClassPick(b); },
       buttons: [
         { text: '취소' },
         { text: '연락처 저장', onClick: (m) => this.sendContact(m, m.body) },
@@ -304,7 +335,7 @@ const Students = {
           const s = Object.assign({ id: uid('ST'), status: 'active', joinDate, statusDate: joinDate, statusReason: '', schoolPending: false, createdAt: new Date().toISOString() }, info);
           Store.put('students', s);
           this.addLog(s.id, 'join', joinDate, '');
-          $$('[name=cls]:checked', b).forEach(i => Classes.enroll(s.id, i.value, joinDate));
+          this.readClassPicks(b).forEach(p => Classes.enrollDays(s.id, p.cid, joinDate, p.days, true));
           toast(s.name + ' 학생을 등록했습니다');
           App.render();
         } },
@@ -503,6 +534,7 @@ const Students = {
         if (!c) return;
         const r = await this.askDays(c, en, today);
         if (!r) return;
+        if (!await Classes.confirmAttConflicts([{ sid: s.id, cid: c.id, from: r.date, days: r.days }])) return;
         const res = Classes.enrollDays(s.id, c.id, r.date, r.days);
         toast(res === 'exists' ? '수강 요일이 그대로입니다' : (r.days && Classes.normDays(r.days, c) ? daysLabel(Classes.normDays(r.days, c)) + '요일만 수강하도록 바꿨습니다' : '모든 요일 수강으로 바꿨습니다'));
         this.renderPane(m, s.id); App.render();
@@ -525,6 +557,7 @@ const Students = {
         const dbox = $$('[data-adddays] input', pane);
         const days = dbox.filter(i => i.checked).map(i => +i.value);
         if (dbox.length && !days.length) { toast('수강할 요일을 하나 이상 고르세요'); return; }
+        if (dbox.length && !await Classes.confirmAttConflicts([{ sid: s.id, cid, from: d, days }])) return;
         const r = Classes.enrollDays(s.id, cid, d, dbox.length ? days : null, true);
         if (r === 'exists') { toast('그 날짜에 이미 이 반을 수강 중입니다'); return; }
         toast(r === 'extended' ? '기존 수강 기록에 이어서 반을 추가했습니다' : r === 'changed' ? '수강 요일을 바꿨습니다' : (d > today ? fmtDate(d, false) + '부터 수강하도록 예약했습니다' : '반을 추가했습니다'));
@@ -628,10 +661,12 @@ const Students = {
     </div><p class="small muted">${act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : act === 'leave' ? '퇴원일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : '선택한 반의 출석부에 날짜부터 들어갑니다.'}</p>`;
     Modal.open({
       title: s.name + ' · ' + titles[act], body,
-      onMount: (b) => enhanceAll(b),
-      buttons: [{ text: '취소' }, { text: titles[act], cls: act === 'leave' ? 'danger' : 'primary', primary: true, onClick: (m) => {
+      onMount: (b) => { enhanceAll(b); if (needCls) this.bindClassPick(b); },
+      buttons: [{ text: '취소' }, { text: titles[act], cls: act === 'leave' ? 'danger' : 'primary', primary: true, onClick: async (m) => {
         const d = $('[name=d]', m.body).value;
         if (!isYmd(d)) { toast('날짜를 선택하세요'); return false; }
+        const picks = needCls ? this.readClassPicks(m.body) : [];
+        if (picks.length && !await Classes.confirmAttConflicts(picks.map(p => ({ sid, cid: p.cid, from: d, days: p.days })))) return false;
         const cur = Store.get('students', sid);
         const future = d > todayStr();          // 미래 날짜면 예약 → 그 날짜가 되면 자동으로 상태가 바뀜
         const before = this.enSnap(sid);
@@ -645,7 +680,7 @@ const Students = {
             this.addLog(sid, act, d, reason, { undo });
           }
         } else {
-          $$('[name=cls]:checked', m.body).forEach(i => Classes.enroll(sid, i.value, d));
+          picks.forEach(p => Classes.enrollDays(sid, p.cid, d, p.days, true));
           if (future) Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason: '', undo: this.enDiff(before, sid) } }));
           else {
             Store.put('students', Object.assign({}, cur, { status: 'active', leftKind: '', statusDate: d, statusReason: '', sched: null }));
