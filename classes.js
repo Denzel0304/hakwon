@@ -518,7 +518,7 @@ const Timetable = {
           style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
           <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
           <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
-          <div class="sts-g">${this.groupedHtml(it.roster, it.up)}</div></div>`;
+          <div class="sts-g">${this.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
       });
       h += '</div>';
     });
@@ -563,7 +563,12 @@ const Timetable = {
   },
 
   // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
-  groupedHtml(roster, up) {
+  // partOf(학생ID, 날짜): 일부 요일 수강이면 그 요일 → 이름에 점선 밑줄
+  groupedHtml(roster, up, partOf) {
+    const nm = (s, date) => {
+      const d = partOf ? partOf(s.id, date) : null;
+      return d ? `<span class="pt" title="${esc(s.name + ' · ' + daysLabel(d) + '요일만 수강')}">${esc(s.name)}</span>` : esc(s.name);
+    };
     const groups = [];
     roster.forEach(s => {
       const t = stTag(s);
@@ -573,9 +578,9 @@ const Timetable = {
     const chip = (t) => t ? `<i class="sc">${esc(t)}</i>` : '';
     let out = groups.map(g => {
       const multi = g.list.length > 1, last = g.list.length - 1;
-      return g.list.map((s, i) => `<span class="n${i === last ? ' gl' : ''}" title="${esc(s.name + ' ' + g.t)}">${multi && i === 0 ? '(' : ''}${esc(s.name)}${i === last ? (multi ? ')' : '') + chip(g.t) : ''}</span>`).join(' ');
+      return g.list.map((s, i) => `<span class="n${i === last ? ' gl' : ''}" title="${esc(s.name + ' ' + g.t)}">${multi && i === 0 ? '(' : ''}${nm(s)}${i === last ? (multi ? ')' : '') + chip(g.t) : ''}</span>`).join(' ');
     }).join(' ');
-    if (up.length) out += ' ' + up.map(o => `<span class="n gl up" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${esc(o.s.name)}${chip(stTag(o.s))}<em>${Classes.md(o.from)}~</em></span>`).join(' ');
+    if (up.length) out += ' ' + up.map(o => `<span class="n gl up" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${nm(o.s, o.from)}${chip(stTag(o.s))}<em>${Classes.md(o.from)}~</em></span>`).join(' ');
     return out;
   },
 

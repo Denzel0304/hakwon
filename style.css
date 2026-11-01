@@ -381,6 +381,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 /* 학생 명단: 학교·학년별 묶음, 글씨 크기는 블록에 맞춰 자동 (--fs) */
 .tt2 .tt-blk .sts-g { font-size: var(--fs, 13px); line-height: 1.5; color: var(--ink); }
 .tt2 .tt-blk .sts-g .n { white-space: nowrap; }
+.tt2 .tt-blk .sts-g .pt { text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 3px; }   /* 일부 요일 수강 */
 .tt2 .tt-blk .sts-g .n.gl { margin-right: 6px; }
 .tt2 .tt-blk .sts-g .n.up { opacity: .55; }
 .tt2 .tt-blk .sts-g .sc {
