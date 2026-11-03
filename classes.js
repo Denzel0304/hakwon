@@ -1,6 +1,6 @@
 /* =========================================================
    classes.js — 반 관리 + 주간 시간표
-   class: { name, nameEdited, days:[0~6], start:'HH:MM', duration(분), memo, active }
+   class: { name, nameEdited, days:[0~6], start:'HH:MM', duration(분), memo, active, startDate(수업 시작일) }
    enrollment: { studentId, classId, from, to, days? }   ← from <= 날짜 < to 이면 수강 중
                days: 반의 일부 요일만 수강할 때 그 요일 [1] 등 (없으면 반의 모든 요일)
    ========================================================= */
@@ -43,6 +43,13 @@ const Classes = {
   },
 
   /* ---------- 공용 ---------- */
+  // 수업 시작일: 저장된 값, 없으면(예전에 만든 반) 반을 만든 날
+  startOf(c) {
+    if (!c) return '';
+    if (isYmd(c.startDate)) return c.startDate;
+    if (c.createdAt) { const d = new Date(c.createdAt); if (!isNaN(d)) return ymd(d); }
+    return '';
+  },
   enrollValid(e, date) { return e.from <= date && (!e.to || date < e.to); },
 
   /* ---------- 일부 요일 수강 ---------- */
@@ -286,7 +293,9 @@ const Classes = {
       if (!students.length) return '<div class="muted small" style="padding:6px">재원 중인 학생이 없습니다.</div>';
       return students.map(s => `<label data-nm="${esc((s.name + ' ' + stTag(s)).toLowerCase())}"><input type="checkbox" name="st" value="${s.id}" ${inIds.includes(s.id) ? 'checked' : ''}>${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${s.status !== 'active' ? ' ' + Students.statusBadge(s) : ''}${upFrom[s.id] ? ` <span class="small muted">${this.md(upFrom[s.id])}~ 예정</span>` : ''}<span class="pkd" data-pkd="${s.id}">${pkdHtml(s.id)}</span></label>`).join('');
     };
+    const startDate0 = (c && this.startOf(c)) || today;
     const body = `<div class="form">
+      <label class="req">수업 시작일</label><div class="row"><input type="date" name="startDate" value="${esc(startDate0)}"><span class="hint">이 날부터 일지를 쓰지 않은 수업이 달력에 표시됩니다</span></div>
       <label class="req">요일</label><div class="day-picks">${DAY_ORDER.map(d => `<label><input type="checkbox" name="day" value="${d}" ${(v.days || []).includes(d) ? 'checked' : ''}>${DOW[d]}</label>`).join('')}</div>
       <label class="req">시작 시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}">
         <span>수업 길이</span><input type="number" name="duration" min="10" max="600" step="5" value="${+v.duration || 90}"><span>분</span>
@@ -407,6 +416,8 @@ const Classes = {
           const start = $('[name=start]', b).value;
           const duration = Math.max(10, Math.min(600, +$('[name=duration]', b).value || 90));
           const apply = $('[name=apply]', b).value;
+          const startDate = $('[name=startDate]', b).value;
+          if (!isYmd(startDate)) { toast('수업 시작일을 선택하세요'); return false; }
           if (!days.length) { toast('요일을 하나 이상 고르세요'); return false; }
           if (!start) { toast('시작 시간을 입력하세요'); return false; }
           if (!isYmd(apply)) { toast('변경 적용일을 선택하세요'); return false; }
@@ -441,7 +452,7 @@ const Classes = {
           if (c && !await this.confirmAttConflicts(checked0.filter(sid => pd[sid]).map(sid => ({ sid, cid: c.id, from: apply, days: pd[sid], classDays: days })))) return false;
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
-            memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '',
+            memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '', startDate,
           });
           Store.put('classes', rec);
           const shown = $$('[name=st]', b).map(i => i.value);
@@ -468,6 +479,7 @@ const Classes = {
     Store.delWhere('todos', t => t.classId === cid);
     Store.delWhere('makeups', t => t.classId === cid);
     Store.delWhere('lessons', t => t.classId === cid);
+    Store.delWhere('meta', m => m.kind === 'lskip' && m.classId === cid);   // 일지 건너뛰기 표시
     Store.del('classes', cid);
   },
 };

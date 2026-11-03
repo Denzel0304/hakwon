@@ -3,6 +3,7 @@
    lesson: id = L_반ID_YYYYMMDD, { classId, date, progress, homework, memo, att:{학생ID:'P'|'L'|'A'|'E'} }
    todo:   { lessonId, classId, date(할일 날짜), text, done, createdAt }
    makeup: id = M_수업ID_학생ID, { lessonId, studentId, classId, absentDate, date, time, status, memo }
+   일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴' };
 const ATT_SHORT = { P: '출', L: '지', A: '결', E: '조' };
@@ -38,6 +39,59 @@ const Lessons = {
     list.forEach(l => Store.del('lessons', l.id));
     return list.length;
   },
+  /* ---------- 일지 작성 건너뛰기 (수업은 그대로, 일지만 쓰지 않음 · 취소 가능) ---------- */
+  skipId(classId, date) { return 'SK_' + classId + '_' + compactDate(date); },
+  skipOf(classId, date) { const r = Store.get('meta', this.skipId(classId, date)); return r && r.kind === 'lskip' ? r : null; },
+  isSkipped(classId, date) { return !!this.skipOf(classId, date); },
+  // 일지가 필요한데 작성도 건너뛰기도 안 한 수업인지
+  // (진행 중인 반 · 수업 시작일 ~ 오늘 · 정규 수업 요일 · 그 날 수강생이 있을 때)
+  needsLog(c, date) {
+    if (!c || c.active === false || date > todayStr()) return false;
+    const st = Classes.startOf(c);
+    if (!st || date < st) return false;
+    if (!(c.days || []).includes(dowOf(date))) return false;
+    if (this.isSaved(c.id, date) || this.isSkipped(c.id, date)) return false;
+    return Classes.rosterOn(c.id, date).length > 0;
+  },
+  // 건너뛰기 (사유는 선택). classIds: 여러 반을 한꺼번에 건너뛸 수 있다
+  askSkip(classIds, date) {
+    const ids = classIds.filter(id => Store.get('classes', id) && !this.isSaved(id, date));
+    if (!ids.length) return;
+    const names = ids.map(id => Store.get('classes', id).name);
+    Modal.open({
+      title: '일지 작성 건너뛰기', size: 'sm',
+      body: `<p class="small" style="margin-top:0"><b>${esc(fmtDate(date))}</b><br>${esc(names.join(', '))}</p>
+        <div class="lesson-field"><label>사유 (선택)</label><input type="text" name="reason" maxlength="60" placeholder="예: 휴강, 공휴일, 특강" style="width:100%"></div>
+        <p class="small muted" style="margin-bottom:0">건너뛴 수업은 달력에 일지 미작성으로 표시되지 않습니다. 나중에 취소할 수 있습니다.</p>`,
+      onMount: (b, m) => {
+        $('[name=reason]', b).addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const btn = $('[data-primary]', m.foot); if (btn) btn.click(); }
+        });
+      },
+      buttons: [
+        { text: '취소' },
+        { text: '건너뛰기', cls: 'primary', primary: true, onClick: (m) => {
+          const reason = $('[name=reason]', m.body).value.trim();
+          const now = new Date().toISOString();
+          ids.forEach(cid => { if (!this.isSaved(cid, date)) Store.put('meta', { id: this.skipId(cid, date), kind: 'lskip', classId: cid, date, reason, createdAt: now }); });
+          if (this.form && this.form.date === date && ids.includes(this.form.classId)) this.form = null;
+          toast(ids.length > 1 ? `수업 ${ids.length}개의 일지 작성을 건너뛰었습니다` : '일지 작성을 건너뛰었습니다');
+          App.render();
+        } },
+      ],
+    });
+  },
+  unskip(classId, date) {
+    if (!this.isSkipped(classId, date)) return;
+    Store.del('meta', this.skipId(classId, date));
+    toast('건너뛰기를 취소했습니다');
+    App.render();
+  },
+  // 건너뛰기 표시 (사유가 있으면 함께)
+  skipBadge(classId, date) {
+    const k = this.skipOf(classId, date);
+    return k ? `<span class="badge orange" title="${esc(k.reason || '사유 없음')}">일지 건너뜀${k.reason ? ' · ' + esc(k.reason) : ''}</span>` : '';
+  },
   classesOn(date) {
     const dow = dowOf(date);
     return Classes.sortedOn(Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)), dow);
@@ -58,35 +112,51 @@ const Lessons = {
     const ok = (id) => id && Store.get('classes', id) && !this.isSaved(id, date);
     let classId = ok(p.classId) ? p.classId : null;
     if (!classId && this.form && this.form.date === date && ok(this.form.classId)) classId = this.form.classId;
-    if (!classId) { const nx = sched.find(c => ok(c.id)); classId = nx ? nx.id : null; }
+    if (!classId) { const nx = sched.find(c => ok(c.id) && !this.isSkipped(c.id, date)); classId = nx ? nx.id : null; }
     if (!this.form || this.form.date !== date || this.form.classId !== classId) this.form = this.newForm(date, classId);
     const f = this.form;
     const savedCnt = sched.filter(c => this.isSaved(c.id, date)).length;
+    const skipCnt = sched.filter(c => !this.isSaved(c.id, date) && this.isSkipped(c.id, date)).length;
     const opt = (c) => {
       const sv = this.isSaved(c.id, date);
-      return `<option value="${c.id}" ${sv ? 'disabled' : ''} ${c.id === classId ? 'selected' : ''}>${sv ? '✓ ' : ''}${esc(c.name)} (${esc(Classes.timeOn(c, dowOf(date)).start)})${sv ? ' — 저장됨' : ''}</option>`;
+      const sk = !sv && this.isSkipped(c.id, date);
+      return `<option value="${c.id}" ${sv ? 'disabled' : ''} ${c.id === classId ? 'selected' : ''}>${sv ? '✓ ' : sk ? '⤼ ' : ''}${esc(c.name)} (${esc(Classes.timeOn(c, dowOf(date)).start)})${sv ? ' — 저장됨' : sk ? ' — 일지 건너뜀' : ''}</option>`;
     };
+    const skipped = classId && this.isSkipped(classId, date);
+    const leftCnt = sched.filter(c => !this.isSaved(c.id, date) && !this.isSkipped(c.id, date)).length;
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>수업일지</h1>
       <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
       <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
-      <span class="grow"></span>${classId ? '<button class="btn primary" data-save>저장</button>' : ''}</div>
+      <span class="grow"></span>${classId && !skipped ? '<button class="btn" data-skip>일지 건너뛰기</button><button class="btn primary" data-save>저장</button>' : ''}</div>
       <div class="toolbar"><select data-cls style="min-width:260px">
         ${classId ? '' : '<option value="" selected>입력할 반을 선택하세요</option>'}
         ${sched.length ? `<optgroup label="${DOW[dowOf(date)]}요일 수업">${sched.map(opt).join('')}</optgroup>` : ''}
         ${others.length ? `<optgroup label="다른 반">${others.map(opt).join('')}</optgroup>` : ''}
-      </select><span class="small muted">${sched.length ? `이 날 정규 수업 ${sched.length}개 중 ${savedCnt}개 저장` : '이 날은 정규 수업이 없습니다'}</span></div>`;
+      </select><span class="small muted">${sched.length ? `이 날 정규 수업 ${sched.length}개 중 ${savedCnt}개 저장${skipCnt ? ` · ${skipCnt}개 건너뜀` : ''}` : '이 날은 정규 수업이 없습니다'}</span>
+      ${leftCnt > 1 ? '<button class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 정규 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
 
     if (!classId) {
       h += `<div class="panel"><div class="empty">${sched.length && savedCnt === sched.length
         ? '이 날 정규 수업 일지를 모두 저장했습니다. 수정은 진도·출석부 탭에서 하세요.'
-        : '입력할 반을 선택하세요.'}</div></div></div>`;
+        : sched.length && savedCnt + skipCnt === sched.length
+          ? '이 날 정규 수업 일지를 모두 저장하거나 건너뛰었습니다. 건너뛴 수업을 쓰려면 위 목록에서 고른 뒤 건너뛰기를 취소하세요.'
+          : '입력할 반을 선택하세요.'}</div></div></div>`;
       main.innerHTML = h;
       this.bind(main, date, null);
       return;
     }
 
     const c = Store.get('classes', classId);
+    if (skipped) {
+      const k = this.skipOf(classId, date);
+      h += `<div class="panel"><div class="empty">${Classes.dot(c)}<b>${esc(c.name)}</b> · ${fmtDate(date)} 수업은 일지 작성을 건너뛰었습니다.
+        <div style="margin-top:6px">${k.reason ? '사유: <b>' + esc(k.reason) + '</b>' : '<span class="muted">사유 없음</span>'}</div>
+        <div style="margin-top:12px"><button class="btn" data-unskip>건너뛰기 취소하고 일지 쓰기</button></div></div></div></div>`;
+      main.innerHTML = h;
+      this.bind(main, date, classId);
+      return;
+    }
     const roster = Classes.rosterOn(classId, date);
     const cnt = { P: 0, L: 0, A: 0, E: 0, none: 0 };
     roster.forEach(s => { const a = f.att[s.id]; if (a) cnt[a]++; else cnt.none++; });
@@ -126,7 +196,19 @@ const Lessons = {
         else go(addDaysStr(date, a.dataset.a === 'prev' ? -1 : 1), null);
         return;
       }
+      if (e.target.closest('[data-skipall]')) {
+        this.askSkip(this.classesOn(date).filter(c => !this.isSaved(c.id, date) && !this.isSkipped(c.id, date)).map(c => c.id), date);
+        return;
+      }
       if (!classId) return;
+      if (e.target.closest('[data-unskip]')) { this.unskip(classId, date); go(date, classId); return; }
+      if (e.target.closest('[data-skip]')) {
+        // 입력하던 내용이 있으면 버려진다는 확인
+        const has = Object.keys(f.att).length || [f.progress, f.homework, f.memo].some(v => stripZws(v || '').trim()) || f.todos.some(t => t.text.trim());
+        (has ? confirmDlg('입력한 내용은 저장되지 않고 버려집니다.\n일지 작성을 건너뛸까요?', '계속') : Promise.resolve(true))
+          .then(go2 => { if (go2) this.askSkip([classId], date); });
+        return;
+      }
       if (e.target.closest('[data-save]')) { this.save(); return; }
       if (e.target.closest('[data-clearatt]')) { f.att = {}; App.render(); return; }
       if (e.target.closest('[data-allp]')) {
@@ -179,6 +261,7 @@ const Lessons = {
     const id = this.lessonId(f.classId, f.date);
     if (this.isSaved(f.classId, f.date)) { toast('이미 저장된 수업입니다. 수정은 진도 탭에서 하세요'); this.form = null; App.go('lessons', { date: f.date }); return; }
     Store.put('lessons', { id, classId: f.classId, date: f.date, progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) });
+    if (this.isSkipped(f.classId, f.date)) Store.del('meta', this.skipId(f.classId, f.date));   // 일지를 쓰면 건너뛰기 표시는 없앤다
     const now = Date.now();
     const todos = f.todos.filter(d => d.text.trim());
     todos.forEach((d, i) => Store.put('todos', { id: uid('TD'), lessonId: id, classId: f.classId, date: isYmd(d.date) ? d.date : f.date, text: d.text.trim(), done: false, createdAt: new Date(now + i).toISOString() }));
@@ -194,30 +277,17 @@ const Lessons = {
    출석부 — 반별·월별 표 (칸을 누르면 바로 수정)
    ========================================================= */
 const AttBook = {
-  classId: '',
   month: '',
   extra: {},           // 정규 수업일이 아닌데 직접 추가한 날짜 { '반ID|날짜': 1 } (출석부를 떠나면 사라짐, 체크하면 기록으로 남음)
   CYCLE: ['', 'P', 'L', 'A', 'E'],
   onLeave() { this.extra = {}; },
 
-  render(main, p) {
-    const classes = Classes.sorted(Store.all('classes')).sort((a, b) => (a.active === false) - (b.active === false));
-    if (p.classId) this.classId = p.classId;
-    if (!this.classId || !Store.get('classes', this.classId)) this.classId = classes[0] ? classes[0].id : '';
-    if (!this.month) this.month = App.selDate.slice(0, 7);
-    const [Y, M] = this.month.split('-').map(Number);
-    let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
-      ${Store.get('classes', this.classId) ? Classes.dot(Store.get('classes', this.classId)) : ''}<select data-cls>${classes.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select>
-      <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button>
-      ${this.classId ? '<button class="btn sm" data-addday title="보강 등 정규 수업일이 아닌 날의 출석을 체크할 때">+ 날짜 추가</button>' : ''}</div>`;
-    if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 관리에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
-    const c = Store.get('classes', this.classId);
+  // 이 달 한 반의 날짜·학생 (정규 수업일 + 기록이 있는 날 + 직접 추가한 날)
+  monthData(c, Y, M) {
     const last = new Date(Y, M, 0).getDate();
     const dates = [];
     for (let d = 1; d <= last; d++) {
       const ds = Y + '-' + pad(M) + '-' + pad(d);
-      // 정규 수업일 + 기록이 있는 날 + 직접 추가한 날
       if ((c.days || []).includes(dowOf(ds)) || Lessons.isSaved(c.id, ds) || this.extra[c.id + '|' + ds]) dates.push(ds);
     }
     const sids = new Set();
@@ -227,15 +297,14 @@ const AttBook = {
       if (l) Object.keys(l.att || {}).forEach(id => sids.add(id));
     });
     const studs = [...sids].map(id => Store.get('students', id)).filter(Boolean).sort((a, b) => Students.sortFn(a, b));
+    return { dates, studs };
+  },
+
+  // 반 하나의 출석표
+  tableHtml(c, dates, studs) {
     const enrolledOn = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.classId === c.id && Classes.attendsOn(e, d, c)).length > 0;
     const today = todayStr();
-
-    h += `<div class="toolbar small soft"><span>${esc(Classes.timeLabel(c))}</span><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 보강 등 다른 날은 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요.</span></div>`;
-    if (!dates.length || !studs.length) {
-      h += `<div class="panel"><div class="empty">${!dates.length ? '이 달에 수업 날짜가 없습니다.' : '이 달에 이 반 수강생이 없습니다.'}</div></div></div>`;
-      main.innerHTML = h; this.bind(main); return;
-    }
-    h += `<div class="tbl-wrap"><table class="tbl compact ab"><thead><tr><th class="ab-name">이름</th>${dates.map(d => {
+    let h = `<div class="tbl-wrap"><table class="tbl compact ab"><thead><tr><th class="ab-name">이름</th>${dates.map(d => {
       const sv = Lessons.isSaved(c.id, d);
       const reg = (c.days || []).includes(dowOf(d));
       return `<th class="ab-d ${d === today ? 'today' : ''} ${reg ? 'reg' : 'offday'} ${dowOf(d) === 0 ? 'sun' : ''}" title="${reg ? '정규 수업일' : '정규 수업일 아님'}${sv ? ' · 기록 있음' : ''}">${+d.slice(8)}<small>${DOW[dowOf(d)]}</small></th>`;
@@ -249,11 +318,39 @@ const AttBook = {
         if (st) sum[st]++;
         const out = !enrolledOn(s.id, d);
         const reg = (c.days || []).includes(dowOf(d));
-        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강하지 않는 날' : ''}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
+        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-cid="${c.id}" data-d="${d}" data-sid="${s.id}" title="${out ? '수강하지 않는 날' : ''}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
       });
       h += `<td class="num">${sum.P}</td><td class="num">${sum.L}</td><td class="num">${sum.A}</td><td class="num">${sum.E}</td></tr>`;
     });
-    h += '</tbody></table></div></div>';
+    return h + '</tbody></table></div>';
+  },
+
+  render(main) {
+    if (!this.month) this.month = App.selDate.slice(0, 7);
+    const [Y, M] = this.month.split('-').map(Number);
+    let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
+      <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
+      <button class="btn sm" data-m="0">이번 달</button></div>`;
+    const all = Classes.sorted(Store.all('classes'));
+    if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 관리에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
+    // 진행 중인 반은 모두, 종료된 반은 이 달에 기록이 있을 때만 (맨 아래)
+    const act = all.filter(c => c.active !== false);
+    const ended = all.filter(c => c.active === false).filter(c => {
+      const pre = this.month + '-';
+      return Store.where('lessons', l => l.classId === c.id && String(l.date).startsWith(pre) && !Lessons.isEmpty(l)).length
+        || Object.keys(this.extra).some(k => k.startsWith(c.id + '|' + pre));
+    });
+    h += `<div class="toolbar small soft"><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 보강 등 다른 날은 반마다 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요.</span></div>`;
+    [...act, ...ended].forEach(c => {
+      const { dates, studs } = this.monthData(c, Y, M);
+      h += `<div class="panel ab-sec" data-sec="${c.id}"><div class="ab-sec-head"><h2>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
+        <span class="sub">${esc(Classes.timeLabel(c))}</span></h2><span class="grow"></span>
+        <button class="btn sm" data-addday="${c.id}" title="보강 등 정규 수업일이 아닌 날의 출석을 체크할 때">+ 날짜 추가</button></div>`;
+      if (!dates.length || !studs.length) h += `<div class="empty">${!dates.length ? '이 달에 수업 날짜가 없습니다.' : '이 달에 이 반 수강생이 없습니다.'}</div>`;
+      else h += this.tableHtml(c, dates, studs);
+      h += '</div>';
+    });
+    h += '</div>';
     main.innerHTML = h;
     this.bind(main);
   },
@@ -268,7 +365,7 @@ const AttBook = {
       }
       const cell = e.target.closest('td[data-d]');
       if (cell) {
-        const l = Lessons.getOrNew(this.classId, cell.dataset.d);
+        const l = Lessons.getOrNew(cell.dataset.cid, cell.dataset.d);
         const att = Object.assign({}, l.att || {});
         const cur = att[cell.dataset.sid] || '';
         const next = this.CYCLE[(this.CYCLE.indexOf(cur) + 1) % this.CYCLE.length];
@@ -280,18 +377,19 @@ const AttBook = {
         App.render();
         return;
       }
-      if (e.target.closest('[data-addday]')) {
-        const cid = this.classId;
+      const ad = e.target.closest('[data-addday]');
+      if (ad) {
+        const cid = ad.dataset.addday;
         DatePicker.open(todayStr().startsWith(this.month) ? todayStr() : this.month + '-01', '출석 체크할 날짜 추가').then(d => {
-          if (!isYmd(d) || this.classId !== cid) return;
+          if (!isYmd(d) || !Store.get('classes', cid)) return;
           this.extra[cid + '|' + d] = 1;
           this.month = d.slice(0, 7);
           App.render();
+          const sec = $(`[data-sec="${cid}"]`, $('#main')); if (sec) sec.scrollIntoView({ block: 'start' });
         });
       }
     };
     main.onchange = (e) => {
-      if (e.target.matches('[data-cls]')) { this.classId = e.target.value; App.render(); }
       if (e.target.matches('[data-month]') && /^\d{4}-\d{2}$/.test(e.target.value)) { this.month = e.target.value; App.render(); }
     };
   },

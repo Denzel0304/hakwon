@@ -86,6 +86,9 @@ const MiniCal = {
     const last = new Date(y, m + 1, 0);
     const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
     const today = todayStr();
+    // 일지 미작성 수업이 있는 날 (오늘까지, 보이는 칸만 계산)
+    const actCls = Store.all('classes').filter(c => c.active !== false);
+    const noLog = (k) => k <= today && actCls.some(c => Lessons.needsLog(c, k));
     let h = `<div class="mc-head">
       <button class="mc-nav" data-mc="prev" aria-label="이전 달">‹</button>
       <div class="mc-title">${y}년 ${m + 1}월</div>
@@ -106,9 +109,10 @@ const MiniCal = {
         if (o.late) dots += '<i class="dot-late"></i>';
         if (o.todo) dots += '<i class="dot-todo"></i>';
       }
+      if (noLog(k)) dots += '<i class="dot-nolog"></i>';
       h += `<button class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
     }
-    h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span></div>`;
+    h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span><span><i class="dot-nolog"></i>일지 미작성</span></div>`;
     el.innerHTML = h;
     if (!this.bound) {
       this.bound = true;
@@ -290,17 +294,20 @@ const DayPage = {
     if (tops.length) h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;align-items:start">${tops.map(t => t.replace('<div class="panel">', '<div class="panel" style="margin-top:0">')).join('')}</div>`;
 
     // 왼쪽: 수업 / 오른쪽: 할일 (+ 밀린 할일). 내용이 많으면 아래로 늘어난다.
+    const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
     h += `<div class="grid-2" style="align-items:start"><div>
-      <div class="panel"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span></h2>`;
+      <div class="panel"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span>${unwritten.length > 1 ? '<button class="btn sm ghost" data-skipall style="float:right;margin-top:-3px" title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</h2>`;
     h += classes.length ? '<div class="list">' + classes.map(c => {
       const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
+      const sk = !les && Lessons.isSkipped(c.id, date);
       const roster = Classes.rosterOn(c.id, date);
       const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
         <div class="what">${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
-        ${les ? '<span class="badge green">작성 완료</span>' : '<span class="badge gray">일지 작성 전</span>'}
-        ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div></div>`;
+        ${les ? '<span class="badge green">작성 완료</span>' : sk ? Lessons.skipBadge(c.id, date) : '<span class="badge gray">일지 작성 전</span>'}
+        ${les && checked ? `<span class="badge">출석 ${checked}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div>
+        ${les ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
     h += `</div></div><div>
       <div class="panel todo-panel"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
@@ -319,6 +326,12 @@ const DayPage = {
         App.pickDate(act === 'today' ? today : addDaysStr(date, act === 'prev' ? -1 : 1));
         return;
       }
+      if (e.target.closest('[data-skipall]')) {
+        Lessons.askSkip(Lessons.classesOn(date).filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date)).map(c => c.id), date);
+        return;
+      }
+      const sk = e.target.closest('[data-skip]'); if (sk) { Lessons.askSkip([sk.dataset.skip], date); return; }
+      const us = e.target.closest('[data-unskip]'); if (us) { Lessons.unskip(us.dataset.unskip, date); return; }
       if (Todos.handleClick(e)) return;
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
       const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); }

@@ -118,6 +118,7 @@ body.app-on #mg-app { display: flex; }
 .dot-etc { background: var(--etc); }
 .dot-todo { background: var(--accent); }
 .dot-late { background: var(--danger); }
+.dot-nolog { background: var(--warn); }            /* 일지 미작성 수업 */
 .mc-day.sel .mc-dots i { box-shadow: 0 0 0 1.5px #fff; }
 .mc-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
 .mc-legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -466,6 +467,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl.ab td.ab-c:hover .dash { color: var(--accent); }
 .tbl.ab .ab-name { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
 .tbl.ab th.ab-name { background: #F7FBFE; }
+/* 출석부: 반별 구역 */
+.ab-sec { margin-top: 14px; }
+.ab-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ab-sec-head h2 { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.ab-sec-head .grow { flex: 1; }
 .tbl tr.hl td { background: #FFF8DC; }
 
 /* ---------- 보강 ---------- */
