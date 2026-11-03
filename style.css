@@ -572,3 +572,49 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .wrong-err { color: var(--danger); font-size: 12.5px; min-height: 18px; }
 .score-in { width: 80px !important; }
 .top-wrong { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* =========================================================
+   내신 진도 (수업일지 · 진도 요약 · 시험 범위)
+   ========================================================= */
+.np-on { margin: 0 0 6px; font-weight: 700; color: var(--accent-ink); }
+.np-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #F9FCFE; }
+.np-exams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+.np-ex, .np-auto { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 16px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+.np-ex small { color: var(--ink-mute); margin-left: 2px; }
+.np-ex.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.np-ex.on small { color: #E4F1FB; }
+.np-auto { color: var(--ink-soft); border-style: dashed; }
+.np-mat, .np-dist, .np-ritem, .np-srow { border-top: 1px dashed var(--line); padding: 8px 0 4px; }
+.np-ritem:first-child { border-top: 0; padding-top: 0; }
+.np-mhead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 5px; font-size: 14px; }
+.np-tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: #EEF2F5; color: var(--ink-soft); white-space: nowrap; }
+.np-tag.mock { background: var(--warn-soft); color: #A9650B; }
+.np-tag.text { background: var(--ok-soft); color: var(--ok); }
+.np-tag.sub { background: var(--early-soft); color: var(--early); }
+.np-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 3px 0; }
+.np-c { min-width: 30px; padding: 3px 7px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 6px; font-size: 13px; cursor: pointer; line-height: 1.4; }
+.np-c.sm { font-size: 12.5px; padding: 2px 7px; }
+.np-c i { font-style: normal; font-size: 11px; color: var(--warn); margin-left: 3px; }
+.np-c:hover { border-color: var(--accent); }
+.np-c.done { background: #E3F2EA; border-color: #A9D8BE; color: var(--ok); }
+.np-c.done.man { background: #EEF7F1; border-style: dashed; }
+.np-c.part { background: var(--warn-soft); border-color: #EBC78E; color: #A9650B; }
+.np-c.prep { background: #E7F0FA; border-color: #9DC3E6; color: var(--accent-ink); }
+.np-c.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.np-ul { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin-right: 2px; white-space: nowrap; }
+.np-grp { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; margin-right: 8px; }
+.np-urow { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.np-urow input[type=text] { flex: 1; min-width: 140px; }
+.np-drow { display: grid; grid-template-columns: 1fr auto; gap: 4px 6px; padding: 6px 0; border-bottom: 1px dotted var(--line); }
+.np-drow .np-chips, .np-drow [data-np-dmemo] { grid-column: 1 / -1; }
+.np-legend { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.np-legend .np-c { cursor: default; font-size: 11.5px; padding: 1px 6px; }
+.np-err { color: var(--danger); }
+.np-line { font-size: 12.5px; color: var(--accent-ink); margin-top: 3px; white-space: normal; }
+.np-line.dist { color: var(--early); }
+.np-sum h2 { margin-bottom: 8px; }
+.np-sgrid { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 10px; align-items: start; }
+.np-sl { font-size: 12.5px; color: var(--ink-mute); padding-top: 5px; }
+.np-sgrid .np-chips { margin: 0; }
+.mk-dist { display: flex; margin: 2px 0; }
+.mk-dist.got { color: var(--ink-mute); text-decoration: line-through; }
