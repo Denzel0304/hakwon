@@ -216,7 +216,15 @@ const Classes = {
     });
     return gs.map(g => g.start ? daysLabel(g.days) + ' ' + nameTime(g.start) : daysLabel(g.days)).join(' · ');
   },
-  sorted(list) { return list.sort((a, b) => ko(a.start, b.start) || ko(daysLabel(a.days), daysLabel(b.days)) || ko(a.name, b.name)); },
+  // 반 순서: 첫 수업 요일(월→일) → 그 요일의 시작 시간 → 요일 이름 → 반 이름
+  firstDay(c) { const d = DAY_ORDER.find(x => (c.days || []).includes(x)); return d == null ? null : d; },
+  sorted(list) {
+    const key = (c) => { const d = this.firstDay(c); return d == null ? [99, ''] : [DAY_ORDER.indexOf(d), this.timeOn(c, d).start || '']; };
+    return list.sort((a, b) => {
+      const ka = key(a), kb = key(b);
+      return ka[0] - kb[0] || ko(ka[1], kb[1]) || ko(daysLabel(a.days), daysLabel(b.days)) || ko(a.name, b.name);
+    });
+  },
   sortedOn(list, dow) { return list.sort((a, b) => ko(this.timeOn(a, dow).start, this.timeOn(b, dow).start) || ko(a.name, b.name)); },
 
   /* ---------- 반 관리 화면 ---------- */
