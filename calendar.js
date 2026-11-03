@@ -1,32 +1,48 @@
 /* =========================================================
-   calendar.js — 일정(시험 일정·직전 보강·주말 보강·기타) / 미니 달력 / 큰 달력 / 날짜 요약 / 일정 탭
+   calendar.js — 일정(시험 일정·직전 보강·영어 시험·기타) / 미니 달력 / 큰 달력 / 날짜 요약 / 일정 탭
    event: { type:'exam'|'pre'|'weekend'|'etc', date(시작일), endDate(기간일 때 끝날, 아니면 ''),
-            start, end(시간, 선택), school, grade, title, memo }
+            start, end(시간, 선택), school, grades:[학년…](선택, 여러 개), title, memo }
+   ※ 예전 기록의 grade(학년 하나)도 그대로 읽는다 (evGrades)
+   ※ 영어 시험의 저장 키는 예전 이름 'weekend'를 그대로 쓴다 (하루짜리 일정)
    ※ 시험정보 탭(시험 범위 기록)과 일정의 '시험 일정'(달력 알림)은 서로 별개
    ========================================================= */
 const EVENT_TYPES = {
   exam: { label: '시험 일정' },
   pre: { label: '직전 보강' },
-  weekend: { label: '주말 보강' },
+  weekend: { label: '영어 시험' },      // 키는 예전 '주말 보강'의 것을 그대로 사용
   etc: { label: '기타 일정' },
 };
 const EXAM_KIND = { mid: '중간', final: '기말' };
-const NEED_TIME = { pre: true, weekend: true };   // 보강은 시간 필수
+const NEED_TIME = { pre: true };          // 직전 보강만 시간 필수
+const ONE_DAY = { weekend: true };        // 영어 시험은 하루짜리 (기간 없음)
 
 // 시험정보(시험 범위 기록) 표시용
 function examTitle(ex) {
   return schoolGradeLabel(ex.school, ex.grade).replace(/^학교미정 /, '') + ' ' + (EXAM_KIND[ex.kind] || '') + '고사';
 }
 function evType(ev) { return EVENT_TYPES[ev.type] ? ev.type : 'etc'; }
+// 일정의 학년 목록 (예전 기록은 grade 하나)
+function evGrades(ev) {
+  const gs = Array.isArray(ev.grades) ? ev.grades : (ev.grade ? [ev.grade] : []);
+  return [...new Set(gs.map(Number).filter(Boolean))].sort((a, b) => a - b);
+}
+// 학교가 있으면 "1·2", 없으면 "고1·2" / 학교급이 섞이면 "중3·고1"
+function gradesLabel(gs, withLevel) {
+  if (!gs.length) return '';
+  if (!withLevel) return gs.map(gradeNum).join('·');
+  const pre = (g) => gradeLabel(g).slice(0, 1);
+  return gs.map((g, i) => (i && pre(g) === pre(gs[i - 1]) ? gradeNum(g) : gradeLabel(g))).join('·');
+}
 function eventTarget(ev) {
-  if (ev.school) return schoolShort(ev.school) + (ev.grade ? gradeNum(ev.grade) : '');
-  return ev.grade ? gradeLabel(ev.grade) : '';
+  const gs = evGrades(ev);
+  if (ev.school) return schoolShort(ev.school) + gradesLabel(gs, false);
+  return gradesLabel(gs, true);
 }
 function eventTitle(ev) {
   const tg = eventTarget(ev);
   return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
 }
-// 달력 띠·칸에 쓰는 짧은 이름: "금천고1 기말" / "주말 보강 금천고1"
+// 달력 띠·칸에 쓰는 짧은 이름: "금천고1·2 기말" / "영어 시험 금천고1"
 function eventShort(ev) {
   const tg = eventTarget(ev);
   if (evType(ev) === 'exam') return (tg ? tg + ' ' : '') + (ev.title || '시험');
@@ -46,7 +62,7 @@ function eventRangeLabel(ev) { return isRange(ev) ? fmtMD(ev.date) + ' ~ ' + fmt
 
 // 기간 띠 색: 같은 학교·학년의 같은 종류(·제목)는 같은 색
 const BAR_COLORS = ['#DC5359', '#2B7FC1', '#2A9468', '#8A6CCB', '#D68A1C', '#1F98A6', '#C2537C', '#5C7F2C', '#3E5FBF', '#A0662B'];
-function barKey(ev) { return evType(ev) + '|' + (ev.school || '') + '|' + (ev.grade || '') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id); }
+function barKey(ev) { return evType(ev) + '|' + (ev.school || '') + '|' + evGrades(ev).join(',') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id); }
 // 화면에 보이는 기간 일정들에 색을 차례로 배정 → 서로 다른 일정은 다른 색
 function barColorMap(list) {
   const map = {};
@@ -394,21 +410,22 @@ const EventModal = {
   open(id, preset = {}) {
     const ev = id ? Store.get('events', id) : null;
     const d0 = preset.date || App.selDate;
-    const v = ev || Object.assign({ type: '', date: d0, endDate: '', start: '', end: '', school: '', grade: '', title: '', memo: '' }, preset);
+    const v = ev || Object.assign({ type: '', date: d0, endDate: '', start: '', end: '', school: '', grades: [], title: '', memo: '' }, preset);
+    let grades = evGrades(v);          // 고른 학년 (여러 개)
     const ranged = isRange(v);
     const body = `<div class="form ev-form">
       <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type && evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
       <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
-        <label class="chk"><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
+        <label class="chk" data-rangedwrap><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
       <label data-timelabel>시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}"> ~ <input type="time" name="end" step="300" value="${esc(v.end)}"></div>
-      <label>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><select name="grade">${gradeOptions(v.grade, '학년 선택 안 함')}</select></div>
+      <label>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
       <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>
     </div>`;
     Modal.open({
       title: ev ? '일정 수정' : '일정 추가', body,
-      onMount: (b) => {
+      onMount: (b, m) => {
         enhanceAll(b);
         bindCombo($('[name=school]', b), schoolOptions);
         const chk = $('[name=ranged]', b), endIn = $('[name=endDate]', b), wrap = $('[data-endwrap]', b), dIn = $('[name=date]', b);
@@ -418,10 +435,62 @@ const EventModal = {
           if (chk.checked && (!endIn.value || endIn.value <= dIn.value) && isYmd(dIn.value)) endIn.value = addDaysStr(dIn.value, 1);
         };
         chk.addEventListener('change', sync);
-        const tl = $('[data-timelabel]', b);
-        const typeSync = () => { const t = $('[name=type]:checked', b); tl.classList.toggle('req', !!(t && NEED_TIME[t.value])); };
+        const tl = $('[data-timelabel]', b), rw = $('[data-rangedwrap]', b);
+        const typeSync = () => {
+          const t = $('[name=type]:checked', b);
+          tl.classList.toggle('req', !!(t && NEED_TIME[t.value]));
+          // 영어 시험은 하루짜리: 기간 끄고 숨김
+          const one = !!(t && ONE_DAY[t.value]);
+          rw.style.display = one ? 'none' : '';
+          if (one && chk.checked) { chk.checked = false; sync(); }
+          wrap.style.display = one ? 'none' : '';
+        };
         b.addEventListener('change', (e) => { if (e.target.name === 'type') typeSync(); });
         typeSync();
+
+        // 학년 여러 개 고르기 (누르면 펼쳐지는 체크 목록, 선택 안 해도 됨)
+        const gBtn = $('[data-gsel]', b), schIn = $('[name=school]', b);
+        const drawBtn = () => { gBtn.textContent = grades.length ? gradesLabel(grades, true) : '학년 선택 안 함'; gBtn.classList.toggle('empty', !grades.length); };
+        // 학교 이름으로 학교급을 짐작해 그 학년만 보여 준다 (이미 고른 학년은 항상 보임)
+        const gradeList = () => {
+          const sc = schoolShort(schIn.value);
+          const lv = /고$/.test(sc) ? GRADES.filter(isHigh) : /중$/.test(sc) ? GRADES.filter(isMiddle) : /초$/.test(sc) ? GRADES.filter(g => g <= 6) : GRADES;
+          return GRADES.filter(g => lv.includes(g) || grades.includes(g));
+        };
+        let pop = null;
+        const hidePop = () => {
+          if (!pop) return;
+          pop.remove(); pop = null;
+          document.removeEventListener('mousedown', outside, true);
+          document.removeEventListener('keydown', escKey, true);
+        };
+        const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== gBtn) hidePop(); };
+        const escKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hidePop(); } };
+        const drawPop = () => {
+          pop.innerHTML = gradeList().map(g => `<label class="combo-item msel-item"><input type="checkbox" data-g="${g}" ${grades.includes(g) ? 'checked' : ''}>${gradeLabel(g)}</label>`).join('')
+            + `<div class="combo-item msel-clear" data-gclear>선택 해제</div>`;
+        };
+        gBtn.addEventListener('click', () => {
+          if (pop) { hidePop(); return; }
+          pop = document.createElement('div');
+          pop.className = 'combo-box msel-pop';
+          drawPop();
+          const r = gBtn.getBoundingClientRect();
+          pop.style.left = r.left + 'px'; pop.style.top = (r.bottom + 2) + 'px'; pop.style.minWidth = r.width + 'px';
+          document.body.appendChild(pop);
+          document.addEventListener('mousedown', outside, true);
+          document.addEventListener('keydown', escKey, true);
+          pop.addEventListener('change', (e) => {
+            const g = +e.target.dataset.g; if (!g) return;
+            grades = e.target.checked ? [...new Set([...grades, g])].sort((x, y) => x - y) : grades.filter(x => x !== g);
+            drawBtn();
+          });
+          pop.addEventListener('click', (e) => { if (e.target.closest('[data-gclear]')) { grades = []; drawBtn(); drawPop(); } });
+        });
+        b.closest('.mg-modal-body').addEventListener('scroll', hidePop, { passive: true });
+        schIn.addEventListener('input', hidePop);
+        m.onClose = hidePop;            // 모달을 닫으면 펼친 목록도 닫는다
+        drawBtn();
       },
       buttons: [
         ...(ev ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
@@ -440,17 +509,19 @@ const EventModal = {
             start: $('[name=start]', b).value,
             end: $('[name=end]', b).value,
             school: $('[name=school]', b).value.trim(),
-            grade: $('[name=grade]', b).value ? +$('[name=grade]', b).value : '',
+            grades: grades.slice(),
             title: $('[name=title]', b).value.trim(),
             memo: stripZws($('[name=memo]', b).value),
           });
+          delete rec.grade;                                   // 예전 학년 하나 필드는 grades로 대체
+          if (ONE_DAY[rec.type]) rec.endDate = '';            // 영어 시험은 하루짜리
           if (!isYmd(rec.date)) { toast('날짜를 선택하세요'); return false; }
-          if (ranged2) {
+          if (ranged2 && !ONE_DAY[rec.type]) {
             if (!isYmd(rec.endDate)) { toast('끝나는 날짜를 선택하세요'); return false; }
             if (rec.endDate < rec.date) { toast('끝나는 날짜가 시작일보다 빠릅니다'); return false; }
             if (rec.endDate === rec.date) rec.endDate = '';
           }
-          if (NEED_TIME[rec.type] && !rec.start) { toast('보강은 시작 시간을 입력하세요'); return false; }
+          if (NEED_TIME[rec.type] && !rec.start) { toast('직전 보강은 시작 시간을 입력하세요'); return false; }
           if (rec.end && !rec.start) { toast('시작 시간을 입력하세요'); return false; }
           if (rec.start && rec.end && rec.end <= rec.start) { toast('종료 시간이 시작 시간보다 늦어야 합니다'); return false; }
           Store.put('events', rec);
@@ -478,7 +549,7 @@ const EventsPage = {
         if (pa !== pb) return pa ? 1 : -1;                 // 다가오는 일정 먼저
         return pa ? ko(b.date, a.date) : ko(a.date, b.date) || ko(a.start, b.start);
       });
-    let h = `<div class="page-head"><h1>일정</h1><button class="btn primary" data-a="add">+ 일정 추가</button><span class="sub">시험 일정 · 직전 보강 · 주말 보강 · 기타</span></div>
+    let h = `<div class="page-head"><h1>일정</h1><button class="btn primary" data-a="add">+ 일정 추가</button><span class="sub">시험 일정 · 직전 보강 · 영어 시험 · 기타</span></div>
       <div class="toolbar"><select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
       <input type="search" data-q value="${esc(this.q)}" placeholder="학교, 제목, 메모 검색" style="width:240px">
       <label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label>
