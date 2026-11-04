@@ -506,7 +506,9 @@ const Timetable = {
     const today = todayStr();
     const tdow = dowOf(today);
     const classes = Store.all('classes').filter(c => c.active !== false);
-    const cols = DAY_ORDER.map(dow => {
+    // 토·일은 수업이 없으므로 시간표에서 제외 (혹시 지정된 데이터가 있어도 그리지 않음)
+    const ttDays = DAY_ORDER.filter(d => d !== 0 && d !== 6);
+    const cols = ttDays.map(dow => {
       const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
         const t = Classes.timeOn(c, dow);
         const s = toMin(t.start), e = s + t.duration;
@@ -516,12 +518,16 @@ const Timetable = {
           .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
         return { c, s, e, roster, up };
       });
-      return { dow, items: this.layout(items) };
+      return { dow, items: dow === 5 ? this.layoutFri(items) : this.layout(items) };
     });
+    // 금요일 폭 = 슬롯 수(평소 2칸, 3개가 동시에 겹칠 때만 3칸) × 다른 요일 한 칸
+    const friCol = cols.find(col => col.dow === 5);
+    const friN = Math.max(2, ...friCol.items.map(it => it.cols));
+    const gridCols = `grid-template-columns:56px ${ttDays.map(d => d === 5 ? `minmax(${130 * friN}px, ${friN}fr)` : 'minmax(130px, 1fr)').join(' ')}`;
     const span = this.END - this.START;
     let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>
-      <div class="tt2"><div class="tt2-head"><div></div>${DAY_ORDER.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<span class="tt2-today">오늘</span>' : ''}</div>`).join('')}</div>
-      <div class="tt2-body"><div class="tt2-time">`;
+      <div class="tt2"><div class="tt2-head" style="${gridCols}"><div></div>${ttDays.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<span class="tt2-today">오늘</span>' : ''}</div>`).join('')}</div>
+      <div class="tt2-body" style="${gridCols}"><div class="tt2-time">`;
     for (let t = this.START; t < this.END; t += 60) {
       const hr = t / 60;
       h += `<span style="top:calc(var(--ppm) * ${t - this.START})">${hr > 12 ? hr - 12 : hr}시</span>`;
@@ -651,6 +657,24 @@ const Timetable = {
       group.push(it); groupEnd = Math.max(groupEnd, it.e);
     });
     if (group.length) flush();
+    return items;
+  },
+
+  // 금요일 전용 배치: 다른 요일 한 칸 폭의 슬롯을 나란히 둔다
+  //  - 반의 첫 요일이 앞선 반부터(월수금 → 화목금 → … → 금) 차례로,
+  //    그 시간에 비어 있는 가장 왼쪽 슬롯에 넣는다 → 혼자 있는 반은 항상 왼쪽
+  //  - 슬롯은 평소 2개, 동시에 3개 이상 겹칠 때만 그만큼 늘어난다
+  layoutFri(items) {
+    const ord = (c) => { const d = Classes.firstDay(c); return d == null ? 99 : DAY_ORDER.indexOf(d); };
+    const sorted = [...items].sort((a, b) => ord(a.c) - ord(b.c) || a.s - b.s);
+    const slots = [];
+    sorted.forEach(it => {
+      let ci = slots.findIndex(list => list.every(o => o.e <= it.s || o.s >= it.e));
+      if (ci < 0) { ci = slots.length; slots.push([]); }
+      slots[ci].push(it); it.col = ci;
+    });
+    const n = Math.max(2, slots.length);
+    items.forEach(it => { it.cols = n; });
     return items;
   },
 };
