@@ -86,9 +86,9 @@ function gradeOptions(sel, emptyText) {
   return h;
 }
 function schoolShort(s) { return (s || '').trim().replace(/등학교$/, '').replace(/학교$/, ''); }
-function schoolGradeLabel(school, grade) {      // 금천고1 / 학교미정 중1
+function schoolGradeLabel(school, grade) {      // 금천고1 / (학교 없음) 중1
   if (!grade && !school) return '';
-  if (!school) return '학교미정 ' + gradeLabel(grade);
+  if (!school) return gradeLabel(grade);
   return schoolShort(school) + (grade ? gradeNum(grade) : '');
 }
 function stTag(st) { return st ? schoolGradeLabel(st.school, st.grade) : ''; }

@@ -110,9 +110,9 @@ const Students = {
         <select data-grade>${gradeOptions(this.grade, '전체 학년')}</select>
         <span class="muted small">${list.length}명</span>
       </div>
-      <div class="bulk-bar" data-bulkbar ${this.sel.size ? '' : 'hidden'}><b data-selcnt>${this.sel.size}명 선택</b>
-        ${bulkActs.map(([a, t]) => `<button class="btn sm" data-bulk="${a}">일괄 ${t}</button>`).join('')}
-        <button class="btn sm danger" data-bulk="delete">선택 삭제</button><span style="flex:1"></span><button class="btn sm" data-bulk="clear">선택 해제</button></div>`;
+      <div class="bulk-bar${this.sel.size ? '' : ' off'}" data-bulkbar><b data-selcnt>${this.sel.size}명 선택</b>
+        ${bulkActs.map(([a, t]) => `<button class="btn sm" data-bulk="${a}" ${this.sel.size ? '' : 'disabled'}>선택 ${t}</button>`).join('')}
+        <button class="btn sm danger" data-bulk="delete" ${this.sel.size ? '' : 'disabled'}>선택 삭제</button><span style="flex:1"></span><button class="btn sm" data-bulk="clear" ${this.sel.size ? '' : 'disabled'}>선택 해제</button></div>`;
     if (!list.length) {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 학생이 없습니다.' : '등록된 학생이 없습니다. 오른쪽 위 “학생 등록”으로 시작하세요.'}</div></div>`;
     } else {
@@ -180,7 +180,10 @@ const Students = {
   updBulk(main) {
     const bar = $('[data-bulkbar]', main), cnt = $('[data-selcnt]', main), ca = $('[data-chkall]', main);
     const boxes = $$('[data-chk]', main);
-    if (bar) bar.hidden = !this.sel.size;
+    if (bar) {   // 줄은 늘 자리를 차지하고, 선택이 있을 때만 버튼이 살아난다 (목록이 밀려 내려가지 않게)
+      bar.classList.toggle('off', !this.sel.size);
+      $$('[data-bulk]', bar).forEach(b => { b.disabled = !this.sel.size; });
+    }
     if (cnt) cnt.textContent = this.sel.size + '명 선택';
     if (ca) { ca.checked = boxes.length > 0 && boxes.every(c => c.checked); ca.indeterminate = this.sel.size > 0 && !ca.checked; }
   },
@@ -206,7 +209,7 @@ const Students = {
     const titles = { pause: '휴원 처리', leave: '퇴원 처리', graduate: '졸업 처리' };
     const busy = (s) => !!(s.sched && isYmd(s.sched.date));
     const skip = list.filter(busy), go = list.filter(s => !busy(s));
-    if (!go.length) { alertDlg('일괄 ' + titles[act], '선택한 학생 모두 이미 예약이 걸려 있어 처리할 수 없습니다.\n학생별 “상태·이력”에서 예약을 먼저 취소하세요.'); return; }
+    if (!go.length) { alertDlg('선택 ' + titles[act], '선택한 학생 모두 이미 예약이 걸려 있어 처리할 수 없습니다.\n학생별 “상태·이력”에서 예약을 먼저 취소하세요.'); return; }
     const help = act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : (act === 'leave' ? '퇴원' : '졸업') + '일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.';
     const body = `<div class="form">
       <label class="req">날짜</label><div class="row"><input type="date" name="d" value="${todayStr()}"></div>
@@ -215,7 +218,7 @@ const Students = {
     <p class="small"><b>${go.length}명</b> · ${esc(go.map(s => s.name).join(', '))}</p>
     ${skip.length ? `<p class="small" style="color:#A9650B">이미 예약이 걸린 ${skip.length}명은 제외: ${esc(skip.map(s => s.name).join(', '))}</p>` : ''}`;
     Modal.open({
-      title: '일괄 ' + titles[act], body,
+      title: '선택 ' + titles[act], body,
       onMount: (b) => enhanceAll(b),
       buttons: [{ text: '취소' }, { text: `${go.length}명 ${titles[act]}`, cls: act === 'leave' ? 'danger' : 'primary', primary: true, onClick: async (m) => {
         const d = $('[name=d]', m.body).value;
@@ -341,7 +344,7 @@ const Students = {
     return `<div class="form">
       <label class="req">이름</label><input type="text" name="name" value="${esc(s.name)}" maxlength="30" style="width:160px">
       <label class="req">등록일</label><div class="row"><input type="date" name="joinDate" value="${esc(s.id ? this.joinDateOf(s) : (s.joinDate || todayStr()))}"></div>
-      <label>학교·학년</label><div class="row"><input type="text" name="school" class="combo-input" value="${esc(s.school)}" placeholder="비워 두면 학교미정" autocomplete="off" style="width:200px"><select name="grade">${gradeOptions(s.grade, '학년 선택')}</select></div>
+      <label>학교·학년</label><div class="row"><input type="text" name="school" class="combo-input" value="${esc(s.school)}" placeholder="비워 두면 학년만 표시" autocomplete="off" style="width:200px"><select name="grade">${gradeOptions(s.grade, '학년 선택')}</select></div>
       <label>학생 연락처</label><input type="tel" name="phone" value="${esc(s.phone)}" placeholder="010-0000-0000" style="width:180px">
       <label>부모님 연락처</label><input type="tel" name="parentPhone" value="${esc(s.parentPhone)}" placeholder="010-0000-0000" style="width:180px">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(s.memo)}</textarea>
