@@ -10,6 +10,9 @@ const CFG = Object.freeze({
   // 연락처 저장(구글 주소록) GAS 웹앱 주소 — 웹앱 배포 후 받은 URL을 넣는다
   GAS_CONTACT_URL: 'https://script.google.com/macros/s/AKfycbyjDHX6WjQDn8PyHWISLGreDaZ1sueltx_vU3F9SS5CExQolFfk5clF7_EnbFgL9gZK/exec',
 
+  // 문자 발송 중계(SMS Gateway) GAS 웹앱 주소 — mg77_sx7 문자중계
+  GAS_SMS_URL: 'https://script.google.com/macros/s/AKfycbz-o7Dypx3isBWmomZnsNzSESz_-sGy6QIdYLUdvIul1tCbEsSaUhqGc81HobrUr2kLMA/exec',
+
   PREFIX: 'mg77_',               // localStorage 키 접두사 (로그아웃 시 이 접두사만 삭제)
   LS_AK: 'mg77_ak',              // 접속 키
   LS_SNOOZE: 'mg77_school_snooze',

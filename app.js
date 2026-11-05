@@ -8,7 +8,7 @@ const App = {
   _needRender: false,
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
-    lessons: Lessons, attendance: AttBook, progress: ProgressBook, makeups: Makeups, exams: Exams, scores: Scores,
+    lessons: Lessons, attendance: AttBook, progress: ProgressBook, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores,
     counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings,
   },
 
