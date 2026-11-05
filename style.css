@@ -420,6 +420,14 @@ table.tbl { width: 100%; border-collapse: collapse; }
 /* 오늘 요일: 파란 점 격자 + 헤더 강조 */
 .tt2-wd.today { background: #E6F0F8; box-shadow: inset 0 -3px 0 #7D9DB8; }
 .tt2-today { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: #7D9DB8; color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+/* 오늘 끝난 수업: 회색으로 흐리게 (마우스를 올리면 다시 또렷하게) */
+.tt2 .tt-blk.done { filter: grayscale(1); opacity: .5; }
+.tt2 .tt-blk.done:hover { opacity: .9; }
+.tt2 .tt-blk.done::after { content: '종료'; position: absolute; top: 4px; right: 6px; font-size: 10.5px; font-weight: 700; color: #fff; background: #7A8794; border-radius: 6px; padding: 0 5px; line-height: 1.5; }
+/* 현재 시각 선 (오늘 칸) */
+.tt2-now { position: absolute; left: 0; right: 0; top: calc(var(--ppm) * var(--nowm, 0)); height: 2px; margin-top: -1px; background: #E5484D; z-index: 3; pointer-events: none; }
+.tt2-now::before { content: ''; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #E5484D; }
+.tt2-now[hidden] { display: none; }
 .tt2-col.today { background-color: #F6FAFD; border-left-color: #7D9DB8; box-shadow: inset -1px 0 0 #7D9DB8;
   background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px), radial-gradient(circle, rgba(125, 157, 184, .5) 1px, transparent 1.4px);
   background-size: 100% calc(var(--ppm) * 60), 11px 11px; }

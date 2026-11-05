@@ -500,7 +500,8 @@ const Timetable = {
   START: 15 * 60,
   END: 24 * 60,
   userH: 0,                      // 끌어서 바꾼 높이 (시간표를 떠나면 초기화)
-  onLeave() { this.userH = 0; },
+  nowTimer: null,                // 오늘 끝난 수업·현재 시각 선을 1분마다 맞추는 타이머
+  onLeave() { this.userH = 0; this.stopNow(); },
 
   render(main) {
     const today = todayStr();
@@ -536,13 +537,14 @@ const Timetable = {
     cols.forEach(col => {
       const isToday = col.dow === tdow;
       h += `<div class="tt2-col${isToday ? ' today' : ''}">`;
+      if (isToday) h += '<div class="tt2-now" hidden></div>';   // 현재 시각 선
       col.items.forEach(it => {
         const s = Math.max(it.s, this.START), e = Math.min(it.e, this.END);
         if (e <= s) return;
         const w = 100 / it.cols;
         const c = it.c;
         const cc = Classes.colorOf(c);
-        h += `<div class="tt-blk" data-cls="${c.id}" title="${esc(c.name)} — 눌러서 반 수정"
+        h += `<div class="tt-blk" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)} — 눌러서 반 수정"
           style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
           <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
           <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
@@ -590,6 +592,32 @@ const Timetable = {
       if (b) Classes.openModal(b.dataset.cls);
     };
     main.onchange = null;
+    this.startNow(main, today);
+  },
+
+  // 오늘 끝난 수업은 흐리게, 오늘 칸에는 현재 시각 선. 다시 그리지 않고 표시만 바꾸므로 부담이 거의 없다.
+  // 매 분 0초에 맞춰 1분마다 실행 (시간표를 떠나면 멈춤)
+  startNow(main, day) {
+    this.stopNow();
+    const tick = () => {
+      const col = $('.tt2-col.today', main);
+      if (!main.isConnected || App.page !== 'timetable') { this.stopNow(); return; }
+      if (todayStr() !== day) { this.stopNow(); App.render(); return; }   // 자정이 지나면 오늘 요일이 바뀜
+      if (!col) return;                                                   // 주말: 오늘 칸 없음
+      const d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+      $$('.tt-blk[data-end]', col).forEach(b => b.classList.toggle('done', now >= +b.dataset.end));
+      const line = $('.tt2-now', col);
+      if (line) {
+        line.hidden = now < this.START || now > this.END;
+        line.style.setProperty('--nowm', now - this.START);
+      }
+    };
+    tick();
+    const d = new Date();
+    this.nowTimer = setTimeout(() => { tick(); this.nowTimer = setInterval(tick, 60000); }, (60 - d.getSeconds()) * 1000 - d.getMilliseconds() + 50);
+  },
+  stopNow() {
+    if (this.nowTimer) { clearTimeout(this.nowTimer); clearInterval(this.nowTimer); this.nowTimer = null; }
   },
 
   // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
