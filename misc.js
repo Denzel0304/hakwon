@@ -149,6 +149,7 @@ const Promo = {
     const steps = Math.min(toY - fromY, 12);
     const jan1 = toY + '-01-01';
     let up = 0, grad = 0, pend = 0;
+    const gradList = [];      // 졸업 처리된 재원생 → 구글 주소록에서 삭제
     Store.where('students', s => s.status !== 'left' && +s.grade).forEach(s => {
       let g = +s.grade, school = s.school, pending = !!s.schoolPending, graduated = false;
       for (let i = 0; i < steps; i++) {
@@ -160,6 +161,7 @@ const Promo = {
         Classes.closeEnrollments(s.id, jan1);
         Store.put('students', Object.assign({}, s, { status: 'left', leftKind: 'graduate', statusDate: jan1, statusReason: '' }));
         Students.addLog(s.id, 'graduate', jan1, '', {}, 'LG_grad_' + s.id + '_' + toY);
+        if ((s.status || 'active') === 'active') gradList.push(s);
         grad++;
         return;
       }
@@ -172,6 +174,7 @@ const Promo = {
     Store.put('meta', Object.assign({}, meta, { promotedYear: toY }));
     Store.syncNow();
     App.render();
+    Students.contactRemove(gradList);
     alertDlg(toY + '년 진급 처리 완료',
       `진급 ${up}명, 졸업 ${grad}명을 처리했습니다.` +
       (pend ? `\n학교미정 ${pend}명은 ${fmtDate(this.noticeDate(toY))}부터 학교 입력 창이 뜹니다.` : '') +

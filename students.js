@@ -15,6 +15,7 @@ const Students = {
   grade: '',
   sortKey: '',      // '' 기본 정렬 / name / school / cls / join
   sortDir: 0,       // 1 오름차순, -1 내림차순
+  sel: new Set(),   // 목록에서 체크한 학생 id (일괄 처리용)
 
   statusBadge(s) {
     if (s.status === 'pause') return '<span class="badge orange">휴원</span>';
@@ -96,6 +97,11 @@ const Students = {
       .filter(s => !this.grade || +s.grade === +this.grade)
       .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)));
     this.sortList(list);
+    // 지금 목록에 보이지 않는 학생은 선택에서 뺀다 (탭·검색·학년이 바뀌면 보이는 학생만 남음)
+    const vis = new Set(list.map(s => s.id));
+    [...this.sel].forEach(id => { if (!vis.has(id)) this.sel.delete(id); });
+    const bulkActs = this.tab === 'active' ? [['pause', '휴원'], ['leave', '퇴원'], ['graduate', '졸업']]
+      : this.tab === 'pause' ? [['leave', '퇴원'], ['graduate', '졸업']] : [];
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button><button class="btn" data-a="gimport">구글 연락처 가져오기</button></div>
       <div class="tabs">${['active', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
@@ -103,17 +109,22 @@ const Students = {
         <input type="search" data-q placeholder="이름, 학교, 연락처, 메모 검색" value="${esc(this.q)}" style="width:280px">
         <select data-grade>${gradeOptions(this.grade, '전체 학년')}</select>
         <span class="muted small">${list.length}명</span>
-      </div>`;
+      </div>
+      <div class="bulk-bar" data-bulkbar ${this.sel.size ? '' : 'hidden'}><b data-selcnt>${this.sel.size}명 선택</b>
+        ${bulkActs.map(([a, t]) => `<button class="btn sm" data-bulk="${a}">일괄 ${t}</button>`).join('')}
+        <button class="btn sm danger" data-bulk="delete">선택 삭제</button><span style="flex:1"></span><button class="btn sm" data-bulk="clear">선택 해제</button></div>`;
     if (!list.length) {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 학생이 없습니다.' : '등록된 학생이 없습니다. 오른쪽 위 “학생 등록”으로 시작하세요.'}</div></div>`;
     } else {
+      const allOn = list.every(s => this.sel.has(s.id));
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>
-        ${this.sortTh('name', '이름')}${this.sortTh('school', '학교·학년')}${this.tab === 'active' ? this.sortTh('cls', '수강반') : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th>${this.sortTh('join', '등록일')}</tr></thead><tbody>`;
+        <th class="chk-th"><label class="chk-hit" title="전체 선택"><input type="checkbox" data-chkall ${allOn ? 'checked' : ''}></label></th>${this.sortTh('name', '이름')}${this.sortTh('school', '학교·학년')}${this.tab === 'active' ? this.sortTh('cls', '수강반') : '<th>상태</th>'}<th>학생 연락처</th><th>부모님 연락처</th>${this.sortTh('join', '등록일')}</tr></thead><tbody>`;
       list.forEach(s => {
         const third = this.tab === 'active'
           ? [esc(this.activeClassesOf(s.id).map(c => c.name + Classes.daysTag(c.id, s.id, todayStr())).join(', '))].concat(this.upcomingClassesOf(s.id).map(o => `<span class="muted">${esc(o.c.name + Classes.daysTag(o.c.id, s.id, o.from))} (${Classes.md(o.from)}~)</span>`)).filter(Boolean).join(', ') || '<span class="muted">-</span>'
           : `${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate, false)}</span>${s.statusReason ? `<div class="small muted">${esc(firstLine(s.statusReason))}</div>` : ''}`;
         h += `<tr class="click" data-id="${s.id}">
+          <td class="chk-td"><label class="chk-hit"><input type="checkbox" data-chk="${s.id}" ${this.sel.has(s.id) ? 'checked' : ''}></label></td>
           <td class="nowrap"><b>${highlight(s.name, this.q)}</b>${this.schedBadge(s)}</td>
           <td class="nowrap">${highlight(stTag(s), this.q)}${s.schoolPending ? ' <span class="badge orange">학교 입력 필요</span>' : ''}</td>
           <td>${third}</td>
@@ -125,7 +136,11 @@ const Students = {
     }
     h += '</div>';
     main.innerHTML = h;
+    { const ca = $('[data-chkall]', main); if (ca) ca.indeterminate = this.sel.size > 0 && !ca.checked; }
     main.onclick = (e) => {
+      if (e.target.closest('.chk-hit')) return;          // 체크박스 칸은 학생 창을 열지 않음
+      const bk = e.target.closest('[data-bulk]');
+      if (bk) { this.bulkAction(bk.dataset.bulk); return; }
       if (e.target.closest('[data-a=add]')) { this.openNew(); return; }
       if (e.target.closest('[data-a=gimport]')) { this.importContacts(); return; }
       const th = e.target.closest('th[data-sort]');
@@ -149,7 +164,75 @@ const Students = {
         const inp = $('[data-q]', main); if (inp) { inp.focus(); inp.setSelectionRange(pos, pos); }
       }
     }, 250);
-    main.onchange = (e) => { if (e.target.matches('[data-grade]')) { this.grade = e.target.value; App.render(); } };
+    main.onchange = (e) => {
+      if (e.target.matches('[data-grade]')) { this.grade = e.target.value; App.render(); return; }
+      if (e.target.matches('[data-chk]')) {
+        if (e.target.checked) this.sel.add(e.target.dataset.chk); else this.sel.delete(e.target.dataset.chk);
+        this.updBulk(main); return;
+      }
+      if (e.target.matches('[data-chkall]')) {
+        $$('[data-chk]', main).forEach(c => { c.checked = e.target.checked; if (c.checked) this.sel.add(c.dataset.chk); else this.sel.delete(c.dataset.chk); });
+        this.updBulk(main);
+      }
+    };
+  },
+  // 체크 상태가 바뀌면 다시 그리지 않고 일괄 처리 줄과 전체 선택 칸만 맞춘다
+  updBulk(main) {
+    const bar = $('[data-bulkbar]', main), cnt = $('[data-selcnt]', main), ca = $('[data-chkall]', main);
+    const boxes = $$('[data-chk]', main);
+    if (bar) bar.hidden = !this.sel.size;
+    if (cnt) cnt.textContent = this.sel.size + '명 선택';
+    if (ca) { ca.checked = boxes.length > 0 && boxes.every(c => c.checked); ca.indeterminate = this.sel.size > 0 && !ca.checked; }
+  },
+
+  /* ---------- 일괄 처리 (휴원·퇴원·졸업·완전 삭제) ---------- */
+  async bulkAction(act) {
+    if (act === 'clear') { this.sel.clear(); App.render(); return; }
+    const list = [...this.sel].map(id => Store.get('students', id)).filter(Boolean);
+    if (!list.length) return;
+    if (act === 'delete') {
+      const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
+      if (!ok) return;
+      list.forEach(s => this.hardDelete(s.id));
+      this.sel.clear();
+      toast(list.length + '명을 삭제했습니다');
+      App.render();
+      this.contactRemove(list);
+      return;
+    }
+    this.openBulkStatus(act, list);
+  },
+  openBulkStatus(act, list) {
+    const titles = { pause: '휴원 처리', leave: '퇴원 처리', graduate: '졸업 처리' };
+    const busy = (s) => !!(s.sched && isYmd(s.sched.date));
+    const skip = list.filter(busy), go = list.filter(s => !busy(s));
+    if (!go.length) { alertDlg('일괄 ' + titles[act], '선택한 학생 모두 이미 예약이 걸려 있어 처리할 수 없습니다.\n학생별 “상태·이력”에서 예약을 먼저 취소하세요.'); return; }
+    const help = act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : (act === 'leave' ? '퇴원' : '졸업') + '일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.';
+    const body = `<div class="form">
+      <label class="req">날짜</label><div class="row"><input type="date" name="d" value="${todayStr()}"></div>
+      <label class="top">사유</label><textarea name="reason" rows="3" placeholder="선택 입력 (모든 학생에게 같게 들어감)"></textarea>
+    </div><p class="small muted">${esc(help)} 미래 날짜를 고르면 학생마다 예약으로 들어갑니다.</p>
+    <p class="small"><b>${go.length}명</b> · ${esc(go.map(s => s.name).join(', '))}</p>
+    ${skip.length ? `<p class="small" style="color:#A9650B">이미 예약이 걸린 ${skip.length}명은 제외: ${esc(skip.map(s => s.name).join(', '))}</p>` : ''}`;
+    Modal.open({
+      title: '일괄 ' + titles[act], body,
+      onMount: (b) => enhanceAll(b),
+      buttons: [{ text: '취소' }, { text: `${go.length}명 ${titles[act]}`, cls: act === 'leave' ? 'danger' : 'primary', primary: true, onClick: async (m) => {
+        const d = $('[name=d]', m.body).value;
+        if (!isYmd(d)) { toast('날짜를 선택하세요'); return false; }
+        const reason = stripZws($('[name=reason]', m.body).value);
+        const done = [];
+        go.forEach(s => {
+          const cur = Store.get('students', s.id);
+          if (!cur || busy(cur)) return;
+          if (this.statusOut(cur.id, act, d, reason)) done.push(cur);
+        });
+        this.sel.clear();
+        toast(d > todayStr() ? `${go.length}명 ${fmtDate(d, false)} ${titles[act]}를 예약했습니다` : `${go.length}명 ${titles[act]}했습니다`);
+        App.render();
+        this.contactRemove(done);
+      } }],
+    });
   },
 
   /* ---------- 구글 연락처 가져오기 (재원생, 빈 칸만 채움) ---------- */
@@ -361,9 +444,11 @@ const Students = {
         { text: '완전 삭제', cls: 'danger', left: true, onClick: async (mm) => {
           const ok = await confirmHard(`${s.name} 학생을 완전히 삭제할까요?\n수강 기록, 이력, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
           if (!ok) return false;
+          const gone = Store.get('students', s.id) || s;
           this.hardDelete(s.id);
           toast('학생을 삭제했습니다');
           App.render();
+          this.contactRemove([gone]);
         } },
         { text: '연락처 저장', onClick: (mm) => this.sendContact(mm) },
         { text: '정보 저장', cls: 'primary', primary: true, onClick: (mm) => (mm.tab === 'info' ? this.saveInfo(mm, s.id) : false) },
@@ -611,8 +696,8 @@ const Students = {
     const logs = Store.where('student_log', l => l.studentId === s.id).sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt));
     let acts = '';
     if (s.sched && isYmd(s.sched.date)) acts = `<span class="badge orange">${fmtDate(s.sched.date)} ${LOG_LABEL[s.sched.act] || ''} 예정</span><button class="btn" data-act="cancelsched">예약 취소</button>`;
-    else if (s.status === 'active') acts = '<button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button>';
-    else if (s.status === 'pause') acts = '<button class="btn primary" data-act="resume">복귀 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button>';
+    else if (s.status === 'active') acts = '<button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
+    else if (s.status === 'pause') acts = '<button class="btn primary" data-act="resume">복귀 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
     else acts = '<button class="btn primary" data-act="rejoin">재등록</button>';
     let h = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       <span>현재 상태</span> ${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate)}</span><span class="grow" style="flex:1"></span>${acts}</div>`;
@@ -654,12 +739,12 @@ const Students = {
 
   openStatusAction(act, sid, done) {
     const s = Store.get('students', sid);
-    const titles = { pause: '휴원 처리', leave: '퇴원 처리', resume: '복귀 처리', rejoin: '재등록' };
+    const titles = { pause: '휴원 처리', leave: '퇴원 처리', graduate: '졸업 처리', resume: '복귀 처리', rejoin: '재등록' };
     const needCls = act === 'resume' || act === 'rejoin';
     const body = `<div class="form">
       <label class="req">날짜</label><div class="row"><input type="date" name="d" value="${todayStr()}"></div>
       ${needCls ? `<label class="top">수강반</label><div>${this.classPickHtml()}</div>` : `<label class="top">사유</label><textarea name="reason" rows="3" placeholder="선택 입력"></textarea>`}
-    </div><p class="small muted">${act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : act === 'leave' ? '퇴원일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : '선택한 반의 출석부에 날짜부터 들어갑니다.'}</p>`;
+    </div><p class="small muted">${act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : act === 'leave' ? '퇴원일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : act === 'graduate' ? '졸업일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : '선택한 반의 출석부에 날짜부터 들어갑니다.'}</p>`;
     Modal.open({
       title: s.name + ' · ' + titles[act], body,
       onMount: (b) => { enhanceAll(b); if (needCls) this.bindClassPick(b); },
@@ -671,21 +756,16 @@ const Students = {
         const cur = Store.get('students', sid);
         const future = d > todayStr();          // 미래 날짜면 예약 → 그 날짜가 되면 자동으로 상태가 바뀜
         const before = this.enSnap(sid);
-        if (act === 'pause' || act === 'leave') {
+        if (act === 'pause' || act === 'leave' || act === 'graduate') {
           const reason = stripZws($('[name=reason]', m.body).value);
-          Classes.closeEnrollments(sid, d);
-          const undo = this.enDiff(before, sid);
-          if (future) Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason, undo } }));
-          else {
-            Store.put('students', Object.assign({}, cur, { status: act === 'pause' ? 'pause' : 'left', leftKind: act === 'leave' ? 'leave' : (cur.leftKind || ''), statusDate: d, statusReason: reason, sched: null }));
-            this.addLog(sid, act, d, reason, { undo });
-          }
+          if (this.statusOut(sid, act, d, reason)) this.contactRemove([cur]);
         } else {
           picks.forEach(p => Classes.enrollDays(sid, p.cid, d, p.days, true));
           if (future) Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason: '', undo: this.enDiff(before, sid) } }));
           else {
             Store.put('students', Object.assign({}, cur, { status: 'active', leftKind: '', statusDate: d, statusReason: '', sched: null }));
             this.addLog(sid, act, d, '');
+            this.contactAdd([cur]);
           }
         }
         toast(future ? fmtDate(d, false) + ' ' + titles[act] + '를 예약했습니다' : titles[act] + '했습니다');
@@ -693,6 +773,20 @@ const Students = {
       } }],
     });
   },
+
+  // 휴원·퇴원·졸업 처리 (미래 날짜면 예약). 바로 적용됐으면 true
+  statusOut(sid, act, d, reason) {
+    const cur = Store.get('students', sid);
+    const future = d > todayStr();
+    const before = this.enSnap(sid);
+    Classes.closeEnrollments(sid, d);
+    const undo = this.enDiff(before, sid);
+    if (future) { Store.put('students', Object.assign({}, cur, { sched: { act, date: d, reason, undo } })); return false; }
+    Store.put('students', Object.assign({}, cur, { status: act === 'pause' ? 'pause' : 'left', leftKind: this.leftKindOf(act, cur), statusDate: d, statusReason: reason, sched: null }));
+    this.addLog(sid, act, d, reason, { undo });
+    return true;
+  },
+  leftKindOf(act, cur) { return act === 'leave' ? 'leave' : act === 'graduate' ? 'graduate' : (cur.leftKind || ''); },
 
   /* ---------- 예약(미래 날짜 상태 변경) · 되돌리기 ---------- */
   // 학생의 수강 기록 사진 { id: JSON }
@@ -733,21 +827,26 @@ const Students = {
   applyDue() {
     const today = todayStr();
     let n = 0;
+    const outs = [], ins = [];     // 구글 주소록: 빠지는 학생은 삭제, 돌아오는 학생은 등록
     Store.where('students', s => s.sched && isYmd(s.sched.date) && s.sched.date <= today).forEach(s => {
       const sc = s.sched, d = sc.date;
       const logId = 'LG_sc_' + s.id + '_' + compactDate(d) + '_' + sc.act;
-      if (sc.act === 'pause' || sc.act === 'leave') {
+      if (sc.act === 'pause' || sc.act === 'leave' || sc.act === 'graduate') {
         const before = this.enSnap(s.id);
         Classes.closeEnrollments(s.id, d);          // 예약 뒤에 추가된 수강도 정리
         const undo = this.mergeUndo(sc.undo, this.enDiff(before, s.id));
-        Store.put('students', Object.assign({}, s, { status: sc.act === 'pause' ? 'pause' : 'left', leftKind: sc.act === 'leave' ? 'leave' : (s.leftKind || ''), statusDate: d, statusReason: sc.reason || '', sched: null }));
+        Store.put('students', Object.assign({}, s, { status: sc.act === 'pause' ? 'pause' : 'left', leftKind: this.leftKindOf(sc.act, s), statusDate: d, statusReason: sc.reason || '', sched: null }));
         this.addLog(s.id, sc.act, d, sc.reason || '', { undo }, logId);
+        outs.push(s);
       } else {
         Store.put('students', Object.assign({}, s, { status: 'active', leftKind: '', statusDate: d, statusReason: '', sched: null }));
         this.addLog(s.id, sc.act, d, '', {}, logId);
+        ins.push(s);
       }
       n++;
     });
+    this.contactRemove(outs);
+    this.contactAdd(ins);
     return n;
   },
   // 가장 최근의 휴원·퇴원·졸업 이력이고 지금 상태가 그 이력 때문인지
@@ -780,6 +879,7 @@ const Students = {
     const prev = Store.where('student_log', x => x.studentId === sid && x.id !== l.id && ['join', 'resume', 'rejoin'].includes(x.type) && x.date <= l.date)
       .sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt))[0];
     Store.put('students', Object.assign({}, s, { status: 'active', leftKind: '', statusDate: prev ? prev.date : this.joinDateOf(s), statusReason: '' }));
+    this.contactAdd([s]);
   },
 
   pane_score(pane, s) {
@@ -808,6 +908,112 @@ const Students = {
       const c = e.target.closest('[data-c]');
       if (c) Counsels.openModal(c.dataset.c, {}, refresh);
     };
+  },
+
+  /* ---------- 구글 주소록 자동 정리 ----------
+     휴원·퇴원·졸업·완전 삭제 → 주소록에서 삭제 (이름·번호가 모두 같은 연락처만)
+     복귀·재등록·상태 되돌리기 → 주소록에 등록 (이미 있으면 건너뜀)
+     요청은 한 줄로 세워 차례로 보낸다 (GAS 쪽 잠금과 부딪히지 않게). 실패하면 모달로 알림 */
+  _ctQ: null,
+  ctItems(list) {
+    return (list || []).filter(Boolean)
+      .map(s => ({ name: String(s.name || '').trim(), phone: String(s.phone || '').trim(), parentPhone: String(s.parentPhone || '').trim() }))
+      .filter(o => o.name && (o.phone || o.parentPhone));
+  },
+  ctTargets(items) {
+    const out = [];
+    items.forEach(o => {
+      if (o.phone) out.push({ contactName: o.name, phone: o.phone });
+      if (o.parentPhone) out.push({ contactName: o.name + ' 어머님', phone: o.parentPhone });
+    });
+    return out;
+  },
+  ctRun(task) {
+    const p = (this._ctQ || Promise.resolve()).then(task).catch(e => console.error('주소록 처리 오류', e));
+    this._ctQ = p;
+    return p;
+  },
+  async ctPost(body, ms) {
+    if (!CFG.GAS_CONTACT_URL) throw new Error('연락처 저장 주소(GAS_CONTACT_URL)가 설정되지 않았습니다');
+    const key = Auth.key();
+    if (!key) throw new Error('로그인이 필요합니다');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const r = await fetch(CFG.GAS_CONTACT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ key }, body)),
+        signal: ctl.signal,
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.reason === 'unauthorized' ? '로그인 키가 유효하지 않습니다. 다시 로그인하세요'
+        : d.reason === 'busy' ? '다른 주소록 작업이 진행 중이었습니다'
+        : (d.message || d.reason || '알 수 없는 오류'));
+      return d;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('응답 시간 초과');
+      if (e instanceof TypeError) throw new Error('네트워크 오류');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+  contactRemove(list) {
+    const items = this.ctItems(list);
+    if (!items.length) return;
+    this.ctRun(async () => {
+      let d;
+      try { d = await this.ctPost({ action: 'delete', items }, 300000); }
+      catch (e) { this.ctFailModal('delete', e.message, { errors: this.ctTargets(items) }); return; }
+      const nf = (d.notFound || []).length;
+      if ((d.mismatch || []).length || (d.errors || []).length) this.ctFailModal('delete', '', d);
+      else toast(`구글 주소록에서 ${(d.deleted || []).length}건 삭제했습니다` + (nf ? ` · 주소록에 없음 ${nf}건` : ''));
+    });
+  },
+  contactAdd(list) {
+    const items = this.ctItems(list);
+    if (!items.length) return;
+    this.ctRun(async () => {
+      let d;
+      try { d = await this.ctPost({ action: 'saveMany', items }, 300000); }
+      catch (e) { this.ctFailModal('add', e.message, { errors: this.ctTargets(items) }); return; }
+      if ((d.errors || []).length) { this.ctFailModal('add', '', d); return; }
+      const parts = [];
+      if (d.added) parts.push(`등록 ${d.added}건`);
+      if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
+      if (d.skipped) parts.push(`변경 없음 ${d.skipped}건`);
+      toast('구글 주소록 등록 완료 · ' + (parts.join(' · ') || '처리 0건'));
+    });
+  },
+  // 실패 목록 모달 (메모해서 직접 처리할 수 있게 이름·번호를 모두 보여 주고 복사 버튼을 둔다)
+  ctFailModal(kind, reason, d) {
+    const isDel = kind === 'delete';
+    const secs = [];
+    const add = (title, rows) => { if (rows.length) secs.push({ title, rows }); };
+    add('오류로 처리하지 못함', (d.errors || []).map(x => `${x.contactName} · ${x.phone}${x.message ? ' — ' + x.message : ''}`));
+    if (isDel) {
+      add('이름은 있지만 번호가 달라 지우지 않음', (d.mismatch || []).map(x => `${x.contactName} · 앱 번호 ${x.phone} / 주소록 번호 ${(x.found || []).join(', ') || '없음'}`));
+      add('주소록에 없음 (참고)', (d.notFound || []).map(x => `${x.contactName} · ${x.phone}`));
+      add('삭제됨', (d.deleted || []).map(x => `${x.contactName} · ${x.phone}`));
+    } else {
+      if (d.added || d.updated || d.skipped) secs.push({ title: '처리됨', rows: [`등록 ${d.added || 0}건 · 번호 변경 ${d.updated || 0}건 · 변경 없음 ${d.skipped || 0}건`] });
+    }
+    const title = isDel ? '구글 주소록 삭제 실패' : '구글 주소록 등록 실패';
+    const head = (reason ? `요청이 실패했습니다: ${reason}\n` : '') + (isDel ? '아래 연락처는 구글 주소록에서 직접 삭제하세요.' : '아래 연락처는 구글 주소록에 직접 등록하세요.');
+    const text = [title, head, ...secs.map(sc => `\n[${sc.title}]\n` + sc.rows.join('\n'))].join('\n');
+    Modal.open({
+      title, size: 'md', autofocus: false,
+      body: `<p class="confirm-msg">${esc(head)}</p>` + secs.map(sc => `<div style="margin-top:12px"><div class="small soft"><b>${esc(sc.title)}</b> (${sc.rows.length})</div><div class="pre small">${esc(sc.rows.join('\n'))}</div></div>`).join(''),
+      buttons: [
+        { text: '목록 복사', onClick: () => {
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('복사했습니다'), () => toast('복사하지 못했습니다'));
+          else toast('복사하지 못했습니다');
+          return false;
+        } },
+        { text: '확인', cls: 'primary', primary: true },
+      ],
+    });
   },
 
   hardDelete(sid) {

@@ -606,9 +606,13 @@ const Timetable = {
       if (g && g.t === t) g.list.push(s); else groups.push({ t, list: [s] });
     });
     const chip = (t) => t ? `<i class="sc">${esc(t)}</i>` : '';
+    // 그룹 끝의 학교 레이블은 마지막 이름과 따로 둔다 (<wbr>: 자리가 모자라면 레이블만 다음 줄로)
     let out = groups.map(g => {
-      const multi = g.list.length > 1, last = g.list.length - 1;
-      return g.list.map((s, i) => `<span class="n${i === last ? ' gl' : ''}" title="${esc(s.name + ' ' + g.t)}">${multi && i === 0 ? '(' : ''}${nm(s)}${i === last ? (multi ? ')' : '') + chip(g.t) : ''}</span>`).join(' ');
+      const last = g.list.length - 1;
+      return g.list.map((s, i) => {
+        const end = i === last;
+        return `<span class="n${end && !g.t ? ' gl' : ''}" title="${esc(s.name + ' ' + g.t)}">${nm(s)}</span>${end && g.t ? `<wbr><i class="sc gl">${esc(g.t)}</i>` : ''}`;
+      }).join(' ');
     }).join(' ');
     if (up.length) out += ' ' + up.map(o => `<span class="n gl up" title="${esc(o.s.name + ' ' + stTag(o.s) + ' · ' + fmtDate(o.from) + '부터 수강 예정')}">${nm(o.s, o.from)}${chip(stTag(o.s))}<em>${Classes.md(o.from)}~</em></span>`).join(' ');
     return out;
