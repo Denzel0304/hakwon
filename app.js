@@ -163,10 +163,13 @@ const App = {
   $('#nav').addEventListener('click', (e) => {
     const b = e.target.closest('[data-page]');
     if (!b) return;
+    const cat = b.closest('.nav-cat');           // 하위 메뉴를 고르면 바로 닫음 (마우스가 탭을 벗어나면 다시 열 수 있음)
+    if (cat) cat.classList.add('nav-hold');
     const p = b.dataset.page;
     if (p === 'lessons') App.go('lessons', { date: App.selDate });
     else App.go(p, {});
   });
+  $$('#nav .nav-cat').forEach(c => c.addEventListener('mouseleave', () => c.classList.remove('nav-hold')));
   // 입력이 끝나면 미뤄 둔 화면 갱신
   $('#main').addEventListener('focusout', () => setTimeout(() => App.flushRender(), 0));
 

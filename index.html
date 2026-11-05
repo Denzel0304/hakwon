@@ -6,7 +6,8 @@
 <title>학원 관리</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="style.css?v=20261105f">
+<link rel="stylesheet" href="style.css?v=20261105g">
+<link rel="stylesheet" href="soon.css?v=20261105a">
 </head>
 <body>
 
@@ -31,20 +32,31 @@
   <aside id="side">
     <div id="mini-cal"></div>
     <nav id="nav">
-      <button data-page="students">학생</button>
-      <button data-page="classes">반 관리</button>
-      <button data-page="timetable">시간표</button>
-      <button data-page="lessons">수업일지</button>
-      <button data-page="attendance">출석부</button>
-      <button data-page="progress">진도</button>
-      <button data-page="sms">문자</button>
-      <button data-page="makeups">보강</button>
-      <button data-page="exams">시험정보</button>
-      <button data-page="scores">성적</button>
-      <button data-page="counsels">상담</button>
-      <button data-page="events">일정</button>
-      <button data-page="settings">설정</button>
+      <div class="nav-cat">
+        <button type="button" class="nav-cat-btn">학생</button>
+        <div class="nav-menu">
+          <button data-page="students">학생</button>
+          <button data-page="classes">반 관리</button>
+          <button data-page="attendance">출석부</button>
+          <button data-page="sms">문자</button>
+          <button data-page="exams">시험정보</button>
+          <button data-page="scores">성적</button>
+        </div>
+      </div>
+      <div class="nav-cat">
+        <button type="button" class="nav-cat-btn">선생님</button>
+        <div class="nav-menu">
+          <button data-page="timetable">시간표</button>
+          <button data-page="lessons">수업일지</button>
+          <button data-page="progress">진도</button>
+          <button data-page="makeups">보강</button>
+          <button data-page="counsels">상담</button>
+          <button data-page="events">일정</button>
+          <button data-page="settings">설정</button>
+        </div>
+      </div>
     </nav>
+    <div id="sn-root"></div>
     <div id="sync-bar"></div>
   </aside>
   <main id="main"></main>
@@ -63,6 +75,7 @@
 <script src="exams.js?v=20261031b"></script>
 <script src="misc.js?v=20261105b"></script>
 <script src="sms.js?v=20261105a"></script>
-<script src="app.js?v=20261105a"></script>
+<script src="app.js?v=20261105b"></script>
+<script src="soon.js?v=20261105a"></script>
 </body>
 </html>
