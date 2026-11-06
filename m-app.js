@@ -3,6 +3,7 @@
    - 데이터·로그인·동기화는 PC와 같은 파일(config/util/store/…)을 그대로 쓴다
    - 화면: 할일 · 시간표 · 일정 · 문자 · 진도 · 보강
    - 문자는 PC 문자 화면(SmsPage)을 그대로 사용 (기능 동일)
+   - 할일은 일정관리 앱처럼 추가·수정 가능 (todo-ext.js, 수업일지 할일은 완료 체크만)
    - 나머지는 보기 전용 (데이터를 바꾸지 않음)
    - PC 전용 자동 처리(빈 수업일지 정리 · 반 색 배정 · 진급 확인)는 하지 않음
      → PC로 접속하면 처리됨. 예약된 휴원·퇴원·복귀 적용만 여기서도 실행
@@ -480,13 +481,16 @@ const MEvents = {
 };
 
 /* =========================================================
-   할일 — 보기 전용 (PC 할일을 그대로 보여주는 거울)
+   할일 — 일정관리 앱처럼 (추가 · 수정 · 완료 · 날짜 이동 · 삭제 · 순서)
    위: 작은 달력 (할일 · 밀린 할일 점, 좌우 스와이프로 달 이동) / 아래: 고른 날짜의 할일 + (오늘이면) 밀린 할일
+   목록·추가 창·반복 계산은 PC와 같은 todo-ext.js(TodoX)를 쓴다
+   · 수업일지에 딸린 할일은 모바일에서 완료 체크만 (수정·메뉴는 PC에서)
    ========================================================= */
 const MTodos = {
   month: '',              // 'YYYY-MM'
   sel: '',                // 고른 날짜
   _dir: 0,
+  OPT: { mobile: true },
 
   render(main) {
     const today = todayStr();
@@ -496,13 +500,7 @@ const MTodos = {
     const first = new Date(Y, M - 1, 1);
     const start = addDays(first, -first.getDay());
     const weeks = Math.ceil((first.getDay() + new Date(Y, M, 0).getDate()) / 7);
-    // 날짜별 남은 할일 (PC 미니 달력과 같은 기준: 오늘 전이면 밀린 할일)
-    const idx = {};
-    Store.all('todos').forEach(t => {
-      if (t.done || !isYmd(t.date)) return;
-      const o = idx[t.date] = idx[t.date] || { late: false, todo: false };
-      if (t.date < today) o.late = true; else o.todo = true;
-    });
+    const idx = TodoX.dotIndex(ymd(start), weeks * 7, today);
 
     let h = `<div class="panel m-cal m-tdcal"><div class="mc-head"><span class="mc-title">${Y}년 ${M}월</span>
         <button type="button" class="mc-nav" data-mon="-1" aria-label="이전 달">‹</button>
@@ -522,30 +520,22 @@ const MTodos = {
     }
     h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span></div></div>`;
 
-    const todos = Store.where('todos', t => t.date === this.sel).sort(Todos.sortFn);
-    const left = todos.filter(t => !t.done).length;
-    h += `<div class="m-sec-t">${esc(fmtDate(this.sel))}${this.sel === today ? ' <span class="badge">오늘</span>' : ''}<span class="m-grow"></span><span class="small soft">${todos.length ? left + '개 남음' : ''}</span></div>`;
-    h += todos.length ? `<div class="panel m-tds">${this.rowsHtml(todos, false)}</div>` : '<div class="panel"><div class="empty">이 날 할일이 없습니다.</div></div>';
+    const list = TodoX.listHtml(this.sel, this.OPT);
+    h += `<div class="m-sec-t">${esc(fmtDate(this.sel))}${this.sel === today ? ' <span class="badge">오늘</span>' : ''}<span class="m-grow"></span><span class="small soft">${list.left ? list.left + '개 남음' : ''}</span></div>`;
+    h += list.left || list.html.includes('tx-list') ? `<div class="panel m-tds">${list.html}</div>` : `<div class="panel">${list.html}</div>`;
     if (this.sel === today) {
-      const late = Store.where('todos', t => !t.done && isYmd(t.date) && t.date < today).sort((a, b) => ko(a.date, b.date) || Todos.sortFn(a, b));
-      if (late.length) h += `<div class="m-sec-t m-late-t">밀린 할일<span class="m-grow"></span><span class="small">${late.length}개</span></div><div class="panel m-tds m-late">${this.rowsHtml(late, true)}</div>`;
+      const late = TodoX.lateHtml(today, this.OPT);
+      if (late.n) h += `<div class="m-sec-t m-late-t">밀린 할일<span class="m-grow"></span><span class="small">${late.n}개</span></div><div class="panel m-tds m-late">${late.html}</div>`;
     }
+    h += '<button type="button" class="m-fab" data-addtodo aria-label="할일 추가">+</button>';
     main.innerHTML = h;
+
     const cal = $('.m-cal', main);
     mSwipe(cal, (n) => this.moveMonth(n));
     if (this._dir) cal.classList.add(this._dir > 0 ? 'm-slide-l' : 'm-slide-r');
     this._dir = 0;
+    TodoX.mount(main, this.OPT);
     this.bind(main);
-  },
-
-  // 체크 표시는 보기만 (누를 수 없음) / 반 이름을 누르면 진도 탭의 그 수업으로
-  rowsHtml(list, showDate) {
-    return list.map(t => {
-      const c = Store.get('classes', t.classId);
-      return `<div class="m-td ${t.done ? 'done' : ''}"><span class="m-td-ck" aria-label="${t.done ? '완료' : '미완료'}">${t.done ? '✓' : ''}</span>
-        <span class="m-td-tx">${esc(t.text)}</span>
-        <button type="button" class="m-td-cls" data-tgo="${t.id}">${showDate ? fmtMD(t.date) + ' ' : ''}${esc(c ? c.name : '')}</button></div>`;
-    }).join('');
   },
 
   moveMonth(n) {
@@ -558,6 +548,7 @@ const MTodos = {
 
   bind(main) {
     main.onclick = (e) => {
+      if (e.target.closest('[data-addtodo]')) { TodoX.add(this.sel, this.OPT); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
         const n = +mo.dataset.mon;
@@ -571,14 +562,7 @@ const MTodos = {
         if (this.sel.slice(0, 7) !== this.month) { this._dir = this.sel > this.month ? 1 : -1; this.month = this.sel.slice(0, 7); }
         App.render(); return;
       }
-      const tg = e.target.closest('[data-tgo]');
-      if (tg) {
-        const t = Store.get('todos', tg.dataset.tgo); if (!t) return;
-        const l = Store.get('lessons', t.lessonId);
-        if (!Store.get('classes', t.classId)) return;
-        MProgress.classId = t.classId; MProgress.q = ''; MProgress.jump = l ? l.date : '';
-        App.go('progress', { classId: t.classId, date: l ? l.date : '' });
-      }
+      TodoX.handleClick(e, this.OPT);
     };
   },
 };

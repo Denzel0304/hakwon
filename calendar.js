@@ -91,16 +91,12 @@ const MiniCal = {
     if (!this.month) { const d = parseYmd(App.selDate); this.month = new Date(d.getFullYear(), d.getMonth(), 1); }
     const y = this.month.getFullYear(), m = this.month.getMonth();
     const today0 = todayStr();
-    const tdIdx = {};
-    Store.all('todos').forEach(t => {
-      if (t.done || !isYmd(t.date)) return;
-      const o = tdIdx[t.date] = tdIdx[t.date] || { late: false, todo: false };
-      if (t.date < today0) o.late = true; else o.todo = true;
-    });
     const first = new Date(y, m, 1);
     const start = addDays(first, -first.getDay());
     const last = new Date(y, m + 1, 0);
     const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
+    // 할일 점 (반복 일정 회차 · 상기 포함, todo-ext.js)
+    const tdIdx = TodoX.dotIndex(ymd(start), weeks * 7, today0);
     const today = todayStr();
     // 일지 미작성 수업이 있는 날 (오늘까지, 보이는 칸만 계산)
     const actCls = Store.all('classes').filter(c => c.active !== false);
@@ -287,8 +283,9 @@ const DayPage = {
     const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [] };
     const evs = [...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
     const classes = Lessons.classesOn(date);
-    const todos = Store.where('todos', t => t.date === date).sort(Todos.sortFn);
-    const late = isToday ? Store.where('todos', t => !t.done && isYmd(t.date) && t.date < today).sort((a, b) => ko(a.date, b.date) || Todos.sortFn(a, b)) : [];
+    // 할일 (todo-ext.js: 반복·상기·체크리스트·중요도 포함)
+    const tdList = TodoX.listHtml(date);
+    const tdLate = isToday ? TodoX.lateHtml(today) : { n: 0, html: '' };
     const pending = isToday ? Promo.pendingStudents() : [];
     const end14 = addDaysStr(date, 14);
     const upcoming = Store.all('events').filter(ev => isYmd(ev.date) && ev.date > date && ev.date <= end14)
@@ -299,7 +296,7 @@ const DayPage = {
     let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
       ${isToday ? '' : '<button class="btn sm" data-a="today">오늘</button>'}
-      <button class="btn primary" data-a="add">+ 일정 추가</button></div>`;
+      <button class="btn primary" data-a="add">+ 일정 추가</button><button class="btn primary" data-a="addtodo">+ 할일 추가</button></div>`;
     if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
     // 카드 배치: 왼쪽 열(시험 일정 → 일정 → 수업) / 오른쪽 열(다가오는 일정 → 할일 → 밀린 할일)
     // 두 열은 따로 쌓여서, 한쪽 카드가 길어도 다른 쪽에 빈 공간이 생기지 않는다.
@@ -327,18 +324,18 @@ const DayPage = {
         ${les ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
     h += `</div></div><div class="day-col">${upHtml}
-      <div class="panel todo-panel" style="--o:5"><h2>할일 <span class="sub">${todos.filter(t => !t.done).length}개 남음</span></h2>
-      ${todos.length ? `<div data-todolist>${Todos.rowsHtml(todos, { drag: true })}</div><p class="small muted" style="margin:6px 0 0">끌어서 순서를 바꿀 수 있습니다.</p>` : '<div class="empty">이 날 할일이 없습니다.</div>'}</div>
-      ${late.length ? `<div class="panel todo-panel late" style="--o:6"><h2>밀린 할일 <span class="sub">${late.length}개</span></h2>${Todos.rowsHtml(late, { showDate: true })}</div>` : ''}
+      <div class="panel todo-panel" style="--o:5"><h2>할일 <span class="sub">${tdList.left}개 남음</span></h2>
+      ${tdList.html}</div>
+      ${tdLate.n ? `<div class="panel todo-panel late" style="--o:6"><h2>밀린 할일 <span class="sub">${tdLate.n}개</span></h2>${tdLate.html}</div>` : ''}
     </div></div>`;
     main.innerHTML = h;
-    const list = $('[data-todolist]', main);
-    if (list) Todos.bindDrag(list);
+    TodoX.mount(main);
     main.onclick = (e) => {
       const a = e.target.closest('[data-a]');
       if (a) {
         const act = a.dataset.a;
         if (act === 'add') { EventModal.open(null, { date }); return; }
+        if (act === 'addtodo') { TodoX.add(date); return; }
         if (act === 'school') { Promo.openSchoolModal(); return; }
         App.pickDate(act === 'today' ? today : addDaysStr(date, act === 'prev' ? -1 : 1));
         return;
@@ -349,7 +346,7 @@ const DayPage = {
       }
       const sk = e.target.closest('[data-skip]'); if (sk) { Lessons.askSkip([sk.dataset.skip], date); return; }
       const us = e.target.closest('[data-unskip]'); if (us) { Lessons.unskip(us.dataset.unskip, date); return; }
-      if (Todos.handleClick(e)) return;
+      if (TodoX.handleClick(e)) return;
       const ev = e.target.closest('[data-ev]'); if (ev) { EventModal.open(ev.dataset.ev); return; }
       const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(date, cl.dataset.class); }
     };
