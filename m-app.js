@@ -33,69 +33,92 @@ function mDday(start, end) {
   return '<span class="badge gray">지난 시험</span>';
 }
 
+// 좌우 스와이프 감지: onSwipe(1) = 왼쪽으로 밀기(다음), onSwipe(-1) = 오른쪽으로 밀기(이전)
+function mSwipe(el, onSwipe) {
+  let x0 = null, y0 = 0, t0 = 0;
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && Date.now() - t0 < 800) onSwipe(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  el.addEventListener('touchcancel', () => { x0 = null; }, { passive: true });
+}
+
 /* =========================================================
-   시간표 — PC 시간표를 그대로 그린 뒤 보기 전용으로 바꾼다 (가로·세로 스크롤)
+   시간표 — 하루씩 보기 (월~금, 좌우 스와이프로 요일 이동) · 보기 전용
+   블록 모양·배치·학생 명단은 PC 시간표(Timetable)의 것을 그대로 쓴다
    ========================================================= */
 const MTimetable = {
-  ZOOMS: [1.0, 1.25, 1.5, 1.8, 2.2, 2.6],      // 1분당 px
-  zi: 2,
-  LS_ZOOM: 'mg77_m_ttzoom',
-  onLeave() { Timetable.onLeave(); },
+  DAYS: [1, 2, 3, 4, 5],
+  dow: null,              // 보고 있는 요일 (처음: 오늘, 주말이면 월요일)
+  _dir: 0,                // 넘긴 방향 (넘김 효과용)
+  onLeave() { Timetable.stopNow(); },
 
   render(main) {
-    try { const z = localStorage.getItem(this.LS_ZOOM); if (z !== null && +z >= 0 && +z < this.ZOOMS.length) this.zi = +z; } catch (_) {}
-    // 다시 그릴 때 보던 위치 유지
-    const old = $('.m-tt-scroll', main);
-    const pos = old ? { l: old.scrollLeft, t: old.scrollTop } : null;
+    const today = todayStr(), tdow = dowOf(today);
+    if (!this.DAYS.includes(this.dow)) this.dow = this.DAYS.includes(tdow) ? tdow : 1;
+    const dow = this.dow, isToday = dow === tdow;
+    const S = Timetable.START, E = Timetable.END, span = E - S;
+    const list = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).map(c => {
+      const t = Classes.timeOn(c, dow);
+      const s = toMin(t.start), e = s + t.duration;
+      const roster = Classes.rosterOnDow(c.id, dow, today);
+      const up = Classes.upcomingAt(c.id, today, Classes.rosterAt(c.id, today).map(x => x.id))
+        .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
+      return { c, s, e, roster, up };
+    });
+    const items = dow === 5 ? Timetable.layoutFri(list) : Timetable.layout(list);
 
-    Timetable.render(main);
-    main.onclick = null;                                   // 블록을 눌러도 반 수정 창을 열지 않음
-    const head = $('.page-head', main); if (head) head.remove();
-    const grip = $('.tt2-resize', main); if (grip) grip.remove();
-    const box = $('.tt2', main);
-    if (!box) return;
-    $$('.tt-blk', box).forEach(b => b.removeAttribute('title'));
-
-    // 표 전체 폭 = 시간 칸 + 요일 칸 최소 폭 합 (이보다 좁아지지 않게 → 가로 스크롤)
-    let w = 56;
-    ((($('.tt2-head', box) || box).getAttribute('style') || '').match(/minmax\((\d+)px/g) || []).forEach(x => { w += +x.match(/\d+/)[0]; });
-    box.style.width = w + 'px';
-    box.style.minWidth = w + 'px';
-
-    const page = document.createElement('div');
-    page.className = 'm-tt-page';
-    const wrap = document.createElement('div');
-    wrap.className = 'm-tt-scroll';
-    box.parentNode.insertBefore(page, box);
-    page.appendChild(wrap);
-    wrap.appendChild(box);
-    page.insertAdjacentHTML('beforeend', `<div class="m-tt-zoom"><button type="button" data-z="-1" aria-label="작게">−</button><button type="button" data-z="1" aria-label="크게">+</button></div>`);
-
-    this.apply(main);
-    if (pos) { wrap.scrollLeft = pos.l; wrap.scrollTop = pos.t; }
-    else {
-      const tc = $('.tt2-col.today', box);
-      if (tc) wrap.scrollLeft = Math.max(0, tc.offsetLeft - 60);
+    let h = `<div class="m-tt-page"><div class="m-dayseg">${this.DAYS.map(d => `<button type="button" data-dow="${d}" class="${d === dow ? 'on' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<small>오늘</small>' : ''}</button>`).join('')}</div>
+      <div class="m-tt-view"><div class="tt2 m-tt1"><div class="tt2-body"><div class="tt2-time">`;
+    for (let t = S; t < E; t += 60) {
+      const hr = t / 60;
+      h += `<span style="top:calc(var(--ppm) * ${t - S})">${hr > 12 ? hr - 12 : hr}시</span>`;
     }
+    h += `</div><div class="tt2-col${isToday ? ' today' : ''}">${isToday ? '<div class="tt2-now" hidden></div>' : ''}`;
+    items.forEach(it => {
+      const s = Math.max(it.s, S), e = Math.min(it.e, E);
+      if (e <= s) return;
+      const w = 100 / it.cols, c = it.c, cc = Classes.colorOf(c);
+      h += `<div class="tt-blk"${isToday ? ` data-end="${it.e}"` : ''}
+        style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
+        <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
+        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
+        <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
+    });
+    if (!items.length) h += '<div class="m-tt-empty">수업 없음</div>';
+    h += '</div></div></div></div></div>';
+    main.innerHTML = h;
 
-    main.onclick = (e) => {
-      const z = e.target.closest('[data-z]');
-      if (!z) return;
-      const ni = Math.max(0, Math.min(this.ZOOMS.length - 1, this.zi + +z.dataset.z));
-      if (ni === this.zi) return;
-      const r = wrap.scrollTop / Math.max(1, wrap.scrollHeight);
-      this.zi = ni;
-      try { localStorage.setItem(this.LS_ZOOM, String(ni)); } catch (_) {}
-      this.apply(main);
-      wrap.scrollTop = r * wrap.scrollHeight;
-    };
-  },
-  apply(main) {
-    const box = $('.tt2', main);
-    if (!box) return;
-    box.style.setProperty('--ppm', this.ZOOMS[this.zi] + 'px');
+    // 오후 3시 ~ 밤 12시를 화면 높이에 맞춤 (너무 작은 화면이면 아래로 스크롤)
+    const view = $('.m-tt-view', main), box = $('.tt2', main);
+    box.style.setProperty('--ppm', Math.max(0.9, (view.clientHeight - 14) / span) + 'px');
     Timetable.fitStudents(main);
-    $$('.m-tt-zoom [data-z]', main).forEach(b => { b.disabled = (+b.dataset.z < 0 && this.zi === 0) || (+b.dataset.z > 0 && this.zi === this.ZOOMS.length - 1); });
+    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) Timetable.fitStudents(main); });
+    if (this._dir) { view.classList.add(this._dir > 0 ? 'm-slide-l' : 'm-slide-r'); this._dir = 0; }
+
+    mSwipe(view, (d) => this.move(d));
+    main.onclick = (e) => {
+      const b = e.target.closest('[data-dow]');
+      if (!b || +b.dataset.dow === this.dow) return;
+      this._dir = +b.dataset.dow > this.dow ? 1 : -1;
+      this.dow = +b.dataset.dow;
+      App.render();
+    };
+    if (isToday) Timetable.startNow(main, today); else Timetable.stopNow();
+  },
+  // 월요일·금요일 끝에서는 멈춤
+  move(d) {
+    const i = this.DAYS.indexOf(this.dow) + d;
+    if (i < 0 || i >= this.DAYS.length) return;
+    this._dir = d;
+    this.dow = this.DAYS[i];
+    App.render();
   },
 };
 
@@ -114,9 +137,9 @@ const MProgress = {
     if (p.classId) this.classId = p.classId;
     if (!this.classId || !Store.get('classes', this.classId)) this.classId = classes[0] ? classes[0].id : '';
     const act = classes.filter(c => c.active !== false), ended = classes.filter(c => c.active === false);
-    let h = `<div class="m-chips">${act.map(c => `<button type="button" class="chip ${c.id === this.classId ? 'active' : ''}" data-cls="${c.id}">${Classes.dot(c)}${esc(c.name)}</button>`).join('')}</div>`;
-    if (ended.length) h += `<div class="m-bar"><select data-ended class="m-grow"><option value="">종료된 반 보기…</option>${ended.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>`;
-    if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
+    if (!this.classId) { main.innerHTML = '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
+    const opt = (c) => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`;
+    let h = `<div class="m-bar"><select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
     h += `<div class="m-bar">${mSearchHtml(this.q, '진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label></div>`;
     if (this.npOn) {
       const today = todayStr();
@@ -129,7 +152,6 @@ const MProgress = {
     h += `<div id="m-list">${this.listHtml(p.date)}</div>`;
     main.innerHTML = h;
     this.bind(main);
-    const ac = $('.m-chips .chip.active', main); if (ac) ac.scrollIntoView({ block: 'nearest', inline: 'center' });
     if (this.jump) {
       const t = $(`.m-card[data-date="${this.jump}"]`, main);
       this.jump = '';
@@ -167,13 +189,11 @@ const MProgress = {
         this.npSel[this.classId] = cur.includes(sx.dataset.npsx) ? cur.filter(id => id !== sx.dataset.npsx) : cur.concat(sx.dataset.npsx);
         App.render(); return;
       }
-      if (e.target.closest('[data-npsauto]')) { delete this.npSel[this.classId]; App.render(); return; }
-      const ch = e.target.closest('[data-cls]');
-      if (ch) { this.classId = ch.dataset.cls; App.params = {}; App.render(true); }
+      if (e.target.closest('[data-npsauto]')) { delete this.npSel[this.classId]; App.render(); }
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-npsum]')) { this.npOn = e.target.checked; App.render(); return; }
-      if (e.target.matches('[data-ended]') && e.target.value) { this.classId = e.target.value; App.params = {}; App.render(true); }
+      if (e.target.matches('[data-clsel]') && e.target.value) { this.classId = e.target.value; e.target.blur(); App.params = {}; App.render(true); }
     };
     main.oninput = debounce((e) => {
       if (!e.target.matches('[data-q]')) return;
@@ -267,13 +287,15 @@ const MMakeups = {
 
 /* =========================================================
    일정 — 보기 전용 (달력 / 목록 전환)
+   달력: PC 큰 달력처럼 기간 일정은 화살표 띠, 하루 일정은 글자로 표시 · 좌우 스와이프로 달 이동
    ========================================================= */
 const MEvents = {
   mode: 'cal',            // 'cal' | 'list'
-  type: '',               // 종류 필터 ('' = 전체)
+  type: 'exam',           // 종류 필터 ('' = 전체) — 처음에는 시험 일정
   q: '', hidePast: true,
   month: '',              // 'YYYY-MM'
   sel: '',                // 달력에서 고른 날짜
+  _dir: 0,                // 넘긴 방향 (넘김 효과용)
   TCLS: { exam: 'red', pre: '', weekend: 'green', etc: 'purple' },
   ORDER: ['exam', 'pre', 'weekend', 'etc'],
 
@@ -281,16 +303,30 @@ const MEvents = {
     const today = todayStr();
     if (!isYmd(this.sel)) this.sel = today;
     if (!/^\d{4}-\d{2}$/.test(this.month)) this.month = this.sel.slice(0, 7);
-    let h = `<div class="m-seg" role="group" aria-label="보기 방식">
+    let h = `<div class="m-bar"><div class="m-seg m-grow" role="group" aria-label="보기 방식">
         <button type="button" data-mode="cal" class="${this.mode === 'cal' ? 'on' : ''}">달력</button>
         <button type="button" data-mode="list" class="${this.mode === 'list' ? 'on' : ''}">목록</button></div>
-      <div class="m-chips"><button type="button" class="chip ${this.type ? '' : 'active'}" data-type="">전체</button>${this.ORDER.map(k => `<button type="button" class="chip ${this.type === k ? 'active' : ''}" data-type="${k}">${EVENT_TYPES[k].label}</button>`).join('')}</div>`;
+      <select data-type class="m-typesel" aria-label="일정 종류"><option value="" ${this.type ? '' : 'selected'}>전체</option>${this.ORDER.map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select></div>`;
     h += this.mode === 'cal' ? this.calHtml(today) : this.listShellHtml(today);
     main.innerHTML = h;
     this.bind(main);
+    const cal = $('.m-cal', main);
+    if (cal) {
+      mSwipe(cal, (d) => this.moveMonth(d));
+      if (this._dir) cal.classList.add(this._dir > 0 ? 'm-slide-l' : 'm-slide-r');
+    }
+    this._dir = 0;
   },
 
   okType(ev) { return !this.type || evType(ev) === this.type; },
+
+  moveMonth(n) {
+    const [Y, M] = this.month.split('-').map(Number);
+    const d = new Date(Y, M - 1 + n, 1);
+    this.month = d.getFullYear() + '-' + pad(d.getMonth() + 1);
+    this._dir = n;
+    App.render();
+  },
 
   evRow(ev, showDate) {
     const t = eventTime(ev);
@@ -306,29 +342,55 @@ const MEvents = {
     const first = new Date(Y, M - 1, 1);
     const start = addDays(first, -first.getDay());
     const weeks = Math.ceil((first.getDay() + new Date(Y, M, 0).getDate()) / 7);
-    const idx = CalIndex.build();
+    const evs = Store.all('events').filter(ev => isYmd(ev.date) && this.okType(ev));
+    const ranges = evs.filter(isRange).sort((a, b) => ko(a.date, b.date) || ko(evEnd(b), evEnd(a)));
+    const singles = evs.filter(ev => !isRange(ev));
+    const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
+
     let h = `<div class="panel m-cal"><div class="mc-head"><span class="mc-title">${Y}년 ${M}월</span>
         <button type="button" class="mc-nav" data-mon="-1" aria-label="이전 달">‹</button>
         <button type="button" class="mc-today" data-mon="0">오늘</button>
         <button type="button" class="mc-nav" data-mon="1" aria-label="다음 달">›</button></div>
-      <div class="mc-grid">${DOW.map((w, i) => `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('')}`;
-    for (let i = 0; i < weeks * 7; i++) {
-      const d = addDays(start, i), k = ymd(d);
-      const o = idx[k];
-      const dots = o ? this.ORDER.filter(t => (!this.type || this.type === t) && o[t].length).map(t => `<i class="dot-${t}"></i>`).join('') : '';
-      const cls = ['mc-day'];
-      if (d.getMonth() !== M - 1) cls.push('other');
-      if (d.getDay() === 0) cls.push('sun');
-      if (d.getDay() === 6) cls.push('sat');
-      if (k === today) cls.push('today');
-      if (k === this.sel) cls.push('sel');
-      h += `<button type="button" class="${cls.join(' ')}" data-d="${k}"><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
+      <div class="m-bc-wds">${DOW.map((w, i) => `<div class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('')}</div>`;
+    for (let w = 0; w < weeks; w++) {
+      const wd = Array.from({ length: 7 }, (_, i) => ymd(addDays(start, w * 7 + i)));
+      const ws = wd[0], we = wd[6];
+      // 이 주에 걸치는 기간 일정 → 줄(lane) 배정 (PC 큰 달력과 같은 방식)
+      const lanes = [], segs = [];
+      ranges.forEach(ev => {
+        const s = ev.date, e = evEnd(ev);
+        if (e < ws || s > we) return;
+        const c0 = s < ws ? 0 : wd.indexOf(s), c1 = e > we ? 6 : wd.indexOf(e);
+        let ln = lanes.findIndex(end => end < c0);
+        if (ln < 0) { ln = lanes.length; lanes.push(-1); }
+        lanes[ln] = c1;
+        segs.push({ ev, c0, c1, ln, contL: s < ws, contR: e > we });
+      });
+      h += `<div class="m-bc-week" style="--lanes:${lanes.length}">`;
+      wd.forEach((k, i) => {
+        const d = parseYmd(k);
+        const cls = ['m-bc-cell'];
+        if (d.getMonth() !== M - 1) cls.push('other');
+        if (i === 0) cls.push('sun');
+        if (i === 6) cls.push('sat');
+        if (k === today) cls.push('today');
+        if (k === this.sel) cls.push('sel');
+        const items = singles.filter(ev => ev.date === k).sort((a, b) => ko(a.start, b.start))
+          .map(ev => `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}">${esc(eventShort(ev))}</span>`).join('');
+        h += `<div class="${cls.join(' ')}" data-d="${k}"><span class="n">${d.getDate()}</span><div class="m-bc-items">${items}</div></div>`;
+      });
+      segs.forEach(sg => {
+        const label = (sg.contL ? '→ ' : '') + eventShort(sg.ev) + (sg.contR ? ' →' : '');
+        h += `<div class="m-bc-bar ${sg.contL ? 'cont-l' : 'tl'} ${sg.contR ? 'cont-r' : 'tr'}" data-ev="${sg.ev.id}"
+          style="left:calc(${sg.c0 / 7 * 100}% + 2px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 4px);top:calc(var(--bt) + ${sg.ln} * var(--bh));background:${colors[barKey(sg.ev)]}">${esc(label)}</div>`;
+      });
+      h += '</div>';
     }
-    h += `</div><div class="mc-legend">${this.ORDER.map(t => `<span><i class="dot-${t}"></i>${EVENT_TYPES[t].label}</span>`).join('')}</div></div>`;
-    const o = idx[this.sel];
-    const evs = o ? this.ORDER.filter(t => !this.type || this.type === t).flatMap(t => o[t]) : [];
+    h += '</div>';
+    const daysEv = evs.filter(ev => eventDates(ev).includes(this.sel))
+      .sort((a, b) => this.ORDER.indexOf(evType(a)) - this.ORDER.indexOf(evType(b)) || ko(a.start, b.start) || ko(eventShort(a), eventShort(b)));
     h += `<div class="m-sec-t">${esc(fmtDate(this.sel))}${this.sel === today ? ' <span class="badge">오늘</span>' : ''}</div>`;
-    h += evs.length ? `<div class="m-evs">${evs.map(ev => this.evRow(ev, false)).join('')}</div>` : '<div class="panel"><div class="empty">이 날은 일정이 없습니다.</div></div>';
+    h += daysEv.length ? `<div class="m-evs">${daysEv.map(ev => this.evRow(ev, false)).join('')}</div>` : '<div class="panel"><div class="empty">이 날은 일정이 없습니다.</div></div>';
     return h;
   },
 
@@ -374,19 +436,19 @@ const MEvents = {
   bind(main) {
     main.onclick = (e) => {
       const md = e.target.closest('[data-mode]'); if (md) { this.mode = md.dataset.mode; App.render(true); return; }
-      const ty = e.target.closest('[data-type]'); if (ty) { this.type = ty.dataset.type; App.render(); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
         const n = +mo.dataset.mon;
-        if (!n) { this.sel = todayStr(); this.month = this.sel.slice(0, 7); }
-        else { const [Y, M] = this.month.split('-').map(Number); const d = new Date(Y, M - 1 + n, 1); this.month = d.getFullYear() + '-' + pad(d.getMonth() + 1); }
+        if (n) { this.moveMonth(n); return; }
+        this.sel = todayStr(); this.month = this.sel.slice(0, 7);
         App.render(); return;
       }
+      const ev = e.target.closest('[data-ev]'); if (ev) { this.openEv(ev.dataset.ev); return; }   // 띠·일정 글자를 누르면 상세
       const dd = e.target.closest('[data-d]');
-      if (dd) { this.sel = dd.dataset.d; this.month = this.sel.slice(0, 7); App.render(); return; }
-      const ev = e.target.closest('[data-ev]'); if (ev) this.openEv(ev.dataset.ev);
+      if (dd) { this.sel = dd.dataset.d; if (this.sel.slice(0, 7) !== this.month) { this._dir = this.sel > this.month ? 1 : -1; this.month = this.sel.slice(0, 7); } App.render(); }
     };
     main.onchange = (e) => {
+      if (e.target.matches('[data-type]')) { this.type = e.target.value; e.target.blur(); App.render(); return; }
       if (e.target.matches('[data-past]')) { this.hidePast = e.target.checked; App.render(); }
     };
     main.oninput = debounce((e) => {
@@ -637,6 +699,15 @@ const App = {
   window.addEventListener('online', () => { if (Auth.key()) Store.syncNow(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted && Auth.key()) Store.syncNow(); });
   setInterval(() => { if (document.visibilityState === 'visible' && Auth.key()) Store.checkRemote(); }, CFG.POLL_MS);
+
+  // 화면 크기가 바뀌면(가로·세로 전환 등) 시간표 높이를 다시 맞춤
+  let _vw = window.innerWidth, _vh = window.innerHeight;
+  window.addEventListener('resize', debounce(() => {
+    const w = window.innerWidth, h = window.innerHeight;
+    if (w === _vw && Math.abs(h - _vh) < 80) return;          // 주소창이 접히는 정도는 무시
+    _vw = w; _vh = h;
+    if (App.page === 'timetable' && !Modal.stack.length && Auth.key()) App.render();
+  }, 200));
 
   // 화면을 닫거나 다른 앱으로 넘어가기 전 저장 대기분을 로컬에 기록
   window.addEventListener('beforeunload', () => { Store.persist(); });
