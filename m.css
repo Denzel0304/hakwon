@@ -179,6 +179,29 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 .m-ev-memo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-ev.past { opacity: .6; }
 
+/* ---------- 할일 (보기 전용) ---------- */
+.m-tdcal { padding: 10px 6px 10px; touch-action: pan-y; }
+.m-tdcal .mc-head { padding: 0 6px 2px; }
+.m-tdcal .mc-day { height: 36px; padding-top: 2px; }
+.m-tdcal .mc-day .n { font-size: 15px; line-height: 20px; }
+.m-tdcal .mc-day:hover { background: transparent; }
+.m-tdcal .mc-day.sel:hover { background: var(--accent); }
+.m-tdcal .mc-dots { margin-top: 2px; height: 6px; }
+.m-tdcal .mc-legend { padding: 0 6px; margin-top: 6px; }
+.m-tds { padding: 4px 14px; }
+.m-td { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px dashed var(--line); }
+.m-td:last-child { border-bottom: 0; }
+.m-td-ck {
+  flex: none; width: 20px; height: 20px; margin-top: 1px; border: 1.5px solid var(--line-strong); border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff;
+}
+.m-td.done .m-td-ck { background: var(--ok); border-color: var(--ok); }
+.m-td-tx { flex: 1; min-width: 0; font-size: 16px; line-height: 1.45; word-break: break-word; }
+.m-td.done .m-td-tx { text-decoration: line-through; color: var(--ink-mute); }
+.m-td-cls { flex: none; max-width: 42%; border: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--accent-ink); text-align: right; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.m-late-t { color: var(--danger); }
+.m-late { border-color: #F0C4C6; }
+
 /* ---------- 문자 (PC 문자 화면을 그대로 쓰고 배치만 조정) ---------- */
 body.m-body #main[data-page="sms"] .grid-2 { grid-template-columns: minmax(0, 1fr); }
 body.m-body .m-smscls { width: 100%; margin-bottom: 10px; }
