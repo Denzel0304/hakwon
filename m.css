@@ -112,12 +112,20 @@ body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
 .m-tt-view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 8px 8px 0; touch-action: pan-y; overscroll-behavior: contain; }
 .m-tt1.tt2 { min-width: 0; border: 0; border-radius: 0; overflow: visible; background: transparent; }
 .m-tt1 .tt2-body { grid-template-columns: 42px minmax(0, 1fr); }
+.m-tt1 .tt2-body { height: calc(var(--ppm) * var(--span, 540)); }   /* PC는 540분으로 고정이라 모바일은 보여주는 범위에 맞춤 */
 .m-tt1 .tt2-time span { right: 6px; font-size: 12px; }
 .m-tt1 .tt2-col { background-color: var(--surface); border: 1px solid var(--line); border-radius: 0 0 0 0; }
 .m-tt1 .tt2-col.today { border-color: #7D9DB8; }
 .m-tt1 .tt-blk { cursor: default; }
 .m-tt1 .tt-blk .hd.one .nm { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-tt1 .tt-blk .hd.one .tm { font-size: 13px; font-weight: 600; color: #34495A; }
+/* 가로선을 정시에 맞춤 (시간 범위가 정시에서 시작하지 않으므로) */
+.m-tt1 .tt2-col { background-position: 0 var(--bgy, 0px); }
+.m-tt1 .tt2-col.today { background-position: 0 var(--bgy, 0px), 0 0; }
+/* 폭이 좁은 블록: 이름(작게) + 인원만 */
+.m-tt1 .tt-blk .hd.nar { padding-bottom: 2px; margin-bottom: 3px; }
+.m-tt1 .tt-blk .hd.nar .nm { font-size: 12.5px; line-height: 1.25; letter-spacing: -.3px; }
+.m-tt1 .tt-blk .hd.nar .cnt { font-size: 11.5px; font-weight: 600; color: #34495A; white-space: nowrap; }
 .m-tt1 .tt-blk:hover { border-color: inherit; }
 .m-tt1 .tt-blk.done:hover { filter: grayscale(1); opacity: .5; }
 .m-tt-empty { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: var(--ink-mute); font-size: 15px; }

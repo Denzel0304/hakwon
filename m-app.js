@@ -45,6 +45,9 @@ function mSwipe(el, onSwipe) {
    블록 모양·배치·학생 명단은 PC 시간표(Timetable)의 것을 그대로 쓴다
    ========================================================= */
 const MTimetable = {
+  FULL_S: 15 * 60, FULL_E: 24 * 60,   // PC 시간표와 같은 전체 범위 (오후 3시 ~ 밤 12시)
+  PAD: 15,                            // 첫 수업 앞·마지막 수업 뒤 여유 (분)
+  MIN_SPAN: 240,                      // 수업이 적은 날도 최소 4시간은 보여줌 (블록이 지나치게 커지지 않게)
   DAYS: [1, 2, 3, 4, 5],
   dow: null,              // 보고 있는 요일 (처음: 오늘, 주말이면 월요일)
   _dir: 0,                // 넘긴 방향 (넘김 효과용)
@@ -54,7 +57,6 @@ const MTimetable = {
     const today = todayStr(), tdow = dowOf(today);
     if (!this.DAYS.includes(this.dow)) this.dow = this.DAYS.includes(tdow) ? tdow : 1;
     const dow = this.dow, isToday = dow === tdow;
-    const S = Timetable.START, E = Timetable.END, span = E - S;
     const list = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).map(c => {
       const t = Classes.timeOn(c, dow);
       const s = toMin(t.start), e = s + t.duration;
@@ -73,13 +75,24 @@ const MTimetable = {
     });
     const twoLine = [];
 
+    // 시간 범위를 그날 수업에 맞춘다: 첫 수업 시작 ~ 마지막 수업 끝 (수업이 없으면 전체 범위)
+    let S = this.FULL_S, E = this.FULL_E;
+    if (items.length) {
+      const mn = Math.min(...items.map(it => it.s)), mx = Math.max(...items.map(it => it.e));
+      S = Math.max(this.FULL_S, Math.floor((mn - this.PAD) / 5) * 5);
+      E = Math.min(this.FULL_E, Math.ceil((mx + this.PAD) / 5) * 5);
+      if (E - S < this.MIN_SPAN) { E = Math.min(this.FULL_E, S + this.MIN_SPAN); S = Math.max(this.FULL_S, E - this.MIN_SPAN); }
+    }
+    const span = E - S;
+    const hourOff = (60 - S % 60) % 60;   // 첫 정시까지의 분 (가로선을 정시에 맞추기 위함)
+
     let h = `<div class="m-tt-page"><div class="m-dayseg">${this.DAYS.map(d => `<button type="button" data-dow="${d}" class="${d === dow ? 'on' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<small>오늘</small>' : ''}</button>`).join('')}</div>
       <div class="m-tt-view"><div class="tt2 m-tt1"><div class="tt2-body"><div class="tt2-time">`;
-    for (let t = S; t < E; t += 60) {
+    for (let t = Math.ceil(S / 60) * 60; t < E; t += 60) {
       const hr = t / 60;
       h += `<span style="top:calc(var(--ppm) * ${t - S})">${hr > 12 ? hr - 12 : hr}시</span>`;
     }
-    h += `</div><div class="tt2-col${isToday ? ' today' : ''}">${isToday ? '<div class="tt2-now" hidden></div>' : ''}`;
+    h += `</div><div class="tt2-col${isToday ? ' today' : ''}" style="--bgy:calc(var(--ppm) * ${hourOff})">${isToday ? '<div class="tt2-now" hidden></div>' : ''}`;
     items.forEach(it => {
       const s = Math.max(it.s, S), e = Math.min(it.e, E);
       if (e <= s) return;
@@ -91,15 +104,18 @@ const MTimetable = {
         style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${it.span * w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
         ${it.span === it.cols   // 한 줄을 다 쓰는 블록: 반 이름 뒤에 (시간 · 인원)을 붙여 한 줄로
           ? `<div class="hd one"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="tm">(${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''})</span></div></div>`
-          : two}
+          : it.span / it.cols < 0.5   // 폭이 절반보다 좁은 블록: 이름 + 인원만 작게 (시간은 반 이름에 들어 있음)
+            ? `<div class="hd nar"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="cnt">${it.roster.length}명${it.up.length ? `+${it.up.length}` : ''}</span></div></div>`
+            : two}
         <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
     });
     if (!items.length) h += '<div class="m-tt-empty">수업 없음</div>';
     h += '</div></div></div></div></div>';
     main.innerHTML = h;
 
-    // 오후 3시 ~ 밤 12시를 화면 높이에 맞춤 (너무 작은 화면이면 아래로 스크롤)
+    // 위에서 정한 시간 범위를 화면 높이에 맞춤 (너무 작은 화면이면 아래로 스크롤)
     const view = $('.m-tt-view', main), box = $('.tt2', main);
+    box.style.setProperty('--span', span);   // 표 높이 = 1분당 높이 × 보여주는 분
     box.style.setProperty('--ppm', Math.max(0.9, (view.clientHeight - 14) / span) + 'px');
     // 한 줄 제목이 블록 폭보다 길면 두 줄 제목으로 되돌림 (글자가 잘리지 않게)
     const fixHead = () => $$('.tt-blk', main).forEach(blk => {
@@ -119,6 +135,7 @@ const MTimetable = {
       this.dow = +b.dataset.dow;
       App.render();
     };
+    Timetable.START = S; Timetable.END = E;
     if (isToday) Timetable.startNow(main, today); else Timetable.stopNow();
   },
   // 월요일·금요일 끝에서는 멈춤
