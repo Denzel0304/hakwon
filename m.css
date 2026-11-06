@@ -116,6 +116,8 @@ body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
 .m-tt1 .tt2-col { background-color: var(--surface); border: 1px solid var(--line); border-radius: 0 0 0 0; }
 .m-tt1 .tt2-col.today { border-color: #7D9DB8; }
 .m-tt1 .tt-blk { cursor: default; }
+.m-tt1 .tt-blk .hd.one .nm { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-tt1 .tt-blk .hd.one .tm { font-size: 13px; font-weight: 600; color: #34495A; }
 .m-tt1 .tt-blk:hover { border-color: inherit; }
 .m-tt1 .tt-blk.done:hover { filter: grayscale(1); opacity: .5; }
 .m-tt-empty { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: var(--ink-mute); font-size: 15px; }
@@ -159,6 +161,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
   padding: 0 7px 0 4px; color: #fff; font-size: 10.5px; font-weight: 700;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
 }
+.m-bc-bar { text-align: center; }
 .m-bc-bar.tl { padding-left: 8px; }
 .m-bc-bar.tl.tr { clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
 .m-bc-bar.tl.cont-r { clip-path: polygon(6px 0, 100% 0, 100% 100%, 6px 100%, 0 50%); }
@@ -178,6 +181,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 
 /* ---------- 문자 (PC 문자 화면을 그대로 쓰고 배치만 조정) ---------- */
 body.m-body #main[data-page="sms"] .grid-2 { grid-template-columns: minmax(0, 1fr); }
+body.m-body .m-smscls { width: 100%; margin-bottom: 10px; }
 body.m-body .sx7-list { max-height: 48vh; padding: 2px 6px; }
 body.m-body .sx7-st { padding: 10px 2px; }
 body.m-body .sx7-st input { width: 20px; height: 20px; }

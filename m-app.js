@@ -16,7 +16,7 @@ const M_ICON = {
   makeups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/><path d="M12 8v4l3 2"/></svg>',
   exams: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg>',
 };
-const M_TABS = [['timetable', '시간표'], ['sms', '문자'], ['progress', '진도'], ['events', '일정'], ['makeups', '보강'], ['exams', '시험정보']];
+const M_TABS = [['timetable', '시간표'], ['events', '일정'], ['sms', '문자'], ['progress', '진도'], ['makeups', '보강'], ['exams', '시험정보']];
 
 /* ---------- 공용 ---------- */
 // 검색칸: 입력할 때 목록만 다시 그린다 (입력칸을 새로 만들지 않아 한글 입력이 끊기지 않음)
@@ -87,8 +87,10 @@ const MTimetable = {
       const w = 100 / it.cols, c = it.c, cc = Classes.colorOf(c);
       h += `<div class="tt-blk"${isToday ? ` data-end="${it.e}"` : ''}
         style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
-        <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
-        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
+        ${it.cols === 1   // 혼자 한 줄을 다 쓰는 블록: 반 이름 뒤에 (시간 · 인원)을 붙여 한 줄로
+          ? `<div class="hd one"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="tm">(${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''})</span></div></div>`
+          : `<div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
+        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>`}
         <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
     });
     if (!items.length) h += '<div class="m-tt-empty">수업 없음</div>';
@@ -119,6 +121,34 @@ const MTimetable = {
     this._dir = d;
     this.dow = this.DAYS[i];
     App.render();
+  },
+};
+
+/* =========================================================
+   문자 — PC 문자 화면(SmsPage)을 그대로 쓰고, 반 선택 버튼 줄만 드롭다운으로 바꿔 보여준다
+   (드롭다운을 바꾸면 숨겨 둔 원래 반 버튼을 눌러 주므로 동작은 PC와 같음)
+   ========================================================= */
+const MSms = {
+  onLeave() { SmsPage.onLeave(); },
+  render(main) {
+    SmsPage.render(main);
+    const chips = $('.sx7-grid .class-chips', main);
+    if (!chips) return;
+    const opts = $$('[data-cls]', chips).map(b => {
+      const x = b.cloneNode(true);
+      const sm = $('small', x), n = sm ? sm.textContent.trim() : '';
+      if (sm) sm.remove();
+      return `<option value="${esc(b.dataset.cls)}" ${b.classList.contains('active') ? 'selected' : ''}>${esc(x.textContent.trim())}${n ? ` (${esc(n)}명)` : ''}</option>`;
+    }).join('');
+    chips.style.display = 'none';         // (class-chips의 display:flex 때문에 hidden 대신 직접 숨김)
+    chips.insertAdjacentHTML('afterend', `<select class="m-smscls" aria-label="반 선택">${opts}</select>`);
+    const sel = $('.m-smscls', main);
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();                 // 문자 화면의 change 처리로 넘기지 않음
+      const b = $$('[data-cls]', chips).find(x => x.dataset.cls === sel.value);
+      if (b) b.click();
+      sel.blur();
+    });
   },
 };
 
@@ -518,7 +548,7 @@ const App = {
   params: {},
   selDate: todayStr(),
   _needRender: false,
-  pages: { timetable: MTimetable, sms: SmsPage, progress: MProgress, events: MEvents, makeups: MMakeups, exams: MExams },
+  pages: { timetable: MTimetable, sms: MSms, progress: MProgress, events: MEvents, makeups: MMakeups, exams: MExams },
 
   go(page, params = {}) {
     if (!this.pages[page]) page = 'timetable';
