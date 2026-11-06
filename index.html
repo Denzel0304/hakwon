@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // 휴대폰으로 접속하면 모바일 전용 화면으로 이동 (PC·태블릿은 그대로)
+  if (/iPhone|iPod|Android.+Mobile|Windows Phone/i.test(navigator.userAgent)) location.replace('index-mobile.html');
+</script>
 <title>학원 관리</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#E4F1FB">
+<title>학원 관리</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="style.css?v=20261105g">
+<link rel="stylesheet" href="m.css?v=20261106a">
+</head>
+<body class="m-body">
+
+<!-- 로그인 -->
+<div id="mg-login" class="login-overlay active">
+  <div class="login-box">
+    <div class="login-title">학원 관리</div>
+    <div class="login-sub">PIN 6자리를 입력하세요</div>
+    <input type="password" id="pin-input" class="pin-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+    <button id="login-btn" class="login-btn" type="button">로그인</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+<script>
+  // 저장된 접속 키가 있으면(자동 로그인) 로그인 화면을 그리기 전에 바로 앱 화면으로 시작한다. (config.js의 LS_AK 'mg77_ak'와 같아야 함)
+  try { if (localStorage.getItem('mg77_ak')) { document.getElementById('mg-login').classList.remove('active'); document.body.classList.add('app-on'); } } catch (e) {}
+</script>
+
+<!-- 앱 -->
+<div id="mg-app">
+  <header id="m-head">
+    <h1 id="m-title">시간표</h1>
+    <button type="button" id="sync-bar" aria-label="지금 동기화"></button>
+    <button type="button" id="m-menu" class="kebab" aria-label="메뉴">⋮</button>
+  </header>
+  <main id="main"></main>
+  <nav id="m-tabs" aria-label="화면"></nav>
+</div>
+
+<datalist id="dl-schools"></datalist>
+<div id="toast" class="toast"></div>
+
+<script src="config.js?v=20261105a"></script>
+<script src="util.js?v=20261105d"></script>
+<script src="store.js?v=20261031b"></script>
+<script src="calendar.js?v=20261031b"></script>
+<script src="students.js?v=20261105d"></script>
+<script src="classes.js?v=20261105e"></script>
+<script src="lessons.js?v=20261031b"></script>
+<script src="exams.js?v=20261031b"></script>
+<script src="sms.js?v=20261105a"></script>
+<script src="m-app.js?v=20261106a"></script>
+</body>
+</html>

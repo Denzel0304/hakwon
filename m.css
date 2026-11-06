@@ -1,0 +1,178 @@
+/* =========================================================
+   m.css — 모바일 전용 (index-mobile.html)
+   style.css(PC) 위에 덮어쓴다. 모든 규칙은 body.m-body 아래에서만 적용
+   ========================================================= */
+
+body.m-body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+/* 아이폰에서 입력칸을 누를 때 화면이 확대되지 않도록 16px */
+body.m-body input[type=text], body.m-body input[type=search], body.m-body input[type=date],
+body.m-body input[type=time], body.m-body input[type=number], body.m-body input[type=tel],
+body.m-body select, body.m-body textarea { font-size: 16px; padding: 9px 11px; }
+body.m-body .login-box { width: min(320px, calc(100vw - 32px)); }
+
+/* ---------- 레이아웃: 위 제목줄 / 가운데 화면 / 아래 탭 ---------- */
+body.m-body #mg-app { flex-direction: column; height: 100vh; height: 100dvh; }
+#m-head {
+  flex: none; display: flex; align-items: center; gap: 4px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 6px 8px 16px;
+  background: var(--side); border-bottom: 1px solid var(--line-strong);
+}
+#m-title { flex: 1; min-width: 0; margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--accent-ink); }
+body.m-body #m-head #sync-bar {
+  margin: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  font-size: 12.5px; color: var(--ink-soft); white-space: nowrap;
+}
+body.m-body #m-head #sync-bar:active { background: var(--side-strong); }
+#m-menu { font-size: 22px; padding: 4px 12px; }
+
+body.m-body #main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 12px 28px; -webkit-overflow-scrolling: touch; }
+body.m-body #main[data-page] > * { max-width: none; }
+body.m-body #main .page-head { display: none; }          /* 화면 이름은 위 제목줄에 표시 */
+
+#m-tabs {
+  flex: none; display: grid; grid-template-columns: repeat(6, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line-strong);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#m-tabs button {
+  border: 0; background: transparent; padding: 7px 0 6px; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: 11.5px; font-weight: 600; color: var(--ink-mute); letter-spacing: -0.3px;
+}
+#m-tabs svg { width: 24px; height: 24px; }
+#m-tabs button.active { color: var(--accent); font-weight: 800; }
+#m-tabs button.active svg { stroke-width: 2.2; }
+
+/* 토스트: 아래 탭 위로 */
+body.m-body .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px); text-align: center; }
+
+/* ---------- 공통 조각 ---------- */
+body.m-body .panel { padding: 14px; border-radius: 12px; }
+body.m-body .panel h2 { font-size: 16.5px; }
+body.m-body .btn { padding: 9px 14px; }
+body.m-body .btn.sm { padding: 7px 12px; }
+body.m-body .chip { padding: 7px 14px; }
+body.m-body label.chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+body.m-body .tabs { margin-bottom: 12px; }
+body.m-body .tabs button { flex: 1; padding: 10px 4px; font-size: 15px; white-space: nowrap; }
+body.m-body .tabs .cnt { font-size: 12px; }
+
+.m-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.m-grow { flex: 1; min-width: 0; }
+.m-tg { flex: none; font-size: 14px; white-space: nowrap; }
+.m-cnt { font-size: 13px; color: var(--ink-mute); margin: 0 2px 6px; }
+
+/* 가로로 밀어 보는 칩 줄 */
+.m-chips {
+  display: flex; gap: 6px; overflow-x: auto; flex-wrap: nowrap;
+  margin: 0 -12px 10px; padding: 2px 12px 4px; scrollbar-width: none;
+}
+.m-chips::-webkit-scrollbar { display: none; }
+.m-chips .chip { flex: none; white-space: nowrap; }
+
+/* 카드 */
+.m-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.m-card + .m-card { margin-top: 10px; }
+.m-card.hl { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn-soft); }
+.m-card.m-dim { opacity: .72; }
+.m-card-hd { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.m-card-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -2px 0 8px; }
+.m-card-act { display: flex; gap: 6px; margin-top: 10px; }
+.m-date { font-size: 16.5px; font-weight: 800; color: var(--accent-ink); }
+.m-who { font-size: 16.5px; font-weight: 800; }
+
+/* 이름표 + 내용 두 칸 */
+.m-f { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 6px 10px; font-size: 14.5px; line-height: 1.55; }
+.m-f > .k { font-size: 12.5px; font-weight: 700; color: var(--ink-mute); padding-top: 2px; white-space: nowrap; }
+.m-f > div { min-width: 0; word-break: break-word; }
+.m-f.m-f-lg { font-size: 15.5px; }
+.m-f.m-f-lg > .k { font-size: 13px; }
+
+/* 보기 전환 (달력 / 목록) */
+.m-seg { display: flex; background: var(--side); border-radius: 10px; padding: 3px; margin-bottom: 10px; }
+.m-seg button { flex: 1; border: 0; background: transparent; padding: 8px 0; border-radius: 8px; font-size: 15px; font-weight: 600; color: var(--ink-soft); }
+.m-seg button.on { background: var(--surface); color: var(--accent-ink); font-weight: 800; box-shadow: 0 1px 3px rgba(30, 70, 105, .14); }
+
+/* ---------- 시간표 ---------- */
+body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
+.m-tt-page { position: relative; height: 100%; }
+.m-tt-scroll { position: relative; height: 100%; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.m-tt-scroll .tt2 { overflow: visible; border: 0; border-radius: 0; }
+.m-tt-scroll .tt2-head { position: sticky; top: 0; z-index: 6; }
+.m-tt-scroll .tt2-head > div:first-child { position: sticky; left: 0; z-index: 7; background: #F7FBFE; }
+.m-tt-scroll .tt2-wd { padding: 8px 4px; font-size: 15.5px; }
+.m-tt-scroll .tt2-time { position: sticky; left: 0; z-index: 5; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+.m-tt-scroll .tt2-time span { font-size: 12px; }
+.m-tt-scroll .tt-blk { cursor: default; }
+.m-tt-scroll .tt-blk:hover { border-color: inherit; }
+.m-tt-scroll .tt2 .tt-blk.done:hover { filter: grayscale(1); opacity: .5; }
+.m-tt-zoom {
+  position: absolute; right: 12px; bottom: 12px; z-index: 8; display: flex; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 22px;
+  box-shadow: 0 4px 14px rgba(22, 48, 70, .18);
+}
+.m-tt-zoom button { width: 44px; height: 40px; border: 0; background: transparent; font-size: 22px; line-height: 1; color: var(--accent-ink); }
+.m-tt-zoom button + button { border-left: 1px solid var(--line); }
+.m-tt-zoom button:disabled { color: var(--line-strong); }
+
+/* ---------- 진도 ---------- */
+.m-npx { margin-bottom: 10px; }
+.m-ro [data-pm], .m-ro [data-pp] { pointer-events: none; }  /* 내신 요약은 보기만 */
+body.m-body .np-sgrid { grid-template-columns: 52px minmax(0, 1fr); }
+body.m-body .np-sum { margin-bottom: 10px; }
+body.m-body .np-sum + .np-sum { margin-top: 0; }
+
+/* ---------- 일정 ---------- */
+.m-cal { padding: 10px 8px 12px; }
+.m-cal .mc-head { padding: 0 6px; }
+.m-cal .mc-day { height: 50px; }
+.m-cal .mc-day:hover { background: transparent; }
+.m-cal .mc-day.sel:hover { background: var(--accent); }
+.m-cal .mc-legend { padding: 0 6px; }
+.m-sec-t { margin: 14px 2px 8px; font-size: 15.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.m-evs { display: flex; flex-direction: column; gap: 8px; }
+.m-ev {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px;
+}
+.m-ev:active { background: var(--accent-soft); }
+.m-ev .badge { flex: none; margin-top: 1px; }
+.m-ev-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.m-ev-b b { font-size: 15px; word-break: break-word; }
+.m-ev-memo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-ev.past { opacity: .6; }
+
+/* ---------- 문자 (PC 문자 화면을 그대로 쓰고 배치만 조정) ---------- */
+body.m-body #main[data-page="sms"] .grid-2 { grid-template-columns: minmax(0, 1fr); }
+body.m-body .sx7-list { max-height: 48vh; padding: 2px 6px; }
+body.m-body .sx7-st { padding: 10px 2px; }
+body.m-body .sx7-st input { width: 20px; height: 20px; }
+body.m-body .sx7-ph { font-size: 12.5px; }
+body.m-body .sx7-row { gap: 6px; }
+body.m-body .sx7-row select { flex-basis: 100%; }
+body.m-body .sx7-lb { width: auto; flex-basis: 100%; }
+body.m-body #main[data-page="sms"] .toolbar input[type=search] { flex-basis: 100%; }
+body.m-body #main[data-page="sms"] .toolbar .btn { flex: 1; }
+body.m-body #main[data-page="sms"] [data-a="preview"] { width: 100%; padding: 12px; font-size: 16px; }
+body.m-body .sx7-tagx { font-size: 14px; padding: 3px 4px 3px 10px; }
+body.m-body .sx7-tagx button { font-size: 13px; padding: 3px 7px; }
+/* 발송 기록: 첫 줄 시각·건수, 둘째 줄 내용 */
+body.m-body .sx7-gh { flex-wrap: wrap; gap: 4px 8px; padding: 10px 2px; }
+body.m-body .sx7-when { width: auto; flex: 1; }
+body.m-body .sx7-gb { order: 5; flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+body.m-body .sx7-gc { flex-wrap: wrap; }
+body.m-body .sx7-gd .tbl-wrap { margin: 0 -4px; }
+
+/* ---------- 창 ---------- */
+body.m-body .mg-modal-wrap { padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+body.m-body .mg-modal { max-height: calc(100dvh - 24px); }
+body.m-body .mg-modal-head { padding: 14px 14px 10px 16px; }
+body.m-body .mg-x { font-size: 18px; padding: 4px 10px; }
+body.m-body .mg-modal-body { padding: 14px 16px; }
+body.m-body .mg-modal-foot { padding: 10px 14px; }
+body.m-body .mg-modal-foot .btn { flex: 1; padding: 11px 10px; }
+body.m-body .pop-item { padding: 12px 16px; font-size: 15.5px; }
