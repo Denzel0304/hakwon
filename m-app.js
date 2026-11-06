@@ -64,6 +64,14 @@ const MTimetable = {
       return { c, s, e, roster, up };
     });
     const items = dow === 5 ? Timetable.layoutFri(list) : Timetable.layout(list);
+    // 모바일은 폭이 좁으므로: 같은 시간에 겹치는 반이 없는 오른쪽 칸은 모두 써서 가로로 넓힌다
+    // (PC 시간표의 배치는 그대로 두고, 여기서만 span을 계산)
+    items.forEach(it => {
+      let sp = 1;
+      while (it.col + sp < it.cols && !items.some(o => o !== it && o.col === it.col + sp && o.s < it.e && o.e > it.s)) sp++;
+      it.span = sp;
+    });
+    const twoLine = [];
 
     let h = `<div class="m-tt-page"><div class="m-dayseg">${this.DAYS.map(d => `<button type="button" data-dow="${d}" class="${d === dow ? 'on' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<small>오늘</small>' : ''}</button>`).join('')}</div>
       <div class="m-tt-view"><div class="tt2 m-tt1"><div class="tt2-body"><div class="tt2-time">`;
@@ -76,12 +84,14 @@ const MTimetable = {
       const s = Math.max(it.s, S), e = Math.min(it.e, E);
       if (e <= s) return;
       const w = 100 / it.cols, c = it.c, cc = Classes.colorOf(c);
-      h += `<div class="tt-blk"${isToday ? ` data-end="${it.e}"` : ''}
-        style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
-        ${it.cols === 1   // 혼자 한 줄을 다 쓰는 블록: 반 이름 뒤에 (시간 · 인원)을 붙여 한 줄로
+      const two = `<div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
+        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>`;
+      twoLine.push(two);
+      h += `<div class="tt-blk" data-hi="${twoLine.length - 1}"${isToday ? ` data-end="${it.e}"` : ''}
+        style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${it.span * w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
+        ${it.span === it.cols   // 한 줄을 다 쓰는 블록: 반 이름 뒤에 (시간 · 인원)을 붙여 한 줄로
           ? `<div class="hd one"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="tm">(${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''})</span></div></div>`
-          : `<div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
-        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>`}
+          : two}
         <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
     });
     if (!items.length) h += '<div class="m-tt-empty">수업 없음</div>';
@@ -91,8 +101,14 @@ const MTimetable = {
     // 오후 3시 ~ 밤 12시를 화면 높이에 맞춤 (너무 작은 화면이면 아래로 스크롤)
     const view = $('.m-tt-view', main), box = $('.tt2', main);
     box.style.setProperty('--ppm', Math.max(0.9, (view.clientHeight - 14) / span) + 'px');
+    // 한 줄 제목이 블록 폭보다 길면 두 줄 제목으로 되돌림 (글자가 잘리지 않게)
+    const fixHead = () => $$('.tt-blk', main).forEach(blk => {
+      const nm = $('.hd.one .nm', blk);
+      if (nm && nm.scrollWidth > nm.clientWidth + 1) $('.hd', blk).outerHTML = twoLine[+blk.dataset.hi];
+    });
+    fixHead();
     Timetable.fitStudents(main);
-    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) Timetable.fitStudents(main); });
+    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) { fixHead(); Timetable.fitStudents(main); } });
     if (this._dir) { view.classList.add(this._dir > 0 ? 'm-slide-l' : 'm-slide-r'); this._dir = 0; }
 
     mSwipe(view, (d) => this.move(d));

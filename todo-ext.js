@@ -393,7 +393,7 @@ const TodoX = {
         <label class="chk tx-dtg"><input type="checkbox" data-detail ${detail0 ? 'checked' : ''}>상세</label></div>
       <div class="tx-detail" ${detail0 ? '' : 'hidden'}>
         <div class="tx-r"><span class="tx-lb">중요도</span><div class="tx-imps">${TX_IMP.map((t, i) => `<button type="button" class="tx-impb imp-${i}${st.importance === i ? ' on' : ''}" data-imp="${i}">${t}</button>`).join('')}</div></div>
-        <div class="tx-r top"><span class="tx-lb">메모</span><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div>
+        <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
         <div class="tx-r"><span class="tx-lb">날짜</span>${occ ? `<span>${esc(fmtDate(it.date))} <span class="small muted">반복 회차</span></span>` : `<input type="date" data-f="date" value="${esc(st.date)}">`}</div>
         <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span>
           ${lesson ? '' : `<button type="button" class="btn sm tx-repb${st.repeat ? ' on' : ''}" data-rep>🔁 <span data-replb>${esc(this.repLabel(st.repeat) || '반복')}</span></button>`}</div>
@@ -412,6 +412,7 @@ const TodoX = {
       body,
       onMount: (b) => {
         const title = $('[data-f=text]', b);
+        enhanceTextarea($('[data-f=memo]', b));      // 자동 번호(1. ) · 글머리(* ) · 링크 표시 — util.js의 기존 기능 그대로
         const clList = $('[data-cllist]', b);
         const drawCl = () => { clList.innerHTML = clHtml(); };
         drawCl();
