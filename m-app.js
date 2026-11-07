@@ -49,13 +49,31 @@ const MTimetable = {
   PAD: 15,                            // 첫 수업 앞·마지막 수업 뒤 여유 (분)
   MIN_SPAN: 240,                      // 수업이 적은 날도 최소 4시간은 보여줌 (블록이 지나치게 커지지 않게)
   DAYS: [1, 2, 3, 4, 5],
-  dow: null,              // 보고 있는 요일 (처음: 오늘, 주말이면 월요일)
+  dow: undefined,         // 보고 있는 요일 (undefined: 오늘 기준으로 정함 → 평일=오늘, 주말=선택 없음 / null: 선택 없음 = 빈 화면)
   _dir: 0,                // 넘긴 방향 (넘김 효과용)
-  onLeave() { Timetable.stopNow(); },
+  onLeave() { Timetable.stopNow(); this.dow = undefined; },   // 다른 탭에 다녀오면 다시 오늘 기준으로
 
   render(main) {
     const today = todayStr(), tdow = dowOf(today);
-    if (!this.DAYS.includes(this.dow)) this.dow = this.DAYS.includes(tdow) ? tdow : 1;
+    if (this.dow === undefined) this.dow = this.DAYS.includes(tdow) ? tdow : null;
+    else if (this.dow !== null && !this.DAYS.includes(this.dow)) this.dow = null;
+    const seg = `<div class="m-dayseg">${this.DAYS.map(d => `<button type="button" data-dow="${d}" class="${d === this.dow ? 'on' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<small>오늘</small>' : ''}</button>`).join('')}</div>`;
+    // 요일 버튼: 다른 요일 → 그 요일 보기 / 보고 있는 요일을 다시 누르면 해제(빈 화면)
+    const onSeg = (e) => {
+      const b = e.target.closest('[data-dow]');
+      if (!b) return;
+      const d = +b.dataset.dow;
+      if (d === this.dow) { this.dow = null; this._dir = 0; }
+      else { this._dir = this.dow == null ? 0 : (d > this.dow ? 1 : -1); this.dow = d; }
+      App.render();
+    };
+    // 선택된 요일이 없으면: 요일 버튼만 두고 화면은 비움 (스와이프도 하지 않음)
+    if (this.dow === null) {
+      main.innerHTML = `<div class="m-tt-page">${seg}<div class="m-tt-view"></div></div>`;
+      main.onclick = onSeg;
+      Timetable.stopNow();
+      return;
+    }
     const dow = this.dow, isToday = dow === tdow;
     const list = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).map(c => {
       const t = Classes.timeOn(c, dow);
@@ -86,7 +104,7 @@ const MTimetable = {
     const span = E - S;
     const hourOff = (60 - S % 60) % 60;   // 첫 정시까지의 분 (가로선을 정시에 맞추기 위함)
 
-    let h = `<div class="m-tt-page"><div class="m-dayseg">${this.DAYS.map(d => `<button type="button" data-dow="${d}" class="${d === dow ? 'on' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<small>오늘</small>' : ''}</button>`).join('')}</div>
+    let h = `<div class="m-tt-page">${seg}
       <div class="m-tt-view"><div class="tt2 m-tt1"><div class="tt2-body"><div class="tt2-time">`;
     for (let t = Math.ceil(S / 60) * 60; t < E; t += 60) {
       const hr = t / 60;
@@ -128,18 +146,13 @@ const MTimetable = {
     if (this._dir) { view.classList.add(this._dir > 0 ? 'm-slide-l' : 'm-slide-r'); this._dir = 0; }
 
     mSwipe(view, (d) => this.move(d));
-    main.onclick = (e) => {
-      const b = e.target.closest('[data-dow]');
-      if (!b || +b.dataset.dow === this.dow) return;
-      this._dir = +b.dataset.dow > this.dow ? 1 : -1;
-      this.dow = +b.dataset.dow;
-      App.render();
-    };
+    main.onclick = onSeg;
     Timetable.START = S; Timetable.END = E;
     if (isToday) Timetable.startNow(main, today); else Timetable.stopNow();
   },
   // 월요일·금요일 끝에서는 멈춤
   move(d) {
+    if (this.dow == null) return;
     const i = this.DAYS.indexOf(this.dow) + d;
     if (i < 0 || i >= this.DAYS.length) return;
     this._dir = d;
@@ -811,6 +824,7 @@ const App = {
     if (App.selDate === _today) App.selDate = t;
     if (MEvents.sel === _today) { MEvents.sel = t; MEvents.month = t.slice(0, 7); }
     if (MTodos.sel === _today) { MTodos.sel = t; MTodos.month = t.slice(0, 7); }
+    MTimetable.dow = undefined;   // 날짜가 바뀌면 시간표는 다시 오늘 기준으로 (평일=오늘, 주말=빈 화면)
     _today = t;
     if (!Auth.key()) return;
     App.applySchedules();

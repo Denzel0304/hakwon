@@ -568,14 +568,17 @@
   function celebrate() {
     celebrateUntil = performance.now() + CELEBRATE_MS;
     els.celebrate.hidden = false;
+    BackGuard.add(backCelebrate);   // 뒤로가기 → 축하 연출 닫기
     els.vessel.classList.remove('sn-cheer');
     void els.vessel.offsetWidth;
     els.vessel.classList.add('sn-cheer');
     startConfetti();
   }
+  function backCelebrate() { endCelebrate(); tick(); }
   function endCelebrate() {
     celebrateUntil = 0;
     els.celebrate.hidden = true;
+    BackGuard.remove(backCelebrate);
     els.vessel.classList.remove('sn-cheer');
     stopConfetti();
   }
@@ -662,10 +665,12 @@
     els.payAmount.value = draft.salary.amount ? draft.salary.amount.toLocaleString('ko-KR') : '';
     els.payAmount.disabled = !draft.salary.on;
     els.sheet.hidden = false;
+    BackGuard.add(closeSheet);   // 뒤로가기 → 설정창 닫기
     $('sheetClose').focus();
   }
   function closeSheet() {
     els.sheet.hidden = true;
+    BackGuard.remove(closeSheet);
     draft = null;
     $('openSettings').focus();
   }

@@ -461,6 +461,7 @@ const EventModal = {
           pop.remove(); pop = null;
           document.removeEventListener('mousedown', outside, true);
           document.removeEventListener('keydown', escKey, true);
+          BackGuard.remove(hidePop);
         };
         const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== gBtn) hidePop(); };
         const escKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hidePop(); } };
@@ -478,6 +479,7 @@ const EventModal = {
           document.body.appendChild(pop);
           document.addEventListener('mousedown', outside, true);
           document.addEventListener('keydown', escKey, true);
+          BackGuard.add(hidePop);   // 뒤로가기 → 펼친 목록 닫기
           pop.addEventListener('change', (e) => {
             const g = +e.target.dataset.g; if (!g) return;
             grades = e.target.checked ? [...new Set([...grades, g])].sort((x, y) => x - y) : grades.filter(x => x !== g);

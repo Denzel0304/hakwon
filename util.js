@@ -103,6 +103,51 @@ function toast(msg) {
   _toastT = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+/* ---------- 뒤로가기로 떠 있는 창 닫기 ----------
+   모달·설정창·작은 메뉴·펼친 목록 등 화면 위에 뜬 것이 하나라도 있으면 방문 기록을 '딱 한 칸'만 더 쌓아 둔다.
+   뒤로가기 → 맨 위에 뜬 것 하나만 닫음 (아직 남아 있으면 다시 한 칸을 쌓음).
+   모두 닫히면 그 한 칸을 지우므로, 메인 화면에서 뒤로가기 한 번이면 바로 사이트를 나간다. (기록이 계속 쌓이지 않음)
+   사용: BackGuard.add(닫는함수) — 띄울 때 / BackGuard.remove(같은 함수) — 닫힐 때 (어떤 방법으로 닫히든) */
+const BackGuard = {
+  list: [],       // 지금 떠 있는 것들의 닫는 함수 (띄운 순서)
+  armed: false,   // 우리가 쌓아 둔 기록 한 칸이 있는지
+  skip: 0,        // 우리가 지운(history.back) 것 때문에 올 popstate 수
+  add(fn) {
+    if (typeof fn !== 'function' || this.list.includes(fn)) return fn;
+    this.list.push(fn);
+    this.sync();
+    return fn;
+  },
+  remove(fn) {
+    const i = this.list.indexOf(fn);
+    if (i < 0) return;
+    this.list.splice(i, 1);
+    this.sync();
+  },
+  sync() {
+    if (this.skip) return;                          // 지우는 중이면 그 결과(popstate)를 받은 뒤 다시 맞춘다
+    if (this.list.length && !this.armed) {
+      try { history.pushState({ mgBack: 1 }, ''); this.armed = true; } catch (_) {}
+    } else if (!this.list.length && this.armed) {
+      this.armed = false;
+      this.skip++;
+      history.back();
+    }
+  },
+};
+window.addEventListener('popstate', () => {
+  if (BackGuard.skip) { BackGuard.skip--; BackGuard.sync(); return; }
+  BackGuard.armed = false;                          // 쌓아 둔 한 칸이 뒤로가기로 사용됨
+  const fn = BackGuard.list[BackGuard.list.length - 1];
+  if (fn) {
+    try { fn(); } catch (e) { console.error(e); }
+    BackGuard.remove(fn);                           // 닫는 함수가 스스로 빼지 않았을 때를 대비
+    BackGuard.sync();                               // 아직 떠 있는 것이 있으면 한 칸을 다시 쌓음
+  }
+});
+// 새로고침 등으로 쌓아 둔 한 칸이 남아 있으면 지워 둔다 (뒤로가기를 한 번 더 눌러야 나가는 일이 없게)
+try { if (history.state && history.state.mgBack) { BackGuard.skip++; history.back(); } } catch (_) {}
+
 /* ---------- 모달 ---------- */
 const Modal = {
   stack: [],
@@ -142,6 +187,7 @@ const Modal = {
     });
     document.body.appendChild(wrap);
     this.stack.push(m);
+    m._back = BackGuard.add(() => m.close());   // 뒤로가기 → 이 모달 닫기
     if (o.onMount) o.onMount(m.body, m);
     const f = $('input:not([type=hidden]):not([type=checkbox]):not([readonly]), textarea, select', m.body);
     if (f && o.autofocus !== false) setTimeout(() => f.focus(), 30);
@@ -153,6 +199,7 @@ const Modal = {
     m.el.remove();
     const i = this.stack.indexOf(m);
     if (i >= 0) this.stack.splice(i, 1);
+    BackGuard.remove(m._back);
     if (m.onClose) m.onClose();
     if (typeof App !== 'undefined') App.flushRender();
   },
@@ -189,6 +236,7 @@ let _popEl = null, _popOutside = null;
 function closePop() {
   if (_popEl) { _popEl.remove(); _popEl = null; }
   if (_popOutside) { document.removeEventListener('mousedown', _popOutside, true); _popOutside = null; }
+  BackGuard.remove(closePop);
 }
 function popMenu(anchor, items) {
   closePop();
@@ -210,6 +258,7 @@ function popMenu(anchor, items) {
   _popEl = m;
   _popOutside = (e) => { if (!m.contains(e.target) && e.target !== anchor) closePop(); };
   setTimeout(() => document.addEventListener('mousedown', _popOutside, true), 0);
+  BackGuard.add(closePop);   // 뒤로가기 → 메뉴 닫기
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _popEl) { e.stopPropagation(); closePop(); } }, true);
 window.addEventListener('scroll', closePop, true);
@@ -223,7 +272,7 @@ function bindCombo(input, getOptions) {
   const box = document.createElement('div');
   box.className = 'combo-box';
   let items = [], cur = -1;
-  const hide = () => { box.remove(); cur = -1; document.removeEventListener('mousedown', outside, true); };
+  const hide = () => { box.remove(); cur = -1; document.removeEventListener('mousedown', outside, true); BackGuard.remove(hide); };
   const outside = (e) => { if (e.target !== input && !box.contains(e.target)) hide(); };
   const show = () => {
     if (!input.isConnected) { hide(); return; }
@@ -236,7 +285,7 @@ function bindCombo(input, getOptions) {
     box.style.left = r.left + 'px';
     box.style.top = (r.bottom + 2) + 'px';
     box.style.minWidth = r.width + 'px';
-    if (!box.isConnected) { document.body.appendChild(box); document.addEventListener('mousedown', outside, true); }
+    if (!box.isConnected) { document.body.appendChild(box); document.addEventListener('mousedown', outside, true); BackGuard.add(hide); }
   };
   let picking = false;
   const pick = (i) => {
