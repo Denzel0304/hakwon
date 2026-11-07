@@ -129,6 +129,21 @@ body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
 .m-tt1 .tt-blk:hover { border-color: inherit; }
 .m-tt1 .tt-blk.done:hover { filter: grayscale(1); opacity: .5; }
 .m-tt-empty { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: var(--ink-mute); font-size: 15px; }
+/* 주말(수업 없는 날) 인사 문구 */
+.m-tt-rest {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 24px 24px 15%; margin-left: 8px; text-align: center; animation: mRestIn .5s ease-out both;
+}
+.m-tt-rest-ic {
+  width: 92px; height: 92px; margin-bottom: 14px; border-radius: 50%; display: grid; place-items: center;
+  color: #F2A93B; background: radial-gradient(circle, #FFF4DC 0%, #FFF9EE 55%, rgba(255, 249, 238, 0) 72%);
+}
+.m-tt-rest-ic svg { width: 56px; height: 56px; animation: mRestSpin 18s linear infinite; }
+.m-tt-rest-t { font-size: 18px; font-weight: 800; letter-spacing: -.4px; color: var(--accent-ink); }
+.m-tt-rest-s { font-size: 15.5px; font-weight: 600; color: var(--ink-soft); }
+@keyframes mRestIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mRestSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .m-tt-rest, .m-tt-rest-ic svg { animation: none; } }
 
 /* 스와이프로 넘길 때 살짝 밀려 들어오는 효과 */
 @keyframes mSlideL { from { transform: translateX(28px); opacity: .35; } to { transform: none; opacity: 1; } }

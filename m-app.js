@@ -68,8 +68,16 @@ const MTimetable = {
       App.render();
     };
     // 선택된 요일이 없으면: 요일 버튼만 두고 화면은 비움 (스와이프도 하지 않음)
+    // 단, 오늘이 주말이면 쉬는 날 인사 문구를 보여줌
     if (this.dow === null) {
-      main.innerHTML = `<div class="m-tt-page">${seg}<div class="m-tt-view"></div></div>`;
+      const rest = this.DAYS.includes(tdow) ? '' : `<div class="m-tt-rest">
+          <div class="m-tt-rest-ic" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+            <circle cx="24" cy="24" r="8.5" fill="currentColor" fill-opacity=".18"/>
+            <path d="M24 5v5M24 38v5M5 24h5M38 24h5M10.6 10.6l3.5 3.5M33.9 33.9l3.5 3.5M10.6 37.4l3.5-3.5M33.9 14.1l3.5-3.5"/></svg></div>
+          <div class="m-tt-rest-t">오늘은 수업이 없는 날입니다.</div>
+          <div class="m-tt-rest-s">즐거운 하루 보내세요!</div>
+        </div>`;
+      main.innerHTML = `<div class="m-tt-page">${seg}<div class="m-tt-view">${rest}</div></div>`;
       main.onclick = onSeg;
       Timetable.stopNow();
       return;
