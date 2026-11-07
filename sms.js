@@ -146,7 +146,7 @@ const SmsPage = {
     if (!list.length) return `<div class="empty">${all.length ? '해당하는 학생이 없습니다.' : '재원생이 없습니다.'}</div>`;
     const ph = (lb, v) => {
       const d = this.digits(v);
-      if (!d) return `<span class="sx7-no">${lb} 없음</span>`;
+      if (!d) return `<span class="sx7-no">${{ 학: '학생', 부: '부모' }[lb] || lb} 없음</span>`;   // 번호가 없을 때만 '학생 없음' / '부모 없음'
       return `<span class="${this.okPhone(d) ? '' : 'sx7-no'}">${lb} ${esc(fmtPhone(d))}</span>`;
     };
     return list.map(s => `<label class="sx7-st">
