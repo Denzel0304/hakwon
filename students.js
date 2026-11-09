@@ -111,6 +111,7 @@ const Students = {
         <span class="muted small">${list.length}명</span>
       </div>
       <div class="bulk-bar${this.sel.size ? '' : ' off'}" data-bulkbar><b data-selcnt>${this.sel.size}명 선택</b>
+        ${this.tab === 'active' ? `<button class="btn sm" data-bulk="ctsave" ${this.sel.size ? '' : 'disabled'}>연락처 저장</button>` : ''}
         ${bulkActs.map(([a, t]) => `<button class="btn sm" data-bulk="${a}" ${this.sel.size ? '' : 'disabled'}>선택 ${t}</button>`).join('')}
         <button class="btn sm danger" data-bulk="delete" ${this.sel.size ? '' : 'disabled'}>선택 삭제</button><span style="flex:1"></span><button class="btn sm" data-bulk="clear" ${this.sel.size ? '' : 'disabled'}>선택 해제</button></div>`;
     if (!list.length) {
@@ -193,6 +194,7 @@ const Students = {
     if (act === 'clear') { this.sel.clear(); App.render(); return; }
     const list = [...this.sel].map(id => Store.get('students', id)).filter(Boolean);
     if (!list.length) return;
+    if (act === 'ctsave') { this.bulkContactSave(list); return; }
     if (act === 'delete') {
       const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
       if (!ok) return;
@@ -1049,6 +1051,48 @@ const Students = {
       if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
       if (d.skipped) parts.push(`변경 없음 ${d.skipped}건`);
       toast('구글 주소록 등록 완료 · ' + (parts.join(' · ') || '처리 0건'));
+    });
+  },
+  /* ---------- 선택 학생 연락처 일괄 저장 (재원 탭) ----------
+     이미 있는 연락처는 건너뜀. 이름은 있지만 번호가 다르면 바꾸지 않고 결과 창에 목록으로 보여 준다
+     (동명이인·잘못 입력한 번호로 덮어쓰는 것 방지 → 확인 후 학생 창의 '연락처 저장'으로 처리) */
+  async bulkContactSave(list) {
+    const items = this.ctItems(list);
+    const noNum = list.filter(s => !this.ctItems([s]).length).map(s => s.name || '(이름 없음)');
+    if (!items.length) { alertDlg('연락처 저장', '선택한 학생 중 저장할 연락처(이름·번호)가 있는 학생이 없습니다.'); return; }
+    if (!await confirmDlg(`선택한 ${items.length}명의 연락처를 구글 주소록에 저장할까요?\n이미 있는 연락처는 건너뜁니다.` + (noNum.length ? `\n(번호가 없는 ${noNum.length}명은 제외)` : ''), '저장')) return;
+    toast('구글 주소록에 저장 중…');
+    this.ctRun(async () => {
+      let d;
+      try { d = await this.ctPost({ action: 'saveMany', items, keepParents: this.ctKeep(items.map(o => o.id)), noReplace: true }, 300000); }
+      catch (e) { this.ctFailModal('add', e.message, { errors: this.ctTargets(items) }); return; }
+      if (!(d.errors || []).length && !(d.mismatch || []).length) this.clearCtOld(items);
+      this.ctSaveResultModal(d, noNum);
+    });
+  },
+  ctSaveResultModal(d, noNum) {
+    const row = (x) => `${x.contactName} · ${fmtPhone(x.phone)}`;
+    const secs = [];
+    const add = (title, rows, note) => { if (rows.length) secs.push({ title, rows, note }); };
+    add('이름은 있지만 번호가 달라 건너뜀', (d.mismatch || []).map(x => `${x.contactName} · 앱 번호 ${fmtPhone(x.phone)} / 주소록 번호 ${(x.found || []).join(', ') || '없음'}`), '확인 후 학생 창의 “연락처 저장”으로 처리하거나 주소록에서 직접 고치세요');
+    add('오류로 처리하지 못함', (d.errors || []).map(x => row(x) + (x.message ? ' — ' + x.message : '')), '직접 등록하세요');
+    add('번호가 없어 제외', noNum || [], '');
+    add('새로 등록', (d.addedList || []).map(row), '');
+    add('번호 변경 (부모 번호를 바꾼 학생)', (d.updatedList || []).map(row), '');
+    const head = `등록 ${d.added || 0}건 · 번호 변경 ${d.updated || 0}건 · 이미 있음(건너뜀) ${d.skipped || 0}건`
+      + ((d.mismatch || []).length ? ` · 번호 달라 건너뜀 ${(d.mismatch || []).length}건` : '') + ((d.errors || []).length ? ` · 오류 ${(d.errors || []).length}건` : '');
+    const text = ['구글 주소록 저장 결과', head, ...secs.map(sc => `\n[${sc.title}]\n` + sc.rows.join('\n'))].join('\n');
+    Modal.open({
+      title: '구글 주소록 저장 결과', size: 'md', autofocus: false,
+      body: `<p class="confirm-msg">${esc(head)}</p>` + secs.map(sc => `<div style="margin-top:12px"><div class="small soft"><b>${esc(sc.title)}</b> (${sc.rows.length})${sc.note ? ' — ' + esc(sc.note) : ''}</div><div class="pre small" style="user-select:text">${esc(sc.rows.join('\n'))}</div></div>`).join(''),
+      buttons: [
+        { text: '목록 복사', onClick: () => {
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('복사했습니다'), () => toast('복사하지 못했습니다'));
+          else toast('복사하지 못했습니다');
+          return false;
+        } },
+        { text: '닫기', cls: 'primary', primary: true },
+      ],
     });
   },
   // 실패 목록 모달 (메모해서 직접 처리할 수 있게 이름·번호를 모두 보여 주고 복사 버튼을 둔다)
