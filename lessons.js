@@ -883,13 +883,17 @@ const ProgressBook = {
   npSel: {},            // 반별로 고른 시험 { 반ID: [시험ID] } (없으면 오늘 기준 자동)
 
   render(main, p) {
-    const classes = Classes.sorted(Store.all('classes')).sort((a, b) => (a.active === false) - (b.active === false));
+    // 진도 탭은 진행 중인 반만 (종료된 반은 제외)
+    // 단, 할일·보강 등 다른 화면의 링크로 종료된 반의 기록을 열 때는 그 반을 잠시 목록에 넣어 보여준다
+    const act = Classes.sorted(Store.all('classes')).filter(c => c.active !== false);
     if (p.classId) this.classId = p.classId;
-    if (!this.classId || !Store.get('classes', this.classId)) this.classId = classes[0] ? classes[0].id : '';
-    const act = classes.filter(c => c.active !== false), ended = classes.filter(c => c.active === false);
-    let h = `<div class="page-narrow"><div class="page-head"><h1>진도</h1></div>
-      <div class="toolbar class-chips">${act.map(c => `<button class="chip ${c.id === this.classId ? 'active' : ''}" data-cls="${c.id}">${Classes.dot(c)}${esc(c.name)}</button>`).join('')}
-      ${ended.length ? `<select data-ended><option value="">종료된 반…</option>${ended.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}</div>`;
+    const linked = p.classId && Store.get('classes', p.classId);
+    if (linked && linked.active === false && this.classId === linked.id) act.push(linked);
+    if (!this.classId || !act.some(c => c.id === this.classId)) this.classId = act[0] ? act[0].id : '';
+    const cur = act.find(c => c.id === this.classId);
+    let h = `<div class="page-narrow"><div class="page-head"><h1>진도</h1></div>`;
+    // 반 선택 드롭다운 (검색칸 왼쪽, 선택된 반의 색 점 표시)
+    const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${cur ? Classes.dot(cur) : ''}<select data-pcls style="min-width:180px">${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
     if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
     const q = this.q.trim();
     const todosOf = (lid) => Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
@@ -897,7 +901,7 @@ const ProgressBook = {
       .filter(l => (!this.from || l.date >= this.from) && (!this.to || l.date <= this.to))
       .filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), ...(l.dist || []).map(d => NP.distText(d)), ...todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
       .sort((a, b) => ko(b.date, a.date));
-    h += `<div class="toolbar"><input type="search" data-q value="${esc(this.q)}" placeholder="진도·숙제·메모·할일 검색" style="width:240px">
+    h += `<div class="toolbar">${clsSel}<input type="search" data-q value="${esc(this.q)}" placeholder="진도·숙제·메모·할일 검색" style="width:240px">
       <input type="date" data-from value="${esc(this.from)}"> ~ <input type="date" data-to value="${esc(this.to)}">
       ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}<span class="muted small">${list.length}회</span>
       <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label></div>`;
@@ -936,13 +940,12 @@ const ProgressBook = {
         App.render(); return;
       }
       if (e.target.closest('[data-npsauto]')) { delete this.npSel[this.classId]; App.render(); return; }
-      const ch = e.target.closest('[data-cls]'); if (ch) { this.classId = ch.dataset.cls; App.go('progress', {}); return; }
       if (e.target.closest('[data-clear]')) { this.q = this.from = this.to = ''; App.render(); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr) this.openModal(tr.dataset.id);
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-npsum]')) { this.npOn = e.target.checked; App.render(); return; }
-      if (e.target.matches('[data-ended]') && e.target.value) { this.classId = e.target.value; App.go('progress', {}); }
+      if (e.target.matches('[data-pcls]') && e.target.value) { this.classId = e.target.value; App.go('progress', {}); return; }
       if (e.target.matches('[data-from]')) { this.from = e.target.value; App.render(); }
       if (e.target.matches('[data-to]')) { this.to = e.target.value; App.render(); }
     };
