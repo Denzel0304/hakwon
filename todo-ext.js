@@ -221,7 +221,7 @@ const TodoX = {
   rowHtml(it, opts) {
     const mob = !!opts.mobile;
     const base = it.rem ? it.base : it;
-    const editable = !(mob && base.lesson);
+    const editable = true;                                   // 모바일도 PC와 같은 기능 (수업일지에서 추가한 할일 포함)
     const canDrag = !opts.late && !it.done && !it.repeat && !it.rem && !it.time && editable;
     const prog = this.clProg(it.checklist);
     const c = base.lesson ? Store.get('classes', base.classId) : null;
@@ -238,7 +238,7 @@ const TodoX = {
         ${meta.length ? `<div class="tx-meta">${meta.join('')}</div>` : ''}
       </div>
       ${canDrag ? '<span class="tx-drag" data-tdrag aria-label="끌어서 순서 바꾸기"><svg viewBox="0 0 24 14" width="20" height="13" fill="currentColor"><rect y="0" width="24" height="2.5" rx="1.2"/><rect y="5.5" width="24" height="2.5" rx="1.2"/><rect y="11" width="24" height="2.5" rx="1.2"/></svg></span>' : ''}
-      ${!mob && editable && !it.rem ? '<button type="button" class="kebab tx-menu" data-tmenu aria-label="메뉴">⋮</button>' : ''}
+      ${editable && !it.rem ? '<button type="button" class="kebab tx-menu" data-tmenu aria-label="메뉴">⋮</button>' : ''}
     </div>`;
   },
   listHtml(date, opts = {}) {
@@ -311,20 +311,20 @@ const TodoX = {
   open(k, opts = {}) {
     let it = this.resolve(k); if (!it) return;
     if (it.rem) it = it.base;
-    if (opts.mobile && it.lesson) { toast('수업일지 할일은 PC에서 수정합니다'); return; }
     this.editor(it, null, opts);
   },
   add(date, opts = {}) { this.editor(null, isYmd(date) ? date : todayStr(), opts); },
 
   menu(k, anchor, opts = {}) {
     const it = this.resolve(k);
-    if (!it || it.rem || (opts.mobile && it.lesson)) return;
+    if (!it || it.rem) return;
     if (it.repeat) {
       popMenu(anchor, [{ text: '삭제', danger: true, onClick: () => this.delRepeat(it) }]);
       return;
     }
     popMenu(anchor, [
       { text: '1일 뒤', onClick: () => this.moveTo(it, addDaysStr(it.date, 1)) },
+      { text: '복사', onClick: async () => { const d = await DatePicker.open(it.date, '할일 복사할 날짜'); if (d) this.copyTo(it, d); } },
       { text: '날짜 선택', onClick: async () => { const d = await DatePicker.open(it.date, '할일 날짜 변경'); if (d && d !== it.date) this.moveTo(it, d); } },
       { text: '삭제', danger: true, onClick: () => { const t = Store.get('todos', it.rec.id); if (!t) return; Store.del('todos', t.id); toast('할일을 삭제했습니다'); App.render(); } },
     ]);
@@ -333,6 +333,20 @@ const TodoX = {
     const t = Store.get('todos', it.rec.id); if (!t) return;
     Store.put('todos', Object.assign({}, t, { date: d, order: this.maxOrder(d) + 1, remindDone: false }));
     toast(`${fmtMD(d)} 할일로 옮겼습니다`);
+    App.render();
+  },
+
+  // 복사: 고른 날짜에 미완료 · 체크리스트 체크 해제 상태로 새 할일 (수업일지에서 추가한 할일도 일반 할일로)
+  copyTo(it, d) {
+    const t = Store.get('todos', it.rec.id); if (!t || !isYmd(d)) return;
+    const n = Object.assign({}, t, {
+      id: uid('TD'), lessonId: '', classId: '', date: d, done: false, doneAt: '', remindDone: false,
+      createdAt: new Date().toISOString(), order: this.maxOrder(d) + 1,
+      checklist: (Array.isArray(t.checklist) ? t.checklist : []).map(x => ({ t: x.t, d: false })),
+    });
+    delete n.repeat;
+    Store.put('todos', n);
+    toast(`${fmtMD(d)} 할일로 복사했습니다`);
     App.render();
   },
 
@@ -517,6 +531,18 @@ const TodoX = {
     // 반복 회차
     const m = Store.get('todos', it.master.id); if (!m) return;
     const changed = JSON.stringify(st.repeat && st.repeat.type !== 'none' ? st.repeat : null) !== rep0;
+    // 체크리스트의 체크 상태만 바뀐 경우 = 그 회차를 한 것 → 선택 창 없이 이 날짜에만 저장
+    const clText = (a) => JSON.stringify((a || []).map(x => String(x.t || '').trim()));
+    const onlyChecks = !changed && cl.length > 0 && vals.text === it.text && vals.importance === it.importance
+      && vals.memo === (it.memo || '') && vals.time === (it.time || '') && vals.remind === (+it.remind || 0)
+      && clText(cl) === clText(it.checklist);
+    if (onlyChecks) {
+      const ex0 = Store.get('todos', this.exId(m.id, it.date));
+      this.putEx(m.id, it.date, { ov: Object.assign({}, (ex0 && ex0.ov) || {}, { checklist: cl }), done: !!clDone });
+      toast('저장했습니다');
+      App.render();
+      return;
+    }
     const sc = await this.askScope('반복 할일 저장', changed);
     if (!sc) return false;
     const exNow = Store.get('todos', this.exId(m.id, it.date));
