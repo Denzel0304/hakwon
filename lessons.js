@@ -552,7 +552,9 @@ const Lessons = {
   },
   classesOn(date) {
     const dow = dowOf(date);
-    return Classes.sortedOn(Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)), dow);
+    // 반 수업 시작일 전 날짜는 뺀다 (그 날 이미 저장한 일지가 있으면 보인다)
+    return Classes.sortedOn(Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)
+      && (!(Classes.startOf(c) > date) || this.isSaved(c.id, date))), dow);
   },
   // 다른 화면에서 반·날짜를 열 때: 저장된 수업이면 진도 탭, 아니면 수업일지
   open(date, classId) {
@@ -764,7 +766,7 @@ const AttBook = {
     const dates = [];
     for (let d = 1; d <= last; d++) {
       const ds = Y + '-' + pad(M) + '-' + pad(d);
-      if ((c.days || []).includes(dowOf(ds)) || Lessons.isSaved(c.id, ds) || this.extra[c.id + '|' + ds]) dates.push(ds);
+      if (((c.days || []).includes(dowOf(ds)) && !(Classes.startOf(c) > ds)) || Lessons.isSaved(c.id, ds) || this.extra[c.id + '|' + ds]) dates.push(ds);   // 정규 수업일은 반 수업 시작일부터
     }
     const sids = new Set();
     dates.forEach(d => {
