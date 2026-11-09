@@ -260,7 +260,8 @@ const SmsPage = {
     if (!key) { toast('로그인이 필요합니다'); return; }
     this.sending = true;
     if (App.page === 'sms') App.render();
-    toast('발송 요청 중…');
+    const multi = items.length > this.GAS_CHUNK;       // 여러 번 나눠 보낼 때만 건수 진행률 표시
+    const bz = Busy.open('문자 발송 요청', multi ? { total: items.length, unit: '건', text: '폰 중계로 접수시키는 중…' } : { text: `${items.length}건을 폰 중계로 접수시키는 중…` });
 
     const batch = uid('SX7B');
     const rows = [];
@@ -281,8 +282,10 @@ const SmsPage = {
           state: r.state || 'failed', err: r.err || (r.gw ? '' : '응답 없음'),
         });
       });
+      bz.set(rows.length);
     }
 
+    bz.set(rows.length, '발송 기록 저장 중…');
     let logFail = false;
     for (let i = 0; i < rows.length; i += 500) {
       try {
@@ -291,6 +294,7 @@ const SmsPage = {
       } catch (_) { logFail = true; }
     }
 
+    bz.close();
     this.sending = false;
     const okN = rows.filter(r => r.state !== 'failed').length;
     const failN = rows.length - okN;

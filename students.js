@@ -269,9 +269,10 @@ const Students = {
     this.importing = true;
     const btn = $('[data-a=gimport]');
     if (btn) { btn.disabled = true; btn.textContent = '가져오는 중…'; }
-    toast('구글 주소록에서 가져오는 중…');
+    const bz = Busy.open('구글 연락처 가져오기', { text: `${work.length}명의 연락처를 구글 주소록에서 찾는 중…` });
 
     let d = null;
+    try {
     if (work.length) {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 120000);
@@ -295,6 +296,7 @@ const Students = {
         d = null;
       }
     }
+    } finally { bz.close(); }
     this.importing = false;
     const btn2 = $('[data-a=gimport]');
     if (btn2) { btn2.disabled = false; btn2.textContent = '구글 연락처 가져오기'; }
@@ -559,7 +561,7 @@ const Students = {
         oldParentPhone = cur.ctOldParent || cur.parentPhone;
       } else oldParentPhone = cur.ctOldParent || '';
     }
-    toast('연락처 전송 중…');
+    const bz = Busy.open('구글 주소록에 연락처 저장', { text: info.name });
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 60000);
     try {
@@ -591,6 +593,7 @@ const Students = {
       toast(e.name === 'AbortError' ? '연락처 저장 실패: 응답 시간 초과' : '연락처 저장 실패: 네트워크 오류');
     } finally {
       clearTimeout(timer);
+      bz.close();
     }
     return false;
   },
@@ -979,8 +982,9 @@ const Students = {
     });
     return out;
   },
-  ctRun(task) {
-    const p = (this._ctQ || Promise.resolve()).then(task).catch(e => console.error('주소록 처리 오류', e));
+  ctRun(task, chip) {
+    const h = chip ? Busy.chip(chip) : null;           // 뒤에서 도는 주소록 작업: 화면 구석에 진행 표시
+    const p = (this._ctQ || Promise.resolve()).then(task).catch(e => console.error('주소록 처리 오류', e)).finally(() => { if (h) h.close(); });
     this._ctQ = p;
     return p;
   },
@@ -1035,7 +1039,7 @@ const Students = {
       const nf = (d.notFound || []).length;
       if ((d.mismatch || []).length || (d.errors || []).length) this.ctFailModal('delete', '', d);
       else toast(`구글 주소록에서 ${(d.deleted || []).length}건 삭제했습니다` + (nf ? ` · 주소록에 없음 ${nf}건` : '') + keptMsg);
-    });
+    }, '구글 주소록 정리 중…');
   },
   contactAdd(list) {
     const items = this.ctItems(list);
@@ -1051,7 +1055,7 @@ const Students = {
       if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
       if (d.skipped) parts.push(`변경 없음 ${d.skipped}건`);
       toast('구글 주소록 등록 완료 · ' + (parts.join(' · ') || '처리 0건'));
-    });
+    }, '구글 주소록 등록 중…');
   },
   /* ---------- 선택 학생 연락처 일괄 저장 (재원 탭) ----------
      이미 있는 연락처는 건너뜀. 이름은 있지만 번호가 다르면 바꾸지 않고 결과 창에 목록으로 보여 준다
@@ -1061,13 +1065,27 @@ const Students = {
     const noNum = list.filter(s => !this.ctItems([s]).length).map(s => s.name || '(이름 없음)');
     if (!items.length) { alertDlg('연락처 저장', '선택한 학생 중 저장할 연락처(이름·번호)가 있는 학생이 없습니다.'); return; }
     if (!await confirmDlg(`선택한 ${items.length}명의 연락처를 구글 주소록에 저장할까요?\n이미 있는 연락처는 건너뜁니다.` + (noNum.length ? `\n(번호가 없는 ${noNum.length}명은 제외)` : ''), '저장')) return;
-    toast('구글 주소록에 저장 중…');
+    const bz = Busy.open('구글 주소록에 연락처 저장', { total: items.length, unit: '명', text: '다른 주소록 작업이 끝나기를 기다리는 중…' });
     this.ctRun(async () => {
-      let d;
-      try { d = await this.ctPost({ action: 'saveMany', items, keepParents: this.ctKeep(items.map(o => o.id)), noReplace: true }, 300000); }
-      catch (e) { this.ctFailModal('add', e.message, { errors: this.ctTargets(items) }); return; }
-      if (!(d.errors || []).length && !(d.mismatch || []).length) this.clearCtOld(items);
-      this.ctSaveResultModal(d, noNum);
+      const CH = 10;                                   // 10명씩 나눠 보내 진행률을 보여 준다 (끊겨도 앞 묶음은 저장됨)
+      const sum = { added: 0, updated: 0, skipped: 0, errors: [], mismatch: [], addedList: [], updatedList: [] };
+      try {
+        for (let i = 0; i < items.length; i += CH) {
+          const part = items.slice(i, i + CH);
+          bz.set(i, `${part[0].name}${part.length > 1 ? ` 외 ${part.length - 1}명` : ''} 처리 중…`);
+          let d;
+          try { d = await this.ctPost({ action: 'saveMany', items: part, keepParents: this.ctKeep(items.map(o => o.id)), noReplace: true }, 300000); }
+          catch (e) {                                  // 이 묶음부터 처리하지 못함 → 결과 창의 오류 목록에 남김
+            this.ctTargets(items.slice(i)).forEach(x => sum.errors.push(Object.assign({ message: e.message }, x)));
+            break;
+          }
+          ['added', 'updated', 'skipped'].forEach(k => { sum[k] += +d[k] || 0; });
+          ['errors', 'mismatch', 'addedList', 'updatedList'].forEach(k => { sum[k] = sum[k].concat(d[k] || []); });
+          if (!(d.errors || []).length && !(d.mismatch || []).length) this.clearCtOld(part);
+          bz.set(i + part.length);
+        }
+      } finally { bz.close(); }
+      this.ctSaveResultModal(sum, noNum);
     });
   },
   ctSaveResultModal(d, noNum) {

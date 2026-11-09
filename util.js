@@ -586,3 +586,105 @@ function enhanceTextarea(ta, opts = {}) {
   });
 }
 function enhanceAll(root, opts) { $$('textarea', root).forEach(ta => enhanceTextarea(ta, opts)); }
+
+/* ---------- 오래 걸리는 작업 표시 ----------
+   Busy.open(제목, { total, unit }) → 화면 가운데 진행 창 (끝날 때까지 닫히지 않음)
+     · total이 있으면 진행바 + "n / total unit", 없으면 움직이는 진행바
+     · h.set(done, text) 진행 갱신 / h.close() 닫기
+   Busy.chip(글) → 화면 구석 작은 표시 (다른 작업은 계속 가능). h.close()로 끔. 여러 개면 개수 표시 */
+const Busy = {
+  _css: false,
+  _chips: [],
+  _chipEl: null,
+  _chipT: null,
+  css() {
+    if (this._css) return;
+    this._css = true;
+    const st = document.createElement('style');
+    st.textContent = `
+.bz-wrap { position: fixed; inset: 0; z-index: 1500; display: flex; align-items: center; justify-content: center; background: rgba(20, 40, 60, .38); padding: 16px; }
+.bz-box { width: min(380px, 100%); background: var(--surface, #fff); color: var(--ink, #1E3243); border-radius: 14px; box-shadow: 0 16px 40px rgba(20, 40, 60, .25); padding: 20px 20px 16px; }
+.bz-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.bz-text { font-size: 13px; color: var(--ink-soft, #4A6275); min-height: 18px; }
+.bz-bar { position: relative; height: 8px; border-radius: 4px; background: var(--line, #D6E7F4); overflow: hidden; margin: 12px 0 8px; }
+.bz-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent, #2B7FC1); border-radius: 4px; transition: width .3s ease; }
+.bz-bar.ind .bz-fill { width: 35%; animation: bz-move 1.2s ease-in-out infinite; }
+@keyframes bz-move { 0% { left: -35%; } 100% { left: 100%; } }
+.bz-foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-mute, #7A8E9E); }
+.bz-chip { position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 1400; display: flex; align-items: center; gap: 8px;
+  background: var(--surface, #fff); color: var(--ink, #1E3243); border: 1px solid var(--line, #D6E7F4); border-radius: 999px; padding: 7px 14px; font-size: 13px;
+  box-shadow: 0 6px 18px rgba(20, 40, 60, .16); pointer-events: none; }
+.bz-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line, #D6E7F4); border-top-color: var(--accent, #2B7FC1); animation: bz-rot .8s linear infinite; flex: none; }
+@keyframes bz-rot { to { transform: rotate(360deg); } }
+body.m-body .bz-chip { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }`;
+    document.head.appendChild(st);
+  },
+  fmtSec(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); },
+  open(title, o = {}) {
+    this.css();
+    const total = +o.total || 0, unit = o.unit || '';
+    const wrap = document.createElement('div');
+    wrap.className = 'bz-wrap';
+    wrap.innerHTML = `<div class="bz-box" role="alertdialog" aria-busy="true"><div class="bz-title">${esc(title)}</div>
+      <div class="bz-text">${esc(o.text || '')}</div>
+      <div class="bz-bar${total ? '' : ' ind'}"><div class="bz-fill"></div></div>
+      <div class="bz-foot"><span class="bz-cnt">${total ? `0 / ${total}${esc(unit)}` : '처리 중…'}</span><span class="bz-time">0:00</span></div>
+      <div class="bz-foot" style="margin-top:6px"><span>끝날 때까지 창을 닫지 마세요</span></div></div>`;
+    document.body.appendChild(wrap);
+    const t0 = Date.now();
+    const tm = setInterval(() => { $('.bz-time', wrap).textContent = this.fmtSec(Math.floor((Date.now() - t0) / 1000)); }, 1000);
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };     // 진행 중 창 닫기·새로고침 경고
+    window.addEventListener('beforeunload', warn);
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    let closed = false;
+    return {
+      set(done, text) {
+        if (closed) return;
+        if (total) {
+          const n = Math.max(0, Math.min(total, +done || 0));
+          $('.bz-fill', wrap).style.width = (n / total * 100) + '%';
+          $('.bz-cnt', wrap).textContent = `${n} / ${total}${unit}`;
+        }
+        if (text != null) $('.bz-text', wrap).textContent = text;
+      },
+      close() {
+        if (closed) return;
+        closed = true;
+        clearInterval(tm);
+        window.removeEventListener('beforeunload', warn);
+        wrap.remove();
+      },
+    };
+  },
+  chip(text) {
+    this.css();
+    const it = { text, t0: Date.now() };
+    this._chips.push(it);
+    this._paintChip();
+    if (!this._chipT) this._chipT = setInterval(() => this._paintChip(), 1000);
+    let closed = false;
+    return {
+      close: () => {
+        if (closed) return;
+        closed = true;
+        this._chips = this._chips.filter(x => x !== it);
+        this._paintChip();
+      },
+    };
+  },
+  _paintChip() {
+    if (!this._chips.length) {
+      if (this._chipEl) { this._chipEl.remove(); this._chipEl = null; }
+      clearInterval(this._chipT); this._chipT = null;
+      return;
+    }
+    if (!this._chipEl) {
+      this._chipEl = document.createElement('div');
+      this._chipEl.className = 'bz-chip';
+      document.body.appendChild(this._chipEl);
+    }
+    const first = this._chips[0];
+    const more = this._chips.length > 1 ? ` 외 ${this._chips.length - 1}건` : '';
+    this._chipEl.innerHTML = `<span class="bz-spin"></span><span>${esc(first.text)}${more} ${this.fmtSec(Math.floor((Date.now() - first.t0) / 1000))}</span>`;
+  },
+};
