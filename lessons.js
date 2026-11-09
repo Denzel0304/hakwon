@@ -558,9 +558,10 @@ const Lessons = {
   open(date, classId) {
     App.selDate = date; MiniCal.showMonthOf(date);
     if (this.isSaved(classId, date)) App.go('progress', { classId, date });
-    else App.go('lessons', { date, classId });
+    else { App.go('lessons', { date, classId }); this.ret = { date, classId }; }   // 날짜 요약에서 연 일지: 저장 후 요약으로 돌아간다
   },
-  onLeave() { this.form = null; },
+  ret: null,
+  onLeave() { this.form = null; this.ret = null; },
   newForm(date, classId) { return { date, classId, att: {}, progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
 
   render(main, p) {
@@ -739,7 +740,10 @@ const Lessons = {
     todos.forEach((d, i) => Store.put('todos', { id: uid('TD'), lessonId: id, classId: f.classId, date: isYmd(d.date) ? d.date : f.date, text: d.text.trim(), done: false, createdAt: new Date(now + i).toISOString() }));
     const cname = (Store.get('classes', f.classId) || {}).name || '';
     this.form = null;
-    App.go('lessons', { date: f.date });
+    const back = this.ret && this.ret.date === f.date && this.ret.classId === f.classId;
+    this.ret = null;
+    if (back) App.pickDate(f.date);                 // 날짜 요약에서 들어왔으면 그 요약 화면으로
+    else App.go('lessons', { date: f.date });
     await Store.syncNow();
     toast(`${cname} 저장 완료` + (todos.length ? ` · 할일 ${todos.length}개` : '') + (Store.pendingCount() ? ' (인터넷 연결 후 자동 전송)' : ''));
   },

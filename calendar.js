@@ -296,7 +296,7 @@ const DayPage = {
     let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
       ${isToday ? '' : '<button class="btn sm" data-a="today">오늘</button>'}
-      <button class="btn primary" data-a="add">+ 일정 추가</button><button class="btn primary" data-a="addtodo">+ 할일 추가</button></div>`;
+      <button class="btn primary" data-a="addtodo">+ 할일 추가</button></div>`;
     if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
     // 카드 배치: 왼쪽 열(시험 일정 → 일정 → 수업) / 오른쪽 열(다가오는 일정 → 할일 → 밀린 할일)
     // 두 열은 따로 쌓여서, 한쪽 카드가 길어도 다른 쪽에 빈 공간이 생기지 않는다.
