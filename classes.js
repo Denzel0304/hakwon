@@ -144,6 +144,38 @@ const Classes = {
     }
     return 'changed';
   },
+  // 학생의 첫 반이면 수강 시작일 = 학생 등록일 (반 수업 시작일보다 앞이면 반 시작일)
+  // before 전에 시작한 수강 기록(어느 반이든)이 있으면 첫 반이 아님 → null (두 번째 반·반 이동·다시 들어옴)
+  firstStart(sid, before, classStart) {
+    if (Store.where('enrollments', e => e.studentId === sid && e.from < before).length) return null;
+    const s = Store.get('students', sid), jd = s ? Students.joinDateOf(s) : '';
+    if (!isYmd(jd)) return null;
+    return isYmd(classStart) && classStart > jd ? classStart : jd;
+  },
+  // date에 이 반을 수강 중인 기록과, 그 앞뒤로 이어진 기록들 (요일만 바뀌어 나뉜 기록 포함)
+  chainOf(sid, cid, date) {
+    const mine = Store.where('enrollments', e => e.studentId === sid && e.classId === cid);
+    const cur = mine.find(e => this.enrollValid(e, date));
+    if (!cur) return [];
+    const chain = [cur];
+    for (let a = cur; ;) { const p = mine.find(e => e.to && e.to === a.from && !chain.includes(e)); if (!p) break; chain.unshift(p); a = p; }
+    for (let z = cur; z.to;) { const n = mine.find(e => e.from === z.to && !chain.includes(e)); if (!n) break; chain.push(n); z = n; }
+    return chain;
+  },
+  // 이미 수강 중인 학생: 요일은 그 반에 들어온 날부터 같게 (이어진 기록을 하나로 합침), from이 더 앞이면 시작일을 앞당김
+  fixExisting(sid, cid, date, days, from) {
+    const c = Store.get('classes', cid);
+    days = this.normDays(days, c);
+    const chain = this.chainOf(sid, cid, date);
+    if (!chain.length) return;
+    const first = chain[0], last = chain[chain.length - 1];
+    const f = isYmd(from) && from < first.from ? from : first.from;
+    if (chain.length === 1 && f === first.from && this.sameDays(this.normDays(first.days, c), days)) return;
+    const r = Object.assign({}, first, { from: f, to: last.to || null });
+    if (days) r.days = days; else delete r.days;
+    chain.slice(1).forEach(e => Store.del('enrollments', e.id));
+    Store.put('enrollments', r);
+  },
   rosterAt(classId, date) {
     const seen = {};
     return Store.where('enrollments', e => e.classId === classId && this.enrollValid(e, date))
@@ -316,9 +348,9 @@ const Classes = {
         <div class="hint" data-colorhint style="margin-top:4px">${pickedColor ? '흐린 색은 다른 진행 중인 반이 쓰고 있어 고를 수 없습니다.' : '남은 색이 없습니다. 다른 반을 종료하면 그 색을 쓸 수 있습니다.'}</div></div>
       <label>진행 상태</label><label class="chk"><input type="checkbox" name="ended" ${v.active === false ? 'checked' : ''}>종료된 반 (시간표·수업일지에서 숨김)</label>
       <label class="top">학생</label><div>
-        <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">변경 적용일</span><input type="date" name="apply" value="${today}"></div>
+        <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">반 등록일(이동일)</span><input type="date" name="apply" value="${today}"></div>
         <div class="pick-list" data-picks>${picksHtml(today)}</div>
-        <div class="hint" style="margin-top:4px">체크 상태는 적용일 기준 명단입니다. 체크한 학생은 적용일부터 출석부에 들어가고, 체크를 푼 학생은 적용일부터 빠집니다.<br>이름 오른쪽 요일 버튼을 끄면 그 요일은 빠지고 나머지 요일만 수강합니다 (예: 월수반을 월요일만).</div></div>
+        <div class="hint" style="margin-top:4px">체크 상태는 이 날짜 기준 명단입니다. 처음 반에 넣는 학생은 학생 등록일부터 들어갑니다 (반 수업 시작일보다 앞이면 반 시작일부터).<br>이미 다른 반을 다닌 학생(두 번째 반·반 이동)은 이 날짜부터 들어가고, 체크를 푼 학생은 이 날짜부터 빠집니다.<br>이름 오른쪽 요일 버튼을 끄면 그 요일은 빠지고 나머지 요일만 수강합니다 (예: 월수반을 월요일만). 요일은 그 반에 들어온 날부터 적용됩니다.</div></div>
     </div>`;
     Modal.open({
       title: c ? '반 수정' : '반 만들기', size: 'lg', body,
@@ -428,7 +460,7 @@ const Classes = {
           if (!isYmd(startDate)) { toast('수업 시작일을 선택하세요'); return false; }
           if (!days.length) { toast('요일을 하나 이상 고르세요'); return false; }
           if (!start) { toast('시작 시간을 입력하세요'); return false; }
-          if (!isYmd(apply)) { toast('변경 적용일을 선택하세요'); return false; }
+          if (!isYmd(apply)) { toast('반 등록일(이동일)을 선택하세요'); return false; }
           // 요일별 시간 정리: 체크한 요일만 남기고, 모두 같으면 공통 시간으로 저장
           let perDay = $('[name=perDay]', b).checked, times = null;
           if (perDay) {
@@ -456,8 +488,19 @@ const Classes = {
             if (!await confirmDlg(`${nm} 학생은 수강하던 요일이 반에서 빠집니다.\n이 학생은 남은 모든 요일을 수강하도록 바뀝니다. 계속할까요?`, '계속')) return false;
             lost.forEach(sid => { pd[sid] = null; });
           }
-          // 과거 적용일: 빠지는 요일에 이미 출석 기록이 있으면 확인
-          if (c && !await this.confirmAttConflicts(checked0.filter(sid => pd[sid]).map(sid => ({ sid, cid: c.id, from: apply, days: pd[sid], classDays: days })))) return false;
+          // 수강 시작일: 새로 넣는 학생은 첫 반이면 학생 등록일(반 시작일보다 앞이면 반 시작일), 아니면 반 등록일(이동일)
+          //             이미 수강 중인 학생은 그 반에 들어온 날 (첫 반인데 등록일보다 늦게 시작했으면 등록일로 앞당김)
+          const inNow = c ? this.rosterAt(c.id, apply).map(s => s.id) : [];
+          const fromOf = {};
+          checked0.forEach(sid => {
+            if (inNow.includes(sid)) {
+              const f0 = this.chainOf(sid, c.id, apply)[0].from;
+              const fs = this.firstStart(sid, f0, startDate);
+              fromOf[sid] = fs && fs < f0 ? fs : f0;
+            } else fromOf[sid] = this.firstStart(sid, apply, startDate) || apply;
+          });
+          // 빠지는 요일에 이미 출석 기록이 있으면 확인 (요일은 그 반에 들어온 날부터 적용)
+          if (c && !await this.confirmAttConflicts(checked0.filter(sid => pd[sid]).map(sid => ({ sid, cid: c.id, from: fromOf[sid], days: pd[sid], classDays: days })))) return false;
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
             memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '', startDate,
@@ -466,8 +509,11 @@ const Classes = {
           const shown = $$('[name=st]', b).map(i => i.value);
           const checked = $$('[name=st]:checked', b).map(i => i.value);
           const nowIn = this.rosterAt(rec.id, apply).map(s => s.id);
-          // 새로 체크한 학생은 추가, 이미 수강 중인 학생은 요일이 바뀐 경우만 적용일부터 바꾼다
-          checked.forEach(sid => this.enrollDays(sid, rec.id, apply, pd[sid] || null));
+          // 새로 체크한 학생은 위 시작일부터 추가, 이미 수강 중인 학생은 요일을 그 반에 들어온 날부터 맞춘다
+          checked.forEach(sid => {
+            if (nowIn.includes(sid)) this.fixExisting(sid, rec.id, apply, pd[sid] || null, fromOf[sid]);
+            else this.enrollDays(sid, rec.id, fromOf[sid] || apply, pd[sid] || null);
+          });
           // 목록에 보이는 학생 중 체크를 푼 학생만 뺀다 (목록에 없는 학생은 건드리지 않음)
           nowIn.filter(sid => shown.includes(sid) && !checked.includes(sid)).forEach(sid => {
             Store.where('enrollments', e => e.studentId === sid && e.classId === rec.id && (!e.to || e.to > apply)).forEach(e => {
