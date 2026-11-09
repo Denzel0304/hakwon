@@ -422,7 +422,7 @@ const MEvents = {
     const singles = evs.filter(ev => !isRange(ev));
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
-    let h = `<div class="panel m-cal"><div class="mc-head"><span class="mc-title">${Y}년 ${M}월</span>
+    let h = `<div class="panel m-cal"><div class="mc-head"><button type="button" class="mc-title ym-btn" data-ympick>${Y}년 ${M}월 ▾</button>
         <button type="button" class="mc-nav" data-mon="-1" aria-label="이전 달">‹</button>
         <button type="button" class="mc-today" data-mon="0">오늘</button>
         <button type="button" class="mc-nav" data-mon="1" aria-label="다음 달">›</button></div>
@@ -508,9 +508,21 @@ const MEvents = {
     });
   },
 
+  // 제목 '2026년 11월 ▾' → 년·월 고르기
+  pickYm() {
+    const [Y, M] = this.month.split('-').map(Number);
+    MonthPick.open(Y, M).then(r => {
+      if (!r) return;
+      const nm = r.y + '-' + pad(r.m);
+      if (nm !== this.month) { this._dir = nm > this.month ? 1 : -1; this.month = nm; }
+      App.render();
+    });
+  },
+
   bind(main) {
     main.onclick = (e) => {
       const md = e.target.closest('[data-mode]'); if (md) { this.mode = md.dataset.mode; App.render(true); return; }
+      if (e.target.closest('[data-ympick]')) { this.pickYm(); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
         const n = +mo.dataset.mon;
@@ -556,7 +568,7 @@ const MTodos = {
     const weeks = Math.ceil((first.getDay() + new Date(Y, M, 0).getDate()) / 7);
     const idx = TodoX.dotIndex(ymd(start), weeks * 7, today);
 
-    let h = `<div class="panel m-cal m-tdcal"><div class="mc-head"><span class="mc-title">${Y}년 ${M}월</span>
+    let h = `<div class="panel m-cal m-tdcal"><div class="mc-head"><button type="button" class="mc-title ym-btn" data-ympick>${Y}년 ${M}월 ▾</button>
         <button type="button" class="mc-nav" data-mon="-1" aria-label="이전 달">‹</button>
         <button type="button" class="mc-today" data-mon="0">오늘</button>
         <button type="button" class="mc-nav" data-mon="1" aria-label="다음 달">›</button></div>
@@ -600,9 +612,21 @@ const MTodos = {
     App.render();
   },
 
+  // 제목 '2026년 11월 ▾' → 년·월 고르기
+  pickYm() {
+    const [Y, M] = this.month.split('-').map(Number);
+    MonthPick.open(Y, M).then(r => {
+      if (!r) return;
+      const nm = r.y + '-' + pad(r.m);
+      if (nm !== this.month) { this._dir = nm > this.month ? 1 : -1; this.month = nm; }
+      App.render();
+    });
+  },
+
   bind(main) {
     main.onclick = (e) => {
       if (e.target.closest('[data-addtodo]')) { TodoX.add(this.sel, this.OPT); return; }
+      if (e.target.closest('[data-ympick]')) { this.pickYm(); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
         const n = +mo.dataset.mon;
