@@ -399,8 +399,11 @@ const TodoX = {
     };
     const rep0 = JSON.stringify(st.repeat);
     const detail0 = !isNew && !!(st.importance || st.memo || st.remind || st.useCl || st.useTime || st.repeat);
-    const H = Array.from({ length: 24 }, (_, i) => i), MI = Array.from({ length: 12 }, (_, i) => i * 5);
+    // 시간은 9시~23시만 (예전에 범위 밖 시간으로 저장한 할일은 그 시간도 목록에 넣어 그대로 유지)
+    const MI = Array.from({ length: 12 }, (_, i) => i * 5);
     const [th, tm] = (st.time || '18:00').split(':').map(Number);
+    const H = Array.from({ length: 15 }, (_, i) => i + 9);
+    if (!H.includes(th)) { H.push(th); H.sort((a, b) => a - b); }
 
     const body = `<div class="tx-form">
       <div class="tx-r1"><input type="text" data-f="text" value="${esc(st.text)}" placeholder="할일을 입력하세요..." autocomplete="off" maxlength="300">
