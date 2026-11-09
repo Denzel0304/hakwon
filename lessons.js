@@ -911,7 +911,7 @@ const ProgressBook = {
       h += NP.summaryHtml(this.classId, sel);
       h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 날짜 없이 끝낸 것으로 표시하거나 취소합니다 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
     }
-    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>날짜</th><th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
+    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:760px"><colgroup><col style="width:100px"><col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th><th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '<span class="muted">-</span>';
