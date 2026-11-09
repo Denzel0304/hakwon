@@ -996,7 +996,7 @@ const AttBook = {
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
       <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button><span class="grow" style="flex:1"></span><button class="btn sm" data-pdf title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:#B9D7EF;color:var(--accent-ink);font-weight:700" title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     this._mv = {};
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 관리에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
