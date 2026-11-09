@@ -453,7 +453,7 @@ const Students = {
           App.render();
           this.contactRemove([gone]);
         } },
-        { text: '연락처 저장', onClick: (mm) => this.sendContact(mm) },
+        { text: '연락처 저장', onClick: (mm) => this.sendContact(mm, null, s.id) },
         { text: '정보 저장', cls: 'primary', primary: true, onClick: (mm) => (mm.tab === 'info' ? this.saveInfo(mm, s.id) : false) },
         { text: '닫기' },
       ],
@@ -499,7 +499,7 @@ const Students = {
   },
 
   // 기본정보 저장 (false를 돌려주면 모달이 닫히지 않음)
-  saveInfo(m, sid) {
+  async saveInfo(m, sid) {
     const pane = $('[data-pane]', m.body);
     const s = { id: sid };
     {
@@ -520,6 +520,13 @@ const Students = {
       if (jl) { if (jl.date !== joinDate) Store.put('student_log', Object.assign({}, jl, { date: joinDate })); }
       else this.addLog(s.id, 'join', joinDate, '');
       if (info.school) rec.schoolPending = false;
+      // 부모 번호가 바뀌면: 같은 옛 번호를 쓰는 형제도 바꿀지 묻고, 주소록에 아직 반영 안 했으면 옛 번호를 기억해 둔다
+      const op = this.ctNorm(cur.parentPhone), np = this.ctNorm(info.parentPhone);
+      if (op && np && op !== np) {
+        await this.askSibs(m, s.id, cur.parentPhone, info.parentPhone);
+        if (m.ctDone !== np && !cur.ctOldParent) rec.ctOldParent = cur.parentPhone;
+      }
+      if (rec.ctOldParent && this.ctNorm(rec.ctOldParent) === np) delete rec.ctOldParent;
       Store.put('students', rec);
       toast('저장했습니다');
       App.render();
@@ -529,7 +536,7 @@ const Students = {
   // 연락처 저장: 기본정보 화면의 이름·번호를 GAS 웹앱으로 보내 구글 주소록에 등록/업데이트한다
   // (항상 false를 돌려줘 모달은 닫지 않는다)
   // root: 입력칸이 들어 있는 영역 (신규 등록 모달은 m.body, 학생 상세 모달은 생략 → 기본정보 탭)
-  async sendContact(m, root) {
+  async sendContact(m, root, sid) {
     if (!root) {
       if (m.tab !== 'info') return false;
       root = $('[data-pane]', m.body);
@@ -540,6 +547,16 @@ const Students = {
     if (!CFG.GAS_CONTACT_URL) { toast('연락처 저장 주소(GAS_CONTACT_URL)가 설정되지 않았습니다'); return false; }
     const key = Auth.key();
     if (!key) { toast('로그인이 필요합니다'); return false; }
+    // 부모 번호를 바꾼 경우: 주소록에 있는 옛 번호(형제가 더 쓰지 않을 때만)를 새 번호로 바꾼다
+    const cur = sid ? Store.get('students', sid) : null;
+    let oldParentPhone = '';
+    if (cur) {
+      const op = this.ctNorm(cur.parentPhone), np = this.ctNorm(info.parentPhone);
+      if (op && np && op !== np) {                 // 정보 저장 전에 번호를 바꿈
+        await this.askSibs(m, sid, cur.parentPhone, info.parentPhone);
+        oldParentPhone = cur.ctOldParent || cur.parentPhone;
+      } else oldParentPhone = cur.ctOldParent || '';
+    }
     toast('연락처 전송 중…');
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 60000);
@@ -547,7 +564,7 @@ const Students = {
       const r = await fetch(CFG.GAS_CONTACT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 사전 요청(CORS preflight) 없이 GAS로 보내기 위함
-        body: JSON.stringify({ key, name: info.name, phone: info.phone, parentPhone: info.parentPhone }),
+        body: JSON.stringify({ key, name: info.name, phone: info.phone, parentPhone: info.parentPhone, oldParentPhone, keepParents: this.ctKeep(sid ? [sid] : []) }),
         signal: ctl.signal,
       });
       const d = await r.json();
@@ -562,7 +579,12 @@ const Students = {
       if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
       if (d.skipped) parts.push(`변경 없음 ${d.skipped}건`);
       if (d.errors && d.errors.length) toast(`일부 실패 (${parts.join(' · ') || '처리 0건'}) — ${d.errors[0]}`);
-      else toast('연락처 저장 완료 · ' + parts.join(' · '));
+      else {
+        toast('연락처 저장 완료 · ' + parts.join(' · '));
+        if (m) m.ctDone = this.ctNorm(info.parentPhone);                 // 정보 저장 때 옛 번호를 다시 기억하지 않게
+        const now = sid ? Store.get('students', sid) : null;
+        if (now && now.ctOldParent) { const n = Object.assign({}, now); delete n.ctOldParent; Store.put('students', n); }
+      }
     } catch (e) {
       toast(e.name === 'AbortError' ? '연락처 저장 실패: 응답 시간 초과' : '연락처 저장 실패: 네트워크 오류');
     } finally {
@@ -914,14 +936,38 @@ const Students = {
   },
 
   /* ---------- 구글 주소록 자동 정리 ----------
-     휴원·퇴원·졸업·완전 삭제 → 주소록에서 삭제 (이름·번호가 모두 같은 연락처만)
-     복귀·재등록·상태 되돌리기 → 주소록에 등록 (이미 있으면 건너뜀)
+     휴원·퇴원·졸업·완전 삭제 → 주소록에서 삭제 (학생: 이름·번호가 모두 같은 연락처만)
+       · 부모 연락처: 같은 부모 번호를 쓰는 형제가 재원 중이면 남기고, 마지막 형제가 빠질 때 그 번호의 '○○ 어머님'을 이름과 상관없이 삭제
+     복귀·재등록·상태 되돌리기 → 주소록에 등록 (이미 있으면 건너뜀, 부모 번호는 형제 이름으로 있어도 건너뜀)
      요청은 한 줄로 세워 차례로 보낸다 (GAS 쪽 잠금과 부딪히지 않게). 실패하면 모달로 알림 */
   _ctQ: null,
   ctItems(list) {
     return (list || []).filter(Boolean)
-      .map(s => ({ name: String(s.name || '').trim(), phone: String(s.phone || '').trim(), parentPhone: String(s.parentPhone || '').trim() }))
+      .map(s => ({ id: s.id, name: String(s.name || '').trim(), phone: String(s.phone || '').trim(), parentPhone: String(s.parentPhone || '').trim(), oldParentPhone: String(s.ctOldParent || '').trim() }))
       .filter(o => o.name && (o.phone || o.parentPhone));
+  },
+  // 형제 = 부모 번호(숫자만)가 같은 학생
+  ctNorm(v) { return this.normGPhone(v); },
+  sibsOf(sid, phone) { const p = this.ctNorm(phone); return p ? Store.where('students', s => s.id !== sid && this.ctNorm(s.parentPhone) === p) : []; },
+  // 재원생이 쓰는 부모 번호 (휴원·퇴원 제외, 예약만 걸린 학생은 재원) — 주소록에서 지우거나 덮어쓰면 안 되는 번호
+  ctKeep(exclude) {
+    const ex = new Set(exclude || []);
+    return [...new Set(Store.where('students', s => !ex.has(s.id) && (s.status || 'active') === 'active').map(s => this.ctNorm(s.parentPhone)).filter(Boolean))];
+  },
+  // 부모 번호 변경: 같은 옛 번호를 쓰는 형제도 함께 바꿀지 묻는다 (한 창에서 같은 변경은 한 번만)
+  async askSibs(m, sid, oldP, newP) {
+    const k = this.ctNorm(oldP) + '>' + this.ctNorm(newP);
+    if (m && m.sibAsked === k) return;
+    if (m) m.sibAsked = k;
+    const sibs = this.sibsOf(sid, oldP);
+    if (!sibs.length) return;
+    const names = sibs.map(x => x.name + ((x.status || 'active') !== 'active' ? `(${STATUS_LABEL[x.status] || x.status})` : '')).join(', ');
+    if (!await confirmDlg(`같은 부모님 번호(${oldP})를 쓰는 형제가 있습니다.\n${names}\n\n이 학생들의 부모님 연락처도 ${newP}(으)로 바꿀까요?`, '함께 바꾸기')) return;
+    sibs.forEach(x => Store.put('students', Object.assign({}, x, { parentPhone: newP })));
+    toast(`형제 ${sibs.length}명의 부모님 연락처도 바꿨습니다`);
+  },
+  clearCtOld(items) {
+    items.forEach(o => { const t = o.oldParentPhone && Store.get('students', o.id); if (t && t.ctOldParent) { const n = Object.assign({}, t); delete n.ctOldParent; Store.put('students', n); } });
   },
   ctTargets(items) {
     const out = [];
@@ -965,13 +1011,28 @@ const Students = {
   contactRemove(list) {
     const items = this.ctItems(list);
     if (!items.length) return;
+    // 학생 연락처는 이름·번호로, 부모 연락처는 번호로 지운다 (재원 중인 형제가 쓰는 번호는 남김)
+    const keep = new Set(this.ctKeep(items.map(o => o.id)));
+    const pm = new Map();
+    let kept = 0;
+    items.forEach(o => [o.parentPhone, o.oldParentPhone].forEach((p, i) => {
+      const n = this.ctNorm(p);
+      if (!n || pm.has(n)) return;
+      if (keep.has(n)) { if (i === 0) kept++; return; }
+      pm.set(n, p);
+    }));
+    const stItems = items.filter(o => o.phone).map(o => ({ name: o.name, phone: o.phone }));
+    const parents = [...pm.values()].map(p => ({ phone: p }));
+    const keptMsg = kept ? ` · 형제가 재원 중이라 어머님 연락처 ${kept}건 유지` : '';
+    if (!stItems.length && !parents.length) { if (kept) toast('형제가 재원 중이라 어머님 연락처는 남겨 두었습니다'); return; }
+    const rows = stItems.map(o => ({ contactName: o.name, phone: o.phone })).concat(parents.map(p => ({ contactName: '(어머님)', phone: p.phone })));
     this.ctRun(async () => {
       let d;
-      try { d = await this.ctPost({ action: 'delete', items }, 300000); }
-      catch (e) { this.ctFailModal('delete', e.message, { errors: this.ctTargets(items) }); return; }
+      try { d = await this.ctPost({ action: 'delete', items: stItems, parents }, 300000); }
+      catch (e) { this.ctFailModal('delete', e.message, { errors: rows }); return; }
       const nf = (d.notFound || []).length;
       if ((d.mismatch || []).length || (d.errors || []).length) this.ctFailModal('delete', '', d);
-      else toast(`구글 주소록에서 ${(d.deleted || []).length}건 삭제했습니다` + (nf ? ` · 주소록에 없음 ${nf}건` : ''));
+      else toast(`구글 주소록에서 ${(d.deleted || []).length}건 삭제했습니다` + (nf ? ` · 주소록에 없음 ${nf}건` : '') + keptMsg);
     });
   },
   contactAdd(list) {
@@ -979,9 +1040,10 @@ const Students = {
     if (!items.length) return;
     this.ctRun(async () => {
       let d;
-      try { d = await this.ctPost({ action: 'saveMany', items }, 300000); }
+      try { d = await this.ctPost({ action: 'saveMany', items, keepParents: this.ctKeep(items.map(o => o.id)) }, 300000); }
       catch (e) { this.ctFailModal('add', e.message, { errors: this.ctTargets(items) }); return; }
       if ((d.errors || []).length) { this.ctFailModal('add', '', d); return; }
+      this.clearCtOld(items);
       const parts = [];
       if (d.added) parts.push(`등록 ${d.added}건`);
       if (d.updated) parts.push(`번호 변경 ${d.updated}건`);
