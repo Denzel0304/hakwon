@@ -946,7 +946,9 @@ const AttBook = {
         }).join('');
         return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span></td>${cells}<td>${sum.P}</td><td>${sum.L}</td><td>${sum.A}</td><td>${sum.E}</td></tr>`;
       }).join('');
-      body += `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+      // 첫 줄이 반 제목(합친 칸)이라 열 너비를 colgroup으로 정한다 (이름 넓게, 날짜·합계는 글자 하나 폭)
+      const cols = `<colgroup><col class="c-nm">${days.map(() => '<col>').join('')}<col class="c-sm"><col class="c-sm"><col class="c-sm"><col class="c-sm"></colgroup>`;
+      body += `<table>${cols}<thead>${head}</thead><tbody>${rows}</tbody></table>`;
     });
     if (!body) { toast('이 달에 출석부에 넣을 학생이 없습니다'); return; }
     const title = `출석부_${this.month}`;
@@ -965,9 +967,9 @@ const AttBook = {
       th.ttl { text-align: left; padding-left: 2mm; height: 6.5mm; background: #dfe7f1; font-size: 9.5pt; }
       th.ttl .dot { display: inline-block; width: 7pt; height: 7pt; border-radius: 50%; margin-right: 4pt; vertical-align: -0.5pt; }
       th.ttl .sub { font-weight: normal; color: #555; font-size: 8pt; margin-left: 6pt; }
-      th.nm, td.nm { width: 34mm; text-align: left; padding-left: 1.5mm; }
+      col.c-nm { width: 38mm; } col.c-sm { width: 5mm; }
+      th.nm, td.nm { text-align: left; padding-left: 1.5mm; text-overflow: ellipsis; }
       td.nm .tag { color: #777; font-size: 6.5pt; }
-      th.sm { width: 6mm; }
       th.sun { color: #c62828; } th.sat { color: #1f5fbf; }
       th.off { background: #d9dde2; color: #888; }
       td.off { background: #e4e7eb; }
