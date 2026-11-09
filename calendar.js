@@ -103,7 +103,7 @@ const MiniCal = {
     const noLog = (k) => k <= today && actCls.some(c => Lessons.needsLog(c, k));
     let h = `<div class="mc-head">
       <button class="mc-nav" data-mc="prev" aria-label="이전 달">‹</button>
-      <button type="button" class="mc-title ym-btn" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button>
+      <div class="mc-title">${y}년 ${m + 1}월</div>
       <button class="mc-today" data-mc="today">오늘</button><button class="mc-today" data-mc="big">큰 달력</button>
       <button class="mc-nav" data-mc="next" aria-label="다음 달">›</button>
     </div><div class="mc-grid">`;
@@ -129,10 +129,6 @@ const MiniCal = {
     if (!this.bound) {
       this.bound = true;
       el.addEventListener('click', (e) => {
-        if (e.target.closest('[data-ympick]')) {
-          MonthPick.open(this.month.getFullYear(), this.month.getMonth() + 1).then(r => { if (r) { this.month = new Date(r.y, r.m - 1, 1); this.render(); } });
-          return;
-        }
         const nav = e.target.closest('[data-mc]');
         if (nav) {
           const a = nav.dataset.mc;
@@ -172,7 +168,7 @@ const BigCal = {
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
     let h = `<div class="page-head">
-      <h1><button type="button" class="ym-btn ym-h" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button></h1>
+      <h1>${y}년 ${m + 1}월</h1>
       <button class="btn sm" data-a="prev">‹ 이전 달</button>
       <button class="btn sm" data-a="this">이번 달</button>
       <button class="btn sm" data-a="next">다음 달 ›</button>
@@ -254,10 +250,6 @@ const BigCal = {
     grip.addEventListener('dblclick', () => { this.userH = 0; App.render(); });
 
     main.onclick = (e) => {
-      if (e.target.closest('[data-ympick]')) {
-        MonthPick.open(y, m + 1).then(r => { if (r) App.go('calendar', { month: r.y + '-' + pad(r.m) }); });
-        return;
-      }
       const a = e.target.closest('[data-a]');
       if (a) {
         const act = a.dataset.a;
@@ -362,55 +354,6 @@ const DayPage = {
   },
 };
 
-/* ---------- 년·월 고르기 (달력 제목 '2026년 11월 ▾'을 누르면) ----------
-   MonthPick.open(년, 월 1~12) → Promise<{ y, m } | null>. 연도는 ‹ ›, 월은 버튼 */
-const MonthPick = {
-  _css: false,
-  css() {
-    if (this._css) return;
-    this._css = true;
-    const st = document.createElement('style');
-    st.textContent = `
-.ym-btn { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; font-family: inherit; }
-.ym-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
-.ym-h { font-size: inherit; font-weight: inherit; color: inherit; }
-.ym-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.ym-head b { font-size: 17px; }
-.ym-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.ym-m { padding: 10px 0; border: 1px solid var(--line, #D6E7F4); border-radius: 8px; background: var(--surface, #fff); color: var(--ink, #1E3243); font: inherit; font-size: 14px; cursor: pointer; }
-.ym-m:hover { border-color: var(--accent, #2B7FC1); }
-.ym-m.today { font-weight: 800; color: var(--accent, #2B7FC1); }
-.ym-m.sel { background: var(--accent, #2B7FC1); border-color: var(--accent, #2B7FC1); color: #fff; }`;
-    document.head.appendChild(st);
-  },
-  open(y, m) {
-    this.css();
-    return new Promise(res => {
-      let yy = +y, picked = null;
-      const now = new Date(), ty = now.getFullYear(), tm = now.getMonth() + 1;
-      const draw = (box) => {
-        box.innerHTML = `<div class="ym-head"><button type="button" class="mc-nav" data-yp="-1" aria-label="이전 해">‹</button><b>${yy}년</b><button type="button" class="mc-today" data-yp="0">올해</button><button type="button" class="mc-nav" data-yp="1" aria-label="다음 해">›</button></div>
-          <div class="ym-grid">${Array.from({ length: 12 }, (_, i) => i + 1).map(k => `<button type="button" class="ym-m${yy === +y && k === +m ? ' sel' : ''}${yy === ty && k === tm ? ' today' : ''}" data-mp="${k}">${k}월</button>`).join('')}</div>`;
-      };
-      Modal.open({
-        title: '년·월 이동', size: 'sm', autofocus: false, body: '<div class="ym-box"></div>',
-        onMount: (b, md) => {
-          const box = $('.ym-box', b);
-          draw(box);
-          box.addEventListener('click', (e) => {
-            const n = e.target.closest('[data-yp]');
-            if (n) { const v = +n.dataset.yp; yy = v ? yy + v : ty; draw(box); return; }
-            const k = e.target.closest('[data-mp]');
-            if (k) { picked = { y: yy, m: +k.dataset.mp }; md.close(); }
-          });
-        },
-        onClose() { res(picked); },
-      });
-    });
-  },
-};
-MonthPick.css();     // 제목 버튼 모양은 처음부터 필요
-
 /* ---------- 날짜 고르기 모달 (달력) ---------- */
 const DatePicker = {
   open(init, title = '날짜 선택') {
@@ -423,7 +366,7 @@ const DatePicker = {
         const first = new Date(y, m, 1), start = addDays(first, -first.getDay());
         const weeks = Math.ceil((first.getDay() + new Date(y, m + 1, 0).getDate()) / 7);
         const today = todayStr();
-        let h = `<div class="mc-head"><button class="mc-nav" data-dp="prev">‹</button><button type="button" class="mc-title ym-btn" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button><button class="mc-today" data-dp="today">오늘</button><button class="mc-nav" data-dp="next">›</button></div><div class="mc-grid">`;
+        let h = `<div class="mc-head"><button class="mc-nav" data-dp="prev">‹</button><div class="mc-title">${y}년 ${m + 1}월</div><button class="mc-today" data-dp="today">오늘</button><button class="mc-nav" data-dp="next">›</button></div><div class="mc-grid">`;
         DOW.forEach((w, i) => { h += `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
         for (let i = 0; i < weeks * 7; i++) {
           const d = addDays(start, i), k = ymd(d);
@@ -443,10 +386,6 @@ const DatePicker = {
           const box = $('.dp-box', b);
           draw(box);
           box.addEventListener('click', (e) => {
-            if (e.target.closest('[data-ympick]')) {
-              MonthPick.open(month.getFullYear(), month.getMonth() + 1).then(r => { if (r) { month = new Date(r.y, r.m - 1, 1); draw(box); } });
-              return;
-            }
             const n = e.target.closest('[data-dp]');
             if (n) {
               if (n.dataset.dp === 'today') { picked = todayStr(); m.close(); return; }
