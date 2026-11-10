@@ -355,7 +355,7 @@ const SmsPage = {
     });
     let h = `<div class="toolbar">
         <button class="btn sm" data-a="reload">새로고침</button>
-        <button class="btn sm danger" data-a="del" ${this.delCnt() && !this.deleting ? '' : 'disabled'}>${this.delLabel()}</button>
+        <button class="btn sm danger sx7-delbtn" data-a="del" ${this.delCnt() && !this.deleting ? '' : 'disabled'}>${this.delLabel()}</button>
         <label class="chk small"><input type="checkbox" data-gall ${groups.length && this.delCnt() === groups.length ? 'checked' : ''}>전체 선택</label>
         <span class="muted small">${groups.length}번 발송 · ${this.log.length}건</span></div>`;
     if (!groups.length) return h + '<div class="panel"><div class="empty">발송 기록이 없습니다.</div></div>';
@@ -553,6 +553,7 @@ const SmsPage = {
 .sx7-g:last-child { border-bottom: 0; }
 .sx7-gh { display: flex; align-items: center; gap: 12px; padding: 10px 4px; cursor: pointer; border-radius: 6px; }
 .sx7-gh:hover { background: var(--accent-soft); }
+.sx7-delbtn { min-width: 7.6em; text-align: center; font-variant-numeric: tabular-nums; }   /* "삭제 (999)"까지 넣어도 크기가 그대로 */
 .sx7-gsel { display: flex; align-items: center; padding: 2px; margin: 0; cursor: pointer; flex: none; }
 .sx7-gsel input { margin: 0; width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
 .sx7-when { flex: none; width: 160px; }
