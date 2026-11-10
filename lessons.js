@@ -579,11 +579,12 @@ const Lessons = {
   render(main, p) {
     const date = isYmd(p.date) ? p.date : App.selDate;
     const sched = this.classesOn(date);
-    const others = Classes.sorted(Store.all('classes').filter(c => c.active !== false && !sched.find(x => x.id === c.id)));
+    const inSched = (id) => !!sched.find(x => x.id === id);
     // 수정 모드: 저장된 일지를 불러와 고친다 (날짜 요약에서 연 경우)
     const editing = (id) => id && this.isSaved(id, date) && (
       (p.edit && p.classId === id) || (this.form && this.form.editId === this.lessonId(id, date)));
-    const ok = (id) => id && Store.get('classes', id) && (!this.isSaved(id, date) || editing(id));
+    // 그 요일 수업만 입력할 수 있다 (저장된 일지 수정은 예외: 반 요일이 나중에 바뀐 예전 기록도 고칠 수 있게)
+    const ok = (id) => id && Store.get('classes', id) && ((inSched(id) && !this.isSaved(id, date)) || editing(id));
     let classId = ok(p.classId) ? p.classId : null;
     if (!classId && this.form && this.form.date === date && ok(this.form.classId)) classId = this.form.classId;
     if (!classId) { const nx = sched.find(c => ok(c.id) && !this.isSaved(c.id, date) && !this.isSkipped(c.id, date)); classId = nx ? nx.id : null; }
@@ -601,24 +602,24 @@ const Lessons = {
     };
     const skipped = classId && this.isSkipped(classId, date);
     const leftCnt = sched.filter(c => !this.isSaved(c.id, date) && !this.isSkipped(c.id, date)).length;
+    const allDone = sched.length > 0 && leftCnt === 0;          // 저장 또는 건너뛰기로 모두 처리
+    const editOther = classId && !inSched(classId) ? Store.get('classes', classId) : null;   // 다른 요일 반의 저장된 일지 수정
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>수업일지</h1>${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
       <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
       <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
       <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + '<button class="btn primary" data-save>저장</button>' : ''}</div>
       <div class="toolbar"><span style="display:inline-flex;align-items:center">${Classes.selDot(classId ? Store.get('classes', classId) : null)}<select data-cls style="min-width:260px">
-        ${classId ? '' : '<option value="" selected>입력할 반을 선택하세요</option>'}
+        ${classId ? '' : `<option value="" selected>${allDone ? '모두 작성되었습니다' : '입력할 반을 선택하세요'}</option>`}
         ${sched.length ? `<optgroup label="${DOW[dowOf(date)]}요일 수업">${sched.map(opt).join('')}</optgroup>` : ''}
-        ${others.length ? `<optgroup label="다른 반">${others.map(opt).join('')}</optgroup>` : ''}
+        ${editOther ? `<optgroup label="수정 중인 일지">${opt(editOther)}</optgroup>` : ''}
       </select></span><span class="small muted">${sched.length ? `이 날 정규 수업 ${sched.length}개 중 ${savedCnt}개 저장${skipCnt ? ` · ${skipCnt}개 건너뜀` : ''}` : '이 날은 정규 수업이 없습니다'}</span>
       ${leftCnt > 1 ? '<button class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 정규 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
 
     if (!classId) {
-      h += `<div class="panel"><div class="empty">${sched.length && savedCnt === sched.length
-        ? '이 날 정규 수업 일지를 모두 저장했습니다. 수정은 진도·출석부 탭에서 하세요.'
-        : sched.length && savedCnt + skipCnt === sched.length
-          ? '이 날 정규 수업 일지를 모두 저장하거나 건너뛰었습니다. 건너뛴 수업을 쓰려면 위 목록에서 고른 뒤 건너뛰기를 취소하세요.'
-          : '입력할 반을 선택하세요.'}</div></div></div>`;
+      h += `<div class="panel"><div class="empty">${allDone
+        ? (date === todayStr() ? '오늘 수업일지는 모두 작성되었습니다.' : '이 날 수업일지는 모두 작성되었습니다.')
+        : sched.length ? '입력할 반을 선택하세요.' : '이 날은 정규 수업이 없습니다.'}</div></div></div>`;
       main.innerHTML = h;
       this.bind(main, date, null);
       return;
@@ -752,6 +753,12 @@ const Lessons = {
     const np = NP.toLesson(f.np, { classId: f.classId, date: f.date, lessonId: null });
     const rec = { id, classId: f.classId, date: f.date, progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) };
     if (np.np.length || np.dist.length) Object.assign(rec, np);      // 내신 진도·배부 자료
+    // 아무것도 입력하지 않았으면 저장하지 않는다 (빈 일지는 '작성 안 됨'으로 남기 때문)
+    if (!Object.keys(rec.att).length && ![rec.progress, rec.homework, rec.memo].some(v => (v || '').trim())
+      && !(rec.np && rec.np.length) && !(rec.dist && rec.dist.length) && !f.todos.some(d => d.text.trim())) {
+      await alertDlg('저장할 내용 없음', '입력한 내용이 없습니다.\n이 수업의 일지를 쓰지 않으려면 "일지 건너뛰기"를 사용하세요.');
+      return;
+    }
     Store.put('lessons', rec);
     if (this.isSkipped(f.classId, f.date)) Store.del('meta', this.skipId(f.classId, f.date));   // 일지를 쓰면 건너뛰기 표시는 없앤다
     const now = Date.now();
