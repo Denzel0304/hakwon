@@ -371,7 +371,7 @@ const Students = {
   },
 
   classPickHtml(selected = []) {
-    const cls = Store.all('classes').filter(c => c.active !== false).sort((a, b) => ko(a.start, b.start) || ko(a.name, b.name));
+    const cls = Classes.sorted(Store.all('classes').filter(c => c.active !== false));   // 반 관리와 같은 순서
     if (!cls.length) return '<div class="muted small">만들어진 반이 없습니다. 반 관리에서 먼저 반을 만드세요.</div>';
     return '<div class="pick-list">' + cls.map(c => `<label><input type="checkbox" name="cls" value="${c.id}" ${selected.includes(c.id) ? 'checked' : ''}>${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span><span class="pkd" data-ckd="${c.id}">${this.ckdHtml(c, null)}</span></label>`).join('') + '</div>';
   },
@@ -606,7 +606,7 @@ const Students = {
     // 오늘 수강 중이면서 끝날짜가 없는 반만 추가 목록에서 뺀다 (예정·빠짐 예정인 반은 날짜를 바꿔 다시 추가 가능)
     const curIds = cur.filter(e => !e.to && e.from <= today).map(e => e.classId);
     const canAdd = s.status === 'active';
-    const addable = Store.all('classes').filter(c => c.active !== false && !curIds.includes(c.id)).sort((a, b) => ko(a.start, b.start));
+    const addable = Classes.sorted(Store.all('classes').filter(c => c.active !== false && !curIds.includes(c.id)));   // 반 관리와 같은 순서
     let h = '<h2 style="font-size:14px;margin:0 0 6px">현재 수강반</h2>';
     h += cur.length ? '<div class="list">' + cur.map(e => {
       const c = Store.get('classes', e.classId);

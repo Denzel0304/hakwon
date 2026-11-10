@@ -34,7 +34,7 @@ const SmsPage = {
   activeStudents() {
     return Store.all('students').filter(s => (s.status || 'active') === 'active' && (s.name || '').trim()).sort((a, b) => Students.sortFn(a, b));
   },
-  activeClasses() { return Store.all('classes').filter(c => c.active !== false).sort((a, b) => ko(a.name, b.name)); },
+  activeClasses() { return Classes.sorted(Store.all('classes').filter(c => c.active !== false)); },   // 반 관리와 같은 순서 (요일 → 시간)
   // 학생ID → 지금 다니는 반 목록
   classMap() {
     const t = todayStr(), m = {};
