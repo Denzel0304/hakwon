@@ -398,7 +398,7 @@ const NP = {
     if (!range.length) return h + '<div class="small muted" style="padding:6px 0">고른 시험에 구조화된 시험 범위가 없습니다. 시험+교재 탭에서 범위를 입력하세요.</div></div>';
     const prog = this.progress(ctx.classId, sel, ctx.lessonId);
     // 학교별 숙제(수업일지 작성 화면만, ctx.hw): 교재를 학교·학년 순으로 모으고, 그 학교의 마지막 교재 바로 아래에 그 학교 숙제
-    const hwAt = {}, own = {};
+    const hwAt = {}, own = {}, cardOf = {};      // cardOf[교재 순번] = 이 교재부터 시작하는 학교 카드 이름
     ctx.hwPlaced = new Set();
     // 배부 자료 한 줄 (i: st.dist 안의 번호, refs: 고를 수 있는 교재·단위)
     const refsOfR = (r) => r.mat.type === 'mock' ? [r.mat.id] : r.units.map(u => r.mat.id + ':' + u.id);
@@ -419,10 +419,12 @@ const NP = {
         let last = -1; range.forEach((r, i) => { if ((own[r.mat.id] || new Set()).has(lb)) last = i; });
         if (last >= 0) { (hwAt[last] = hwAt[last] || []).push(lb); ctx.hwPlaced.add(lb); }
       });
+      // 학교별 카드: 학교가 바뀌는 첫 교재 위에 학교 이름 (진한 구분선)
+      if (ctx.hwPlaced.size) { let prev = ''; range.forEach((r, i) => { const lb = lbs[first(r)] || ''; if (lb && lb !== prev) cardOf[i] = lb; prev = lb; }); }
     }
     range.forEach((r, ri) => {
       const m = r.mat, mid = m.id;
-      h += `<div class="np-mat"><div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
+      h += `<div class="np-mat${cardOf[ri] ? ' np-school' : ''}">${cardOf[ri] ? `<div class="np-school-h">${esc(cardOf[ri])}</div>` : ''}<div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
       if (m.type === 'mock') {
         const en = st.items[mid];
         h += '<div class="np-chips">' + r.nums.map(n => `<button type="button" class="np-c ${this.chipCls(this.numSt(prog, mid, n))} ${en && (en.nums || []).includes(n) ? 'on' : ''}" data-np-num="${mid}|${n}">${n}</button>`).join('') + '</div>';

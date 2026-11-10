@@ -670,6 +670,9 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-hw { margin: 8px 0 4px; }
 .np-hw .hw-lb { width: auto; min-width: 64px; color: var(--accent-ink); }
 .np-sdist { margin-top: 6px; }
+/* 학교별 카드: 아주 진한 구분선 + 학교 이름 크게 */
+.np-mat.np-school { border-top: 3px solid #4A5563; margin-top: 6px; padding-top: 10px; }
+.np-school-h { font-size: 17px; font-weight: 800; color: var(--accent-ink); margin-bottom: 6px; }
 .np-sdist .np-mhead b { color: var(--accent-ink); font-size: 13px; }
 .todo-detb { flex: none; }
 .todo-detb.on { background: var(--accent); border-color: var(--accent); color: #fff; }
