@@ -371,7 +371,7 @@ const NP = {
       else e.nums = (en.nums || []).slice();
       return e;
     }).filter(e => (e.nums && e.nums.length) || e.text || e.done || e.unitId);
-    const dist = st.dist.map(d => ({ name: (d.name || '').trim(), refs: (d.refs || []).slice(), memo: (d.memo || '').trim() }))
+    const dist = st.dist.map(d => Object.assign({ name: (d.name || '').trim(), refs: (d.refs || []).slice(), memo: (d.memo || '').trim() }, d.grp ? { grp: d.grp } : {}))
       .filter(d => d.name || d.refs.length || d.memo);
     return { np, npExams: this.selExams(st, ctx).map(e => e.id), dist, gp: [] };
   },
@@ -398,11 +398,17 @@ const NP = {
     if (!range.length) return h + '<div class="small muted" style="padding:6px 0">고른 시험에 구조화된 시험 범위가 없습니다. 시험+교재 탭에서 범위를 입력하세요.</div></div>';
     const prog = this.progress(ctx.classId, sel, ctx.lessonId);
     // 학교별 숙제(수업일지 작성 화면만, ctx.hw): 교재를 학교·학년 순으로 모으고, 그 학교의 마지막 교재 바로 아래에 그 학교 숙제
-    const hwAt = {};
+    const hwAt = {}, own = {};
     ctx.hwPlaced = new Set();
+    // 배부 자료 한 줄 (i: st.dist 안의 번호, refs: 고를 수 있는 교재·단위)
+    const refsOfR = (r) => r.mat.type === 'mock' ? [r.mat.id] : r.units.map(u => r.mat.id + ':' + u.id);
+    const drow = (d, i, refs) => `<div class="np-drow"><input type="text" list="dl-npdist" data-np-dname="${i}" value="${esc(d.name || '')}" placeholder="자료 이름 (예: 변형문제)">
+      <button type="button" class="icon-btn" data-np-ddel="${i}" title="삭제">✕</button>
+      <div class="np-chips">${refs.map(rf => `<button type="button" class="np-c sm ${(d.refs || []).includes(rf) ? 'on' : ''}" data-np-dref="${i}|${rf}">${esc(this.refLabel(rf))}</button>`).join('')}</div>
+      <input type="text" data-np-dmemo="${i}" value="${esc(d.memo || '')}" placeholder="메모 (선택, 예: 31-42번 / 2회분)"></div>`;
     if (ctx.hw) {
       const lbOf = (e) => this.sch(e.school) + gradeNum(e.grade);
-      const lbs = [], own = {};
+      const lbs = [];
       sel.forEach(e => {
         const lb = lbOf(e); if (!lbs.includes(lb)) lbs.push(lb);
         (e.items || []).forEach(it => { (own[it.matId] = own[it.matId] || new Set()).add(lb); });
@@ -437,18 +443,24 @@ const NP = {
       }
       (hwAt[ri] || []).forEach(lb => {
         h += `<div class="hw-row np-hw"><span class="hw-lb">${esc(lb)} 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(ctx.hw.by[lb] || '')}</textarea></div>`;
+        // 그 학교 배부 자료 (그 학교 교재만 고를 수 있음)
+        const lbRefs = [];
+        range.forEach(x => { if ((own[x.mat.id] || new Set()).has(lb)) lbRefs.push(...refsOfR(x)); });
+        h += `<div class="np-sdist"><div class="np-mhead"><b>${esc(lb)} 배부 자료</b><button type="button" class="btn sm" data-np-dadd="${esc(lb)}">+ 배부 추가</button></div>`
+          + st.dist.map((d, i) => d.grp === lb ? drow(d, i, lbRefs) : '').join('') + '</div>';
       });
       h += '</div>';
     });
     // 배부 자료
     const refs = [];
-    range.forEach(r => { if (r.mat.type === 'mock') refs.push(r.mat.id); else r.units.forEach(u => refs.push(r.mat.id + ':' + u.id)); });
-    h += `<div class="np-dist"><div class="np-mhead"><b>배부 자료</b><button type="button" class="btn sm" data-np-dadd>+ 배부 추가</button></div>`;
-    h += st.dist.map((d, i) => `<div class="np-drow"><input type="text" list="dl-npdist" data-np-dname="${i}" value="${esc(d.name || '')}" placeholder="자료 이름 (예: 변형문제)">
-      <button type="button" class="icon-btn" data-np-ddel="${i}" title="삭제">✕</button>
-      <div class="np-chips">${refs.map(rf => `<button type="button" class="np-c sm ${(d.refs || []).includes(rf) ? 'on' : ''}" data-np-dref="${i}|${rf}">${esc(this.refLabel(rf))}</button>`).join('')}</div>
-      <input type="text" data-np-dmemo="${i}" value="${esc(d.memo || '')}" placeholder="메모 (선택, 예: 31-42번 / 2회분)"></div>`).join('');
-    h += `<datalist id="dl-npdist">${this.distNames().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist></div>`;
+    range.forEach(r => refs.push(...refsOfR(r)));
+    const split = ctx.hwPlaced.size > 0;                  // 학교별로 나눠 붙였는지
+    const rest = st.dist.map((d, i) => [d, i]).filter(([d]) => !split || !(d.grp && ctx.hwPlaced.has(d.grp)));
+    if (!split || rest.length) {
+      h += `<div class="np-dist"><div class="np-mhead"><b>${split ? '배부 자료 (학교 지정 안 됨)' : '배부 자료'}</b>${split ? '' : '<button type="button" class="btn sm" data-np-dadd>+ 배부 추가</button>'}</div>`;
+      h += rest.map(([d, i]) => drow(d, i, refs)).join('') + '</div>';
+    }
+    h += `<datalist id="dl-npdist">${this.distNames().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`;
     h += '<div class="np-legend small soft"><span class="np-c done">나감</span><span class="np-c part">진행 중</span><span class="np-c on">오늘</span></div></div>';
     return h;
   },
@@ -522,7 +534,7 @@ const NP = {
       if (!en.nums.length && !en.text && !en.done) delete st.items[k];
       return 'redraw';
     }
-    if (b('[data-np-dadd]')) { st.dist.push({ name: '', refs: [], memo: '' }); return 'redraw'; }
+    if ((x = b('[data-np-dadd]'))) { st.dist.push(Object.assign({ name: '', refs: [], memo: '' }, x.dataset.npDadd ? { grp: x.dataset.npDadd } : {})); return 'redraw'; }
     if ((x = b('[data-np-ddel]'))) { st.dist.splice(+x.dataset.npDdel, 1); return 'redraw'; }
     if ((x = b('[data-np-dref]'))) {
       const i = x.dataset.npDref.indexOf('|');
