@@ -606,11 +606,11 @@ const Lessons = {
       <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
       <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
       <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + '<button class="btn primary" data-save>저장</button>' : ''}</div>
-      <div class="toolbar"><select data-cls style="min-width:260px">
+      <div class="toolbar"><span style="display:inline-flex;align-items:center">${Classes.selDot(classId ? Store.get('classes', classId) : null)}<select data-cls style="min-width:260px">
         ${classId ? '' : '<option value="" selected>입력할 반을 선택하세요</option>'}
         ${sched.length ? `<optgroup label="${DOW[dowOf(date)]}요일 수업">${sched.map(opt).join('')}</optgroup>` : ''}
         ${others.length ? `<optgroup label="다른 반">${others.map(opt).join('')}</optgroup>` : ''}
-      </select><span class="small muted">${sched.length ? `이 날 정규 수업 ${sched.length}개 중 ${savedCnt}개 저장${skipCnt ? ` · ${skipCnt}개 건너뜀` : ''}` : '이 날은 정규 수업이 없습니다'}</span>
+      </select></span><span class="small muted">${sched.length ? `이 날 정규 수업 ${sched.length}개 중 ${savedCnt}개 저장${skipCnt ? ` · ${skipCnt}개 건너뜀` : ''}` : '이 날은 정규 수업이 없습니다'}</span>
       ${leftCnt > 1 ? '<button class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 정규 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
 
     if (!classId) {
@@ -1076,7 +1076,7 @@ const ProgressBook = {
     const cur = act.find(c => c.id === this.classId);
     let h = `<div class="page-narrow"><div class="page-head"><h1>진도</h1></div>`;
     // 반 선택 드롭다운 (검색칸 왼쪽, 선택된 반의 색 점 표시)
-    const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${cur ? Classes.dot(cur) : ''}<select data-pcls style="min-width:180px">${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
+    const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-pcls style="min-width:180px">${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
     if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
     const q = this.q.trim();
     const todosOf = (lid) => Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));

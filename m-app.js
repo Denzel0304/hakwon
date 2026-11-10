@@ -175,26 +175,7 @@ const MTimetable = {
    ========================================================= */
 const MSms = {
   onLeave() { SmsPage.onLeave(); },
-  render(main) {
-    SmsPage.render(main);
-    const chips = $('.sx7-grid .class-chips', main);
-    if (!chips) return;
-    const opts = $$('[data-cls]', chips).map(b => {
-      const x = b.cloneNode(true);
-      const sm = $('small', x), n = sm ? sm.textContent.trim() : '';
-      if (sm) sm.remove();
-      return `<option value="${esc(b.dataset.cls)}" ${b.classList.contains('active') ? 'selected' : ''}>${esc(x.textContent.trim())}${n ? ` (${esc(n)}명)` : ''}</option>`;
-    }).join('');
-    chips.style.display = 'none';         // (class-chips의 display:flex 때문에 hidden 대신 직접 숨김)
-    chips.insertAdjacentHTML('afterend', `<select class="m-smscls" aria-label="반 선택">${opts}</select>`);
-    const sel = $('.m-smscls', main);
-    sel.addEventListener('change', (e) => {
-      e.stopPropagation();                 // 문자 화면의 change 처리로 넘기지 않음
-      const b = $$('[data-cls]', chips).find(x => x.dataset.cls === sel.value);
-      if (b) b.click();
-      sel.blur();
-    });
-  },
+  render(main) { SmsPage.render(main); }     // 반 드롭다운은 PC와 같은 것을 그대로 씀
 };
 
 /* =========================================================
@@ -214,7 +195,7 @@ const MProgress = {
     const act = classes.filter(c => c.active !== false), ended = classes.filter(c => c.active === false);
     if (!this.classId) { main.innerHTML = '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
     const opt = (c) => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`;
-    let h = `<div class="m-bar"><select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
+    let h = `<div class="m-bar">${Classes.selDot(Store.get('classes', this.classId))}<select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
     h += `<div class="m-bar">${mSearchHtml(this.q, '진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label></div>`;
     if (this.npOn) {
       const today = todayStr();

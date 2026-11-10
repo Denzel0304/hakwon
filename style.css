@@ -242,6 +242,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl.compact td.small, .tbl.compact .small { font-size: 13.5px; }
 .tbl.compact .tag { font-size: 13px; }
 .tbl.compact .badge { font-size: 12.5px; }
+/* 반 관리 표: 학생 칸을 줄이고 앞 칸 사이 간격을 넓힘 */
+.tbl.cls-tbl th:nth-child(1) { width: 22%; }
+.tbl.cls-tbl th:nth-child(2) { width: 25%; }
+.tbl.cls-tbl th:nth-child(3) { width: 9%; }
+.tbl.cls-tbl th:nth-child(1), .tbl.cls-tbl td:nth-child(1) { padding-right: 24px; }
+.tbl.cls-tbl th:nth-child(3), .tbl.cls-tbl td:nth-child(3) { padding-right: 28px; }
+.tbl.cls-tbl th:nth-child(4), .tbl.cls-tbl td:nth-child(4) { padding-left: 18px; }
 .tbl th.sortable { cursor: pointer; user-select: none; }
 /* 반 관리 학생 목록: 이름+학교는 한 덩어리로 줄바꿈 */
 .nw { white-space: nowrap; }
@@ -303,6 +310,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .form .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .form input[type=text], .form input[type=tel] { width: 100%; }
 .form .hint { font-size: 13px; color: var(--ink-mute); }
+/* 반 만들기·수정: 학생 목록 아래 안내 */
+.cls-guide { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin-top: 8px; padding: 10px 14px;
+  background: #F7FBFE; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.cls-guide b { font-weight: 700; color: var(--ink); white-space: nowrap; }
+.cls-guide em { display: block; font-style: normal; font-size: 12.5px; color: var(--ink-mute); }
 .form .full { grid-column: 1 / -1; }
 
 .day-picks { display: flex; gap: 4px; }
@@ -563,13 +575,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .bc2-items .bc-item { font-size: 13px; padding: 2px 6px; margin-top: 3px; }
 .bc2-bar {
   position: absolute; height: calc(var(--bar-h) - 4px); line-height: calc(var(--bar-h) - 4px);
-  color: #fff; font-size: 12.5px; font-weight: 700; padding: 0 14px 0 8px; border-radius: 5px;
+  color: #fff; font-size: 12.5px; font-weight: 700; padding: 0 20px; border-radius: 5px; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; z-index: 2;
 }
 .bc2-bar:hover { filter: brightness(1.08); }
 /* 시작·끝 뾰족하게 (다음 주로 이어지는 쪽은 평평하게) */
 .bc2-bar { border-radius: 0; }
-.bc2-bar.tl { padding-left: 14px; }
+.bc2-bar.tl { padding-left: 20px; }
 .bc2-bar.tl.tr { clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
 .bc2-bar.tl.cont-r { clip-path: polygon(9px 0, 100% 0, 100% 100%, 9px 100%, 0 50%); }
 .bc2-bar.cont-l.tr { clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); }

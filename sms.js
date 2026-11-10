@@ -95,16 +95,17 @@ const SmsPage = {
     const tpls = this.tpls();
     if (this.tplId && !tpls.some(t => t.id === this.tplId)) this.tplId = '';
 
-    const chips = `<button class="chip ${this.cls ? '' : 'active'}" data-cls="">전체<small>${all.length}</small></button>` +
+    const clsOpts = `<option value="" ${this.cls ? '' : 'selected'}>전체 (${all.length}명)</option>` +
       classes.map(c => {
         const n = all.filter(s => (cmap[s.id] || []).some(x => x.id === c.id)).length;
-        return `<button class="chip ${this.cls === c.id ? 'active' : ''}" data-cls="${c.id}">${Classes.dot(c)}${esc(c.name)}<small>${n}</small></button>`;
+        return `<option value="${c.id}" ${this.cls === c.id ? 'selected' : ''}>${esc(c.name)} (${n}명)</option>`;
       }).join('');
+    const curCls = this.cls ? classes.find(c => c.id === this.cls) : null;
 
     return `<div class="grid-2 sx7-grid">
       <div class="panel">
         <h2>받는 사람 <span class="sub">재원생</span></h2>
-        <div class="class-chips" style="margin-bottom:10px">${chips}</div>
+        <div class="sx7-clsbar">${Classes.selDot(curCls)}<select data-clssel aria-label="반 선택">${clsOpts}</select></div>
         <div class="toolbar" style="margin-bottom:8px">
           <input type="search" data-q value="${esc(this.q)}" placeholder="이름 검색" style="flex:1;min-width:140px">
           <button class="btn sm" data-a="selvis">보이는 학생 모두 선택</button>
@@ -116,7 +117,7 @@ const SmsPage = {
       <div class="panel">
         <h2>내용</h2>
         <div class="sx7-row"><span class="soft small sx7-lb">받는 사람</span>
-          ${[['student', '학생'], ['parent', '부모님'], ['both', '둘 다']].map(([k, t]) => `<label class="chk"><input type="radio" name="sx7-to" data-to="${k}" ${this.to === k ? 'checked' : ''}> ${t}</label>`).join('')}
+          ${[['parent', '부모님'], ['student', '학생'], ['both', '둘 다']].map(([k, t]) => `<label class="chk"><input type="radio" name="sx7-to" data-to="${k}" ${this.to === k ? 'checked' : ''}> ${t}</label>`).join('')}
         </div>
         <div class="sx7-row"><span class="soft small sx7-lb">템플릿</span>
           <select data-tpl style="flex:1;min-width:120px"><option value="">— 불러오기 —</option>${tpls.map(t => `<option value="${t.id}" ${this.tplId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
@@ -470,9 +471,6 @@ const SmsPage = {
       const tb = e.target.closest('[data-tab]');
       if (tb) { this.tab = tb.dataset.tab; App.render(); return; }
 
-      const ch = e.target.closest('[data-cls]');
-      if (ch) { this.cls = ch.dataset.cls; $$('[data-cls]', main).forEach(b => b.classList.toggle('active', b === ch)); this.paintList(main); return; }
-
       const un = e.target.closest('[data-unsel]');
       if (un) { e.preventDefault(); this.sel.delete(un.dataset.unsel); const cb = $(`[data-sid="${un.dataset.unsel}"]`, main); if (cb) cb.checked = false; this.paintSel(main); return; }
 
@@ -512,6 +510,7 @@ const SmsPage = {
     main.onchange = (e) => {
       const t = e.target;
       if (t.matches('[data-sid]')) { if (t.checked) this.sel.add(t.dataset.sid); else this.sel.delete(t.dataset.sid); this.paintSel(main); }
+      else if (t.matches('[data-clssel]')) { this.cls = t.value; this.paintList(main); }
       else if (t.matches('[data-to]')) this.to = t.dataset.to;
       else if (t.matches('[data-tpl]')) this.loadTpl(t.value);
     };
@@ -541,6 +540,8 @@ const SmsPage = {
 .sx7-no { color: var(--danger); }
 .sx7-warn { color: var(--warn); }
 .sx7-selbox { margin-top: 10px; }
+.sx7-clsbar { display: flex; align-items: center; margin-bottom: 10px; }
+.sx7-clsbar select { min-width: 240px; }
 .sx7-selhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sx7-tags { display: flex; flex-wrap: wrap; gap: 5px; max-height: 110px; overflow-y: auto; }
 .sx7-tagx { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 12px; padding: 1px 4px 1px 10px; font-size: 13px; }

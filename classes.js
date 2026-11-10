@@ -18,6 +18,8 @@ const Classes = {
   NO_COLOR: '#A8B3BF',
   colorOf(c) { return (c && c.color) || this.NO_COLOR; },
   dot(c) { return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${this.colorOf(c)};margin-right:6px;vertical-align:middle;flex:none"></span>`; },
+  // 반 드롭다운 왼쪽 색 점 — 드롭다운 바로 앞에 둔다. 반을 바꾸면 점 색도 바로 바뀐다 (반이 없으면 자리만 차지)
+  selDot(c) { return `<span data-clsdot style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c ? this.colorOf(c) : 'transparent'};margin-right:6px;vertical-align:middle;flex:none"></span>`; },
   // 다른 진행 중인 반이 쓰는 색 { 색: 반 }
   usedColors(exceptId) {
     const o = {};
@@ -282,7 +284,7 @@ const Classes = {
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;
-    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
+    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact cls-tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
       : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 위의 “반 만들기”로 시작하세요.</div></div>';
     h += '</div>';
     main.innerHTML = h;
@@ -350,7 +352,13 @@ const Classes = {
       <label class="top">학생</label><div>
         <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">반 등록일(이동일)</span><input type="date" name="apply" value="${today}"></div>
         <div class="pick-list" data-picks>${picksHtml(today)}</div>
-        <div class="hint" style="margin-top:4px">체크 상태는 이 날짜 기준 명단입니다. 처음 반에 넣는 학생은 학생 등록일부터 들어갑니다 (반 수업 시작일보다 앞이면 반 시작일부터).<br>이미 다른 반을 다닌 학생(두 번째 반·반 이동)은 이 날짜부터 들어가고, 체크를 푼 학생은 이 날짜부터 빠집니다.<br>이름 오른쪽 요일 버튼을 끄면 그 요일은 빠지고 나머지 요일만 수강합니다 (예: 월수반을 월요일만). 요일은 그 반에 들어온 날부터 적용됩니다.</div></div>
+        <div class="cls-guide">
+          <b>체크 기준</b><span>오른쪽 위 ‘반 등록일(이동일)’ 날짜의 명단입니다.</span>
+          <b>처음 넣는 학생</b><span>학생 등록일부터 들어갑니다.<em>반 수업 시작일보다 빠르면 반 시작일부터</em></span>
+          <b>반 이동 · 두 번째 반</b><span>등록일(이동일)부터 들어갑니다.</span>
+          <b>체크를 푼 학생</b><span>등록일(이동일)부터 빠집니다.</span>
+          <b>요일 버튼</b><span>이름 오른쪽 요일을 끄면 그 요일만 빠집니다.<em>예: 월수반을 월요일만 · 반에 들어온 날부터 적용</em></span>
+        </div></div>
     </div>`;
     Modal.open({
       title: c ? '반 수정' : '반 만들기', size: 'lg', body,
@@ -756,3 +764,13 @@ const Timetable = {
     return items;
   },
 };
+
+/* ---------- 반 드롭다운 색 점: 선택이 바뀌면 바로 앞 점의 색을 바꾼다 (모든 반 드롭다운 공통) ---------- */
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (!t || t.tagName !== 'SELECT') return;
+  const d = t.previousElementSibling;
+  if (!d || !d.hasAttribute('data-clsdot')) return;
+  const c = t.value ? Store.get('classes', t.value) : null;
+  d.style.background = c ? Classes.colorOf(c) : 'transparent';
+}, true);

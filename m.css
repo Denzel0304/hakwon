@@ -229,7 +229,7 @@ body.m-body .tx-timebox, body.m-body .tx-clbox { margin-left: 0; }
 
 /* ---------- 문자 (PC 문자 화면을 그대로 쓰고 배치만 조정) ---------- */
 body.m-body #main[data-page="sms"] .grid-2 { grid-template-columns: minmax(0, 1fr); }
-body.m-body .m-smscls { width: 100%; margin-bottom: 10px; }
+body.m-body #main[data-page="sms"] .sx7-clsbar select { flex: 1; min-width: 0; }
 body.m-body .sx7-list { max-height: 48vh; padding: 2px 6px; }
 body.m-body .sx7-st { padding: 10px 2px; }
 body.m-body .sx7-st input { width: 20px; height: 20px; }

@@ -174,7 +174,7 @@ const BigCal = {
     let h = `<div class="page-head">
       <h1><button type="button" class="ym-btn ym-h" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button></h1>
       <button class="btn sm" data-a="prev">‹ 이전 달</button>
-      <button class="btn sm" data-a="this">이번 달</button>
+      <button class="btn sm" data-a="this" style="background:var(--accent-soft);border-color:#B9D7EF;color:var(--accent-ink)">이번 달</button>
       <button class="btn sm" data-a="next">다음 달 ›</button>
       <button class="btn primary" data-a="add">+ 일정 추가</button>
       <span class="grow"></span>

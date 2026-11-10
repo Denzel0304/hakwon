@@ -619,7 +619,7 @@ const Students = {
     }).join('') + '</div>' : '<div class="empty">수강 중인 반이 없습니다.</div>';
     if (canAdd) {
       h += `<div class="row" style="display:flex;gap:8px;align-items:center;margin:10px 0 4px;flex-wrap:wrap">
-        <select data-addcls>${addable.length ? addable.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') : '<option value="">추가할 반 없음</option>'}</select>
+        <span style="display:inline-flex;align-items:center">${Classes.selDot(addable[0] || null)}<select data-addcls>${addable.length ? addable.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') : '<option value="">추가할 반 없음</option>'}</select></span>
         <span class="day-picks" data-adddays></span>
         <input type="date" data-adddate value="${today}"><button class="btn primary sm" data-add ${addable.length ? '' : 'disabled'}>반 추가</button>
         <span class="muted small">선택한 날짜부터 출석부에 들어갑니다. 요일을 끄면 그 요일은 빼고 수강합니다.</span></div>`;
