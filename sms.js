@@ -3,7 +3,8 @@
    프로그램 → GAS(CFG.GAS_SMS_URL, 로그인 키 확인) → SMS Gateway 클라우드 → 내 폰
    - 받는 사람: 재원생만 (반 선택 / 이름 검색 / 전체 목록 체크), 학생·부모님·둘 다
    - 템플릿(meta): id SX7T_…, { kind:'sx7_tpl', name, text, createdAt }
-   - 발송 기록: Supabase mg77_sx7_log (mg77_sx7_add / mg77_sx7_set / mg77_sx7_list)
+   - 발송 기록: Supabase mg77_sx7_log (mg77_sx7_add / mg77_sx7_list)
+   - 발송 후 성공 여부는 추적하지 않음 (발송 단계에서 거절된 문자만 '실패'로 표시)
    ========================================================= */
 const SmsPage = {
   tab: 'send',            // 'send' | 'log'
@@ -20,8 +21,6 @@ const SmsPage = {
   logTried: false,        // 자동 불러오기를 이미 시도했는지 (실패 시 무한 재시도 방지)
   logMore: false,
   open: new Set(),        // 펼친 묶음(batch_id)
-  checking: false,
-  _t: null,
 
   TOKENS: ['{이름}', '{성뺀이름}', '{반}', '{날짜}'],
   PAGE: 1000,             // 기록 한 번에 불러오는 줄 수
@@ -59,29 +58,18 @@ const SmsPage = {
     if (isNaN(d)) return '';
     return fmtDate(ymd(d)) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   },
-  stateBadge(st) {
-    if (st === 'delivered') return '<span class="badge green">수신 확인</span>';
-    if (st === 'sent') return '<span class="badge green">발송됨</span>';
-    if (st === 'failed') return '<span class="badge red">실패</span>';
-    return '<span class="badge orange">대기</span>';
-  },
-  isWaiting(st) { return st === 'pending' || st === 'processed'; },
 
-  onLeave() { clearTimeout(this._t); this._t = null; },
+  onLeave() {},
 
   /* ---------- 화면 ---------- */
   render(main) {
-    clearTimeout(this._t); this._t = null;
-    let h = `<div class="page-head"><h1>문자</h1><span class="sub">내 폰으로 발송 (SMS Gateway)</span></div>
+    let h = `<div class="page-head"><h1>SMS</h1><span class="sub">내 폰으로 발송 (SMS Gateway)</span></div>
       <div class="tabs">${[['send', '보내기'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
     h += this.tab === 'log' ? this.logHtml() : this.sendHtml();
     main.innerHTML = h;
     this.bind(main);
-    if (this.tab === 'log') {
-      if (!this.log && !this.logBusy && !this.logTried) this.loadLog(false);
-      else this.scheduleCheck();
-    }
+    if (this.tab === 'log' && !this.log && !this.logBusy && !this.logTried) this.loadLog(false);
   },
 
   /* ---------- 보내기 ---------- */
@@ -303,7 +291,7 @@ const SmsPage = {
     let msg = `접수 ${okN}건` + (failN ? ` / 실패 ${failN}건` : '') + (notSent ? ` / 보내지 못함 ${notSent}건` : '');
     if (stopMsg) msg += `\n\n중단: ${stopMsg}`;
     if (logFail) msg += '\n\n발송 기록 저장에 실패했습니다. (문자 발송 자체와는 별개입니다)';
-    if (rows.length) msg += '\n\n접수된 문자는 폰에서 차례로 발송됩니다. 결과는 발송 기록에서 확인하세요.';
+    if (rows.length) msg += '\n\n접수된 문자는 폰에서 차례로 발송됩니다. 보낸 내용은 발송 기록에서 확인하세요.';
     if (rows.length) { this.tab = 'log'; this.log = null; this.logTried = false; this.open = new Set([batch]); }
     if (App.page === 'sms') App.render();
     await alertDlg('문자 발송', msg);
@@ -362,31 +350,27 @@ const SmsPage = {
       g.rows.push(r);
       if (r.created_at < g.at) g.at = r.created_at;
     });
-    const waitN = this.log.filter(r => this.isWaiting(r.state) && r.gw_id).length;
     let h = `<div class="toolbar">
         <button class="btn sm" data-a="reload">새로고침</button>
-        <button class="btn sm" data-a="check" ${waitN && !this.checking ? '' : 'disabled'}>${this.checking ? '상태 확인 중…' : '대기 중 상태 확인' + (waitN ? ` (${waitN})` : '')}</button>
-        <span class="muted small">${groups.length}번 발송 · ${this.log.length}건${waitN ? ' · 대기 중인 문자는 자동으로 상태를 확인합니다' : ''}</span></div>`;
+        <span class="muted small">${groups.length}번 발송 · ${this.log.length}건</span></div>`;
     if (!groups.length) return h + '<div class="panel"><div class="empty">발송 기록이 없습니다.</div></div>';
     h += '<div class="panel sx7-log">' + groups.map(g => {
       const rows = g.rows.slice().sort((a, b) => a.id - b.id);
-      const ok = rows.filter(r => r.state === 'sent' || r.state === 'delivered').length;
       const fail = rows.filter(r => r.state === 'failed').length;
-      const wait = rows.length - ok - fail;
       const sameBody = rows.every(r => r.body === rows[0].body);
       const opened = this.open.has(g.id);
       let x = `<div class="sx7-g ${opened ? 'on' : ''}">
         <div class="sx7-gh" data-g="${esc(g.id)}">
           <span class="sx7-when small soft">${esc(this.fmtTime(g.at))}</span>
           <span class="sx7-gb">${esc(firstLine(rows[0].body).slice(0, 60))}${sameBody ? '' : ' <span class="muted small">(학생마다 다름)</span>'}</span>
-          <span class="sx7-gc">${rows.length}건 ${ok ? `<span class="badge green">성공 ${ok}</span>` : ''}${wait ? `<span class="badge orange">대기 ${wait}</span>` : ''}${fail ? `<span class="badge red">실패 ${fail}</span>` : ''}</span>
+          <span class="sx7-gc">${rows.length}건 ${fail ? `<span class="badge red">실패 ${fail}</span>` : ''}</span>
           <span class="sx7-ar">${opened ? '▲' : '▼'}</span>
         </div>`;
       if (opened) {
         x += `<div class="sx7-gd">${sameBody ? `<div class="pre small sx7-body">${esc(rows[0].body)}</div>` : ''}
-          <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>이름</th><th>구분</th><th>번호</th><th>상태</th>${sameBody ? '' : '<th>내용</th>'}<th>비고</th></tr></thead><tbody>
+          <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>이름</th><th>구분</th><th>번호</th>${sameBody ? '' : '<th>내용</th>'}<th>비고</th></tr></thead><tbody>
           ${rows.map(r => `<tr><td class="nowrap">${esc(r.to_name || '')}</td><td class="nowrap">${esc(r.to_role || '')}</td><td class="nowrap">${esc(this.showPhone(r.phone))}</td>
-            <td class="nowrap">${this.stateBadge(r.state)}</td>${sameBody ? '' : `<td class="pre small">${esc(r.body)}</td>`}<td class="small soft">${esc(r.err || '')}</td></tr>`).join('')}
+            ${sameBody ? '' : `<td class="pre small">${esc(r.body)}</td>`}<td class="small soft">${r.state === 'failed' ? '<span class="badge red">실패</span> ' : ''}${esc(r.state === 'failed' ? (r.err || '') : '')}</td></tr>`).join('')}
           </tbody></table></div></div>`;
       }
       return x + '</div>';
@@ -418,51 +402,6 @@ const SmsPage = {
     }
     this.logBusy = false;
     if (App.page === 'sms' && this.tab === 'log') App.render();
-  },
-
-  // 대기 중(pending/processed)인 최근 3일 문자의 상태를 확인해 기록에 반영
-  async checkStatus(silent) {
-    const key = Auth.key();
-    if (!key || !this.log || this.checking) return;
-    const since = Date.now() - 3 * 86400000;
-    const targets = this.log.filter(r => this.isWaiting(r.state) && r.gw_id && new Date(r.created_at).getTime() >= since).slice(0, 300);
-    if (!targets.length) { if (!silent) toast('확인할 대기 문자가 없습니다'); return; }
-    this.checking = true;
-    if (App.page === 'sms' && this.tab === 'log') App.render();
-    const d = await this.callGas({ key, action: 'status', ids: targets.map(r => r.gw_id) }, 120000);
-    if (d && d.ok && Array.isArray(d.results)) {
-      const upd = [];
-      targets.forEach((r, i) => {
-        const x = d.results[i];
-        if (!x || !x.state) return;
-        if (x.state !== r.state || (x.err || '') !== (r.err || '')) upd.push({ id: r.id, state: x.state, err: x.err || '' });
-      });
-      if (upd.length) {
-        try {
-          const res = await Store.rpc('mg77_sx7_set', { p_key: key, p_rows: upd });
-          if (res.ok && res.json && res.json.ok) {
-            const m = {}; upd.forEach(u => { m[u.id] = u; });
-            this.log.forEach(r => { const u = m[r.id]; if (u) { r.state = u.state; r.err = u.err; } });
-          } else if (!silent) toast('상태 저장에 실패했습니다');
-        } catch (_) { if (!silent) toast('상태 저장에 실패했습니다'); }
-      }
-      if (!silent) toast(upd.length ? `상태 ${upd.length}건이 바뀌었습니다` : '바뀐 상태가 없습니다');
-    } else if (!silent) toast('상태 확인 실패: ' + this.reasonText(d));
-    this.checking = false;
-    if (App.page === 'sms' && this.tab === 'log') App.render();
-  },
-
-  // 기록 화면에 있는 동안 대기 문자가 있으면 20초마다 자동 확인
-  scheduleCheck() {
-    clearTimeout(this._t); this._t = null;
-    if (!this.log || this.checking) return;
-    const since = Date.now() - 3 * 86400000;
-    if (!this.log.some(r => this.isWaiting(r.state) && r.gw_id && new Date(r.created_at).getTime() >= since)) return;
-    this._t = setTimeout(() => {
-      this._t = null;
-      if (App.page !== 'sms' || this.tab !== 'log' || document.visibilityState !== 'visible') { if (App.page === 'sms' && this.tab === 'log') this.scheduleCheck(); return; }
-      this.checkStatus(true);
-    }, 20000);
   },
 
   /* ---------- 이벤트 ---------- */
@@ -505,7 +444,6 @@ const SmsPage = {
       else if (k === 'tpldel') this.delTpl();
       else if (k === 'reload') this.loadLog(false);
       else if (k === 'more') this.loadLog(true);
-      else if (k === 'check') this.checkStatus(false);
     };
     main.onchange = (e) => {
       const t = e.target;

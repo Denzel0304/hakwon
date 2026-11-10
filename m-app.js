@@ -1,7 +1,7 @@
 /* =========================================================
    m-app.js — 모바일 전용 (index-mobile.html)
    - 데이터·로그인·동기화는 PC와 같은 파일(config/util/store/…)을 그대로 쓴다
-   - 화면: 할일 · 시간표 · 일정 · 문자 · 진도 · 보강
+   - 화면: 할일 · 시간표 · 일정 · SMS · 진도 · 보강
    - 문자는 PC 문자 화면(SmsPage)을 그대로 사용 (기능 동일)
    - 할일은 일정관리 앱처럼 추가·수정 가능 (todo-ext.js, 수업일지 할일은 완료 체크만)
    - 나머지는 보기 전용 (데이터를 바꾸지 않음)
@@ -17,7 +17,7 @@ const M_ICON = {
   makeups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/><path d="M12 8v4l3 2"/></svg>',
   todos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4" width="6" height="6" rx="1.5"/><path d="M5 7l1.2 1.2L8.5 6"/><rect x="3.5" y="14" width="6" height="6" rx="1.5"/><path d="M13 7h7.5M13 17h7.5"/></svg>',
 };
-const M_TABS = [['todos', '할일'], ['timetable', '시간표'], ['events', '일정'], ['sms', '문자'], ['progress', '진도'], ['makeups', '보강']];
+const M_TABS = [['todos', '할일'], ['timetable', '시간표'], ['events', '일정'], ['sms', 'SMS'], ['progress', '진도'], ['makeups', '보강']];
 
 /* ---------- 공용 ---------- */
 // 검색칸: 입력할 때 목록만 다시 그린다 (입력칸을 새로 만들지 않아 한글 입력이 끊기지 않음)
