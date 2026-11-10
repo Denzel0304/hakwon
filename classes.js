@@ -697,6 +697,7 @@ const Timetable = {
       onMount: (body, mm) => {
         mm.refresh = () => { if (!mm.closed) this.popupRender(mm); };   // 다른 기기에서 바뀐 내용이 들어오면 다시 그림
         this.popupRender(mm);
+        this.popupMoveResize(mm);
         onResize = debounce(() => mm.refresh(), 200);
         window.addEventListener('resize', onResize);
         // 현재 시각 선·끝난 수업: 매 분 0초에 맞춰 1분마다 (자정이 지나면 다시 그림)
@@ -712,6 +713,7 @@ const Timetable = {
       onClose: () => {
         clearTimeout(timer); clearInterval(timer);
         if (onResize) window.removeEventListener('resize', onResize);
+        document.body.classList.remove('ttp-drag');
         this.popup = null;
       },
     });
@@ -753,6 +755,80 @@ const Timetable = {
     if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) this.fitStudents(m.body); });
     const col = $('.tt2-col.today', m.body);
     if (col) this.paintNow(col);
+    if (m.fitBox) m.fitBox();   // 사용자가 줄여 둔 크기는 새 시간표 크기 안으로만 맞춤
+  },
+  // 팝업 이동(아무 곳이나 잡고 끌기) + 크기 줄이기(좌·우·아래 끝, 아래 두 모서리 끌기)
+  // 처음 크기보다 크게는 늘어나지 않고, 줄어든 만큼 팝업 안에 스크롤이 생긴다. 닫으면 다음엔 처음 크기·가운데.
+  popupMoveResize(m) {
+    const box = $('.mg-modal', m.el);
+    const MIN_W = 300, MIN_H = 200;
+    ['l', 'r', 'b', 'bl', 'br'].forEach(d => box.insertAdjacentHTML('beforeend', `<div class="ttp-rz ${d}" data-rz="${d}"></div>`));
+    // 처음(최대) 크기 = 시간표 + 팝업 안쪽 여백 + 테두리
+    const natural = () => {
+      const t = $('.tt2', m.body), cs = getComputedStyle(m.body), bs = getComputedStyle(box);
+      const bx = (parseFloat(bs.borderLeftWidth) || 0) + (parseFloat(bs.borderRightWidth) || 0);
+      const by = (parseFloat(bs.borderTopWidth) || 0) + (parseFloat(bs.borderBottomWidth) || 0);
+      return {
+        w: t.offsetWidth + (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + bx,
+        h: t.offsetHeight + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + by,
+      };
+    };
+    let fixed = false;
+    // 처음 끌 때: 가운데 정렬 상태의 위치·크기를 그대로 고정 좌표로 바꾼다
+    const fix = () => {
+      if (fixed) return;
+      const r = box.getBoundingClientRect();
+      box.classList.add('ttp-fixed');
+      Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+      fixed = true;
+    };
+    m.fitBox = () => {
+      if (!fixed) return;
+      const n = natural();
+      if (parseFloat(box.style.width) > n.w) box.style.width = n.w + 'px';
+      if (parseFloat(box.style.height) > n.h) box.style.height = n.h + 'px';
+    };
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    box.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('.mg-x')) return;
+      const rz = e.target.closest('[data-rz]');
+      // 스크롤바를 누른 경우는 끌지 않음 (스크롤 그대로)
+      if (!rz) {
+        const b = m.body, br = b.getBoundingClientRect();
+        if (b.contains(e.target) && (e.clientX >= br.left + b.clientLeft + b.clientWidth || e.clientY >= br.top + b.clientTop + b.clientHeight)) return;
+      }
+      e.preventDefault();
+      fix();
+      const d = rz ? rz.dataset.rz : '';
+      const x0 = e.clientX, y0 = e.clientY;
+      const l0 = parseFloat(box.style.left), t0 = parseFloat(box.style.top);
+      const w0 = parseFloat(box.style.width), h0 = parseFloat(box.style.height);
+      const n = natural();
+      const maxH = Math.min(n.h, window.innerHeight - 40);
+      document.body.style.setProperty('--ttp-cur', getComputedStyle(e.target).cursor);
+      document.body.classList.add('ttp-drag');
+      const mv = (ev) => {
+        const dx = ev.clientX - x0, dy = ev.clientY - y0;
+        if (!d) {   // 이동: 화면 밖으로 완전히 사라지지 않게
+          box.style.left = clamp(l0 + dx, 60 - w0, window.innerWidth - 60) + 'px';
+          box.style.top = clamp(t0 + dy, 0, window.innerHeight - 40) + 'px';
+          return;
+        }
+        if (d.includes('r')) box.style.width = clamp(w0 + dx, MIN_W, n.w) + 'px';
+        if (d.includes('l')) {
+          const w = clamp(w0 - dx, MIN_W, n.w);
+          box.style.width = w + 'px';
+          box.style.left = (l0 + w0 - w) + 'px';   // 오른쪽 끝은 제자리
+        }
+        if (d.includes('b')) box.style.height = clamp(h0 + dy, MIN_H, Math.max(MIN_H, maxH)) + 'px';
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+        document.body.classList.remove('ttp-drag');
+        document.body.style.removeProperty('--ttp-cur');
+      };
+      document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    });
   },
 
   // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
