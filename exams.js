@@ -261,7 +261,7 @@ const Exams = {
     this.syncDates();
     const ex = id ? Store.get('exams', id) : null;
     const now = new Date();
-    const v = ex || { school: '', grade: 10, year: now.getFullYear(), semester: now.getMonth() >= 6 ? 2 : 1, kind: 'mid', start: '', end: '', range: '', memo: '' };
+    const v = ex || { school: '', grade: 10, year: now.getFullYear(), semester: now.getMonth() >= 6 ? 2 : 1, kind: '', start: '', end: '', range: '', memo: '' };
     const fmt = ex ? this.fmtOf(ex) : '';
     // 구조화된 시험 범위 (편집용 사본)
     const items = JSON.parse(JSON.stringify(v.items || [])).filter(it => { const m = NP.mat(it.matId); return m && m.type !== 'gen'; });
@@ -269,7 +269,7 @@ const Exams = {
       <label class="req">학교·학년</label><div class="row"><input type="text" name="school" list="dl-schools" value="${esc(v.school)}" placeholder="예: 금천고" style="flex:1"><select name="grade">${gradeOptions(v.grade)}</select></div>
       <label class="req">시험</label><div class="row"><input type="number" name="year" value="${esc(v.year)}" min="2000" max="2100" style="width:90px">년
         <select name="semester"><option value="1" ${+v.semester === 1 ? 'selected' : ''}>1학기</option><option value="2" ${+v.semester === 2 ? 'selected' : ''}>2학기</option></select>
-        <select name="kind"><option value="mid" ${v.kind === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${v.kind === 'final' ? 'selected' : ''}>기말고사</option></select></div>
+        <select name="kind"><option value="" ${v.kind ? '' : 'selected'}>선택 없음</option><option value="mid" ${v.kind === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${v.kind === 'final' ? 'selected' : ''}>기말고사</option></select></div>
       <label>시험 기간</label><div class="row"><input type="text" data-dshow readonly tabindex="-1" style="width:200px;cursor:not-allowed;background:var(--bg, #F4F6F8)"><span class="hint" data-dhint></span></div>
       <label class="top">시험 범위</label><div data-rbox></div>
       <label class="top">기타 범위·메모</label><textarea name="range" rows="3" placeholder="교재로 등록하지 않은 범위나 참고 사항 (예: 프린트 1-3)">${esc(v.range)}</textarea>
@@ -359,6 +359,7 @@ const Exams = {
           delete rec.mcCount; delete rec.mcPoints; delete rec.essayCount; delete rec.essayPoints;   // 예전 문항 수·배점 (형식으로 바뀜)
           if (!rec.school) { toast('학교를 입력하세요'); return false; }
           if (!rec.year || rec.year < 2000) { toast('연도를 확인하세요'); return false; }
+          if (!rec.kind) { toast('중간고사·기말고사를 고르세요'); return false; }
           if (!this.FMT[rec.fmt]) { toast('형식을 고르세요 (객관식만 / 객관식+서술형)'); return false; }
           // 시험 기간: 일치하는 시험 일정 → 그 날짜 / 없으면 미정 (예전에 직접 입력한 날짜는 그대로)
           const dr = this.evRange(rec.school, rec.grade, rec.year, rec.semester, rec.kind);

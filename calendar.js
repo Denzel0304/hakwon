@@ -493,7 +493,7 @@ const EventModal = {
       <label data-schlabel>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
       <label class="req" data-exrow>시험</label><div class="row" data-exrow><input type="number" name="exYear" min="2000" max="2100" value="${esc(exY)}" style="width:90px">년
         <select name="exSem"><option value="1" ${exS === 1 ? 'selected' : ''}>1학기</option><option value="2" ${exS === 2 ? 'selected' : ''}>2학기</option></select>
-        <select name="exKind"><option value="" ${exK ? '' : 'selected'}>중간/기말 선택</option><option value="mid" ${exK === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${exK === 'final' ? 'selected' : ''}>기말고사</option></select>
+        <select name="exKind"><option value="" ${exK ? '' : 'selected'}>선택 없음</option><option value="mid" ${exK === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${exK === 'final' ? 'selected' : ''}>기말고사</option></select>
         <span class="hint">시험+교재의 같은 시험에 기간이 자동으로 들어갑니다</span></div>
       <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>

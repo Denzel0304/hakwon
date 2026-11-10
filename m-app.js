@@ -202,7 +202,7 @@ const MProgress = {
       const today = todayStr();
       const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
       const cands = NP.candExams(this.classId, today, sel);
-      h += `<div class="np-exams m-npx">${cands.map(e => `<button type="button" class="np-ex ${sel.includes(e.id) ? 'on' : ''}" data-npsx="${e.id}">${esc(NP.examLabel(e))} <small>${esc(NP.examDates(e))}</small></button>`).join('') || '<span class="small muted">등록된 시험이 없습니다.</span>'}
+      h += `<div class="np-exams m-npx">${NP.groupExams(cands).map(g => `<button type="button" class="np-ex ${g.ids.some(id => sel.includes(id)) ? 'on' : ''}" data-npsx="${g.ids.join(',')}">${esc(NP.examLabel(g.ex))} <small>${esc(NP.examDates(g.ex))}</small></button>`).join('') || '<span class="small muted">등록된 시험이 없습니다.</span>'}
         ${this.npSel[this.classId] ? '<button type="button" class="np-auto" data-npsauto>자동</button>' : ''}</div>
         <div class="m-ro">${NP.summaryHtml(this.classId, sel)}</div>`;
     }
@@ -244,7 +244,7 @@ const MProgress = {
       const sx = e.target.closest('[data-npsx]');
       if (sx) {
         const cur = this.npSel[this.classId] || NP.autoExams(this.classId, todayStr()).map(x => x.id);
-        this.npSel[this.classId] = cur.includes(sx.dataset.npsx) ? cur.filter(id => id !== sx.dataset.npsx) : cur.concat(sx.dataset.npsx);
+        this.npSel[this.classId] = NP.toggleGroup(cur, sx.dataset.npsx.split(','));
         App.render(); return;
       }
       if (e.target.closest('[data-npsauto]')) { delete this.npSel[this.classId]; App.render(); }

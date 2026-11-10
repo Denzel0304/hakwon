@@ -37,6 +37,8 @@ const TodoX = {
     if (!Array.isArray(cl) || !cl.length) return null;
     return { done: cl.filter(x => x.d).length, total: cl.length };
   },
+  // 목록에 보일 메모: 줄바꿈을 이어 붙여 한 줄로 (넘치는 부분은 CSS 말줄임 …)
+  memoLine(s) { return stripZws(s || '').split('\n').map(x => x.trim()).filter(Boolean).join(' '); },
   mdLabel(ds) { const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; },
   maxOrder(date) {
     return Math.max(-1, ...Store.where('todos', t => !t.rm && t.date === date && t.order != null).map(t => +t.order || 0));
@@ -234,7 +236,7 @@ const TodoX = {
       <button type="button" class="tx-ck${it.done ? ' on' : ''}" data-tck aria-label="${it.done ? '완료 취소' : '완료'}"></button>
       <div class="tx-body">
         <div class="tx-title">${it.repeat ? '<span class="tx-star">★</span>' : ''}${it.time ? `<span class="tx-time">🕒[${esc(this.timeLabel(it.time))}]</span> ` : ''}${prog ? `<span class="tx-cl">☑ (${prog.done}/${prog.total})</span> ` : ''}${esc(it.text)}</div>
-        ${it.memo ? `<div class="tx-memo">${esc(firstLine(it.memo))}</div>` : ''}
+        ${it.memo ? `<div class="tx-memo">${esc(this.memoLine(it.memo))}</div>` : ''}
         ${meta.length ? `<div class="tx-meta">${meta.join('')}</div>` : ''}
       </div>
       ${canDrag ? '<span class="tx-drag" data-tdrag aria-label="끌어서 순서 바꾸기"><svg viewBox="0 0 24 14" width="20" height="13" fill="currentColor"><rect y="0" width="24" height="2.5" rx="1.2"/><rect y="5.5" width="24" height="2.5" rx="1.2"/><rect y="11" width="24" height="2.5" rx="1.2"/></svg></span>' : ''}
@@ -398,7 +400,8 @@ const TodoX = {
       repeat: occ ? JSON.parse(JSON.stringify(it.master.repeat)) : null,
     };
     const rep0 = JSON.stringify(st.repeat);
-    const detail0 = !isNew && !!(st.importance || st.memo || st.remind || st.useCl || st.useTime || st.repeat);
+    const pc = !opts.mobile;                                 // PC는 화면이 넓어 상세를 항상 펼쳐 둔다 (접기 없음)
+    const detail0 = pc || (!isNew && !!(st.importance || st.memo || st.remind || st.useCl || st.useTime || st.repeat));
     // 시간은 9시~23시만 (예전에 범위 밖 시간으로 저장한 할일은 그 시간도 목록에 넣어 그대로 유지)
     const MI = Array.from({ length: 12 }, (_, i) => i * 5);
     const [th, tm] = (st.time || '18:00').split(':').map(Number);
@@ -407,7 +410,7 @@ const TodoX = {
 
     const body = `<div class="tx-form">
       <div class="tx-r1"><input type="text" data-f="text" value="${esc(st.text)}" placeholder="할일을 입력하세요..." autocomplete="off" maxlength="300">
-        <label class="chk tx-dtg"><input type="checkbox" data-detail ${detail0 ? 'checked' : ''}>상세</label></div>
+        ${pc ? '' : `<label class="chk tx-dtg"><input type="checkbox" data-detail ${detail0 ? 'checked' : ''}>상세</label>`}</div>
       <div class="tx-detail" ${detail0 ? '' : 'hidden'}>
         <div class="tx-r"><span class="tx-lb">중요도</span><div class="tx-imps">${TX_IMP.map((t, i) => `<button type="button" class="tx-impb imp-${i}${st.importance === i ? ' on' : ''}" data-imp="${i}">${t}</button>`).join('')}</div></div>
         <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
@@ -578,6 +581,100 @@ const TodoX = {
     }
     toast('저장했습니다');
     App.render();
+  },
+
+  /* ---------- 수업일지 할일 상세 (수업일지 작성 · 진도 탭 수정 창 공용) ----------
+     d: 할일 칸 { text, date, importance, memo, remind, checklist, time } → 고른 값을 d에 넣고 true / 취소 false
+     값 형식은 할일 창(editor·save)과 같다. 반복은 수업일지 할일에 쓸 수 없어 없음. 실제 저장은 일지를 저장할 때 */
+  detailHas(d) { return !!(d && ((+d.importance || 0) || (d.memo || '').trim() || (+d.remind || 0) || (d.checklist || []).length || d.time)); },
+  // 할일 칸 옆에 보일 짧은 요약
+  detailSummary(d) {
+    if (!this.detailHas(d)) return '';
+    const p = [];
+    if (d.time) p.push('🕒' + this.timeLabel(d.time));
+    if (+d.importance) p.push('중요도 ' + TX_IMP[+d.importance]);
+    const pr = this.clProg(d.checklist); if (pr) p.push(`☑ ${pr.done}/${pr.total}`);
+    if (+d.remind) p.push(`🔔 ${+d.remind}일 전`);
+    if ((d.memo || '').trim()) p.push('메모');
+    return p.join(' · ');
+  },
+  // 할일 저장에 쓸 상세 값 (할일 창 save와 같은 정리 규칙)
+  detailVals(d) {
+    const cl = (Array.isArray(d.checklist) ? d.checklist : []).map(x => ({ t: String(x.t || '').trim(), d: !!x.d })).filter(x => x.t);
+    return {
+      importance: +d.importance || 0, memo: stripZws(d.memo || '').trim(), time: d.time || '',
+      remind: Math.max(0, Math.min(30, Math.round(+d.remind || 0))), checklist: cl,
+    };
+  },
+  detailDlg(d) {
+    const st = {
+      importance: +d.importance || 0, memo: d.memo || '', remind: +d.remind || 0,
+      checklist: JSON.parse(JSON.stringify(Array.isArray(d.checklist) ? d.checklist : [])),
+      useTime: !!d.time, time: d.time || '',
+    };
+    const MI = Array.from({ length: 12 }, (_, i) => i * 5);
+    const [th, tm] = (st.time || '18:00').split(':').map(Number);
+    const H = Array.from({ length: 15 }, (_, i) => i + 9);
+    if (!H.includes(th)) { H.push(th); H.sort((a, b) => a - b); }
+    const clHtml = () => st.checklist.map((x, i) => `<div class="tx-cli"><input type="checkbox" data-cld="${i}" ${x.d ? 'checked' : ''}><input type="text" data-clt="${i}" value="${esc(x.t)}"><button type="button" class="icon-btn" data-cldel="${i}" aria-label="빼기">✕</button></div>`).join('');
+    const body = `<div class="tx-form">
+      <div class="small soft">${esc((d.text || '').trim() || '(할일 내용 없음)')} · ${isYmd(d.date) ? esc(fmtDate(d.date)) : '날짜 없음'}</div>
+      <div class="tx-detail">
+        <div class="tx-r"><span class="tx-lb">중요도</span><div class="tx-imps">${TX_IMP.map((t, i) => `<button type="button" class="tx-impb imp-${i}${st.importance === i ? ' on' : ''}" data-imp="${i}">${t}</button>`).join('')}</div></div>
+        <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
+        <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span></div>
+        <div class="tx-r"><span class="tx-lb">추가</span><label class="chk"><input type="checkbox" data-cltg ${st.checklist.length ? 'checked' : ''}>체크리스트</label><label class="chk"><input type="checkbox" data-timetg ${st.useTime ? 'checked' : ''}>시간</label></div>
+        <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}><select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
+          <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분</div>
+        <div class="tx-clbox" ${st.checklist.length ? '' : 'hidden'}><div data-cllist></div>
+          <div class="tx-cladd"><input type="text" data-cladd placeholder="항목 추가" autocomplete="off"><button type="button" class="btn sm" data-claddb>＋</button></div></div>
+        <p class="small muted" style="margin:8px 0 0">할일 내용과 날짜는 할일 칸에서 입력합니다. 수업일지를 저장할 때 함께 저장됩니다. (반복은 개별 할일에만 쓸 수 있습니다)</p>
+      </div></div>`;
+    return new Promise(res => {
+      let ok = false, useCl = st.checklist.length > 0;
+      Modal.open({
+        title: '할일 상세', size: 'md', autofocus: false, body,
+        onMount: (b) => {
+          enhanceTextarea($('[data-f=memo]', b));
+          const clList = $('[data-cllist]', b);
+          const drawCl = () => { clList.innerHTML = clHtml(); };
+          drawCl();
+          b.addEventListener('input', (e) => {
+            const t = e.target;
+            if (t.matches('[data-f=memo]')) st.memo = t.value;
+            else if (t.matches('[data-f=remind]')) st.remind = t.value;
+            else if (t.matches('[data-clt]')) st.checklist[+t.dataset.clt].t = t.value;
+          });
+          b.addEventListener('change', (e) => {
+            const t = e.target;
+            if (t.matches('[data-cltg]')) { useCl = t.checked; $('.tx-clbox', b).hidden = !t.checked; }
+            else if (t.matches('[data-timetg]')) { st.useTime = t.checked; $('.tx-timebox', b).hidden = !t.checked; }
+            else if (t.matches('[data-cld]')) st.checklist[+t.dataset.cld].d = t.checked;
+          });
+          const addCl = () => {
+            const inp = $('[data-cladd]', b), v = inp.value.trim();
+            if (!v) return;
+            st.checklist.push({ t: v, d: false }); inp.value = ''; drawCl(); inp.focus();
+          };
+          $('[data-cladd]', b).addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addCl(); } });
+          b.addEventListener('click', (e) => {
+            const ib = e.target.closest('[data-imp]');
+            if (ib) { st.importance = +ib.dataset.imp; $$('[data-imp]', b).forEach(x => x.classList.toggle('on', x === ib)); return; }
+            const dl = e.target.closest('[data-cldel]'); if (dl) { st.checklist.splice(+dl.dataset.cldel, 1); drawCl(); return; }
+            if (e.target.closest('[data-claddb]')) addCl();
+          });
+        },
+        buttons: [
+          { text: '취소' },
+          { text: '확인', cls: 'primary', primary: true, onClick: (m) => {
+            const time = st.useTime ? `${pad(+$('[data-th]', m.body).value)}:${pad(+$('[data-tm]', m.body).value)}` : '';
+            Object.assign(d, this.detailVals({ importance: st.importance, memo: st.memo, remind: st.remind, checklist: useCl ? st.checklist : [], time }));
+            ok = true;
+          } },
+        ],
+        onClose() { res(ok); },
+      });
+    });
   },
 
   /* ---------- 반복 설정 창 ---------- */

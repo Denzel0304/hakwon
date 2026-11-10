@@ -647,10 +647,10 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-c.sm { font-size: 12.5px; padding: 2px 7px; }
 .np-c i { font-style: normal; font-size: 11px; color: var(--warn); margin-left: 3px; }
 .np-c:hover { border-color: var(--accent); }
-.np-c.done { background: #E3F2EA; border-color: #A9D8BE; color: var(--ok); }
-.np-c.done.man { background: #EEF7F1; border-style: dashed; }
+.np-c.done { background: #BFE5CD; border-color: #5FB584; color: #17683F; font-weight: 600; }
+.np-c.done.man { background: #D5EEDF; border-style: dashed; }
 .np-c.part { background: var(--warn-soft); border-color: #EBC78E; color: #A9650B; }
-.np-c.prep { background: #E7F0FA; border-color: #9DC3E6; color: var(--accent-ink); }
+.np-c.prep { background: #C3DBF3; border-color: #5E9BD6; color: #1C4F86; font-weight: 600; }
 .np-c.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .np-ul { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin-right: 2px; white-space: nowrap; }
 .np-grp { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; margin-right: 8px; }
@@ -661,6 +661,15 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-legend { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .np-legend .np-c { cursor: default; font-size: 11.5px; padding: 1px 6px; }
 .np-err { color: var(--danger); }
+.np-msg { padding: 6px 0; line-height: 1.6; word-break: keep-all; }
+/* 수업일지 숙제 (학교·학년별) · 할일 상세 */
+.hw-split { display: flex; flex-direction: column; gap: 4px; }
+.hw-row { display: flex; align-items: flex-start; gap: 8px; }
+.hw-lb { flex: none; width: 64px; padding-top: 7px; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); word-break: keep-all; }
+.hw-row textarea { flex: 1; min-width: 0; }
+.todo-detb { flex: none; }
+.todo-detb.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.todo-det { margin: -2px 0 4px 2px; font-size: 12.5px; color: var(--accent-ink); }
 .np-line { font-size: 12.5px; color: var(--accent-ink); margin-top: 3px; white-space: normal; }
 .np-line.dist { color: var(--early); }
 .np-sum h2 { margin-bottom: 8px; }
