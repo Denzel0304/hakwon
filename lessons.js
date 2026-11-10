@@ -734,6 +734,22 @@ const Lessons = {
     return out.join('\n');
   },
   hwOf(f) { return f.hw ? this.joinHw(f.hw) : f.homework; },
+  // 이 학생에게 해당하는 숙제만: 공통 숙제 + 그 학생 학교·학년 숙제 (나눠 쓰지 않은 숙제는 그대로)
+  hwFor(text, s) {
+    const hw = this.parseHw(text, []);
+    if (!hw.order.length) return stripZws(text || '');
+    const sc = s ? NP.sch(s.school) : '';
+    let lb = sc && +s.grade ? sc + gradeNum(s.grade) : '';
+    if (lb && !hw.order.includes(lb)) {            // 그 뒤 학년이 바뀐 경우: 같은 학교 칸이 하나뿐이면 그 칸
+      const same = hw.order.filter(x => sc && x.startsWith(sc) && /^\d+$/.test(x.slice(sc.length)));
+      lb = same.length === 1 ? same[0] : '';
+    }
+    const out = [];
+    if (hw.common.trim()) out.push(hw.common.replace(/\s+$/, ''));
+    const t = lb ? (hw.by[lb] || '').trim() : '';
+    if (t) out.push(t);
+    return out.join('\n');
+  },
   // 취소: 들어오기 전 화면으로 (날짜 요약에서 왔으면 요약, 아니면 수업일지 탭)
   cancel() {
     const f = this.form;
@@ -833,10 +849,10 @@ const Lessons = {
     }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 관리에서 학생을 배정하세요.</div>';
     h += `</div><div class="panel">
       <h2>수업 내용</h2>
-      <div class="lesson-field"><label>진도</label><div data-npbox>${NP.editorHtml(f.np, { classId, date, lessonId: f.editId || null })}</div><textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
-      <div class="lesson-field"><label>숙제</label>${f.hw ? `<div class="hw-split">
-        <div class="hw-row"><span class="hw-lb">공통</span><textarea data-hw="" rows="2" placeholder="공통 숙제 (선택)">${esc(f.hw.common)}</textarea></div>
-        ${f.hw.order.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>`
+      <div class="lesson-field"><label>진도</label><div data-npbox>${NP.editorHtml(f.np, { classId, date, lessonId: f.editId || null })}</div>${f.hw ? `<div class="hw-split" style="margin:0 0 8px">
+        <div class="small soft">학교별 숙제 (선택)</div>
+        ${f.hw.order.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}<textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
+      <div class="lesson-field"><label>${f.hw ? '공통 숙제' : '숙제'}</label>${f.hw ? `<textarea data-hw="" rows="3" placeholder="모든 학생 공통 숙제 (학교별 숙제는 진도 아래 칸)">${esc(f.hw.common)}</textarea>`
         : `<textarea data-f="homework" rows="3" placeholder="내준 숙제">${esc(f.homework)}</textarea>`}</div>
       <div class="lesson-field"><label>메모</label><textarea data-f="memo" rows="3">${esc(f.memo)}</textarea></div>
       <div class="lesson-field"><label>할일</label>
@@ -1485,7 +1501,7 @@ const Makeups = {
     if (np) lines.push('내신 진도: ' + np);
     if (gp) lines.push('비내신 진도: ' + gp);
     if (dist.length) lines.push('배부 자료: ' + dist.join(' / '));
-    lines.push('숙제: ' + (stripZws(o.l.homework) || '-'));
+    lines.push('숙제: ' + (Lessons.hwFor(o.l.homework, o.s).trim() || '-'));      // 공통 + 그 학생 학교·학년 숙제만
     return lines.join('\n');
   },
 
