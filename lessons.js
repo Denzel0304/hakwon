@@ -672,6 +672,7 @@ const Lessons = {
   },
 
   render(main, p) {
+    if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정 탭의 시험 일정에 맞춤 (내신 자동 시험 선택용)
     const date = isYmd(p.date) ? p.date : App.selDate;
     const sched = this.classesOn(date);
     const inSched = (id) => !!sched.find(x => x.id === id);
@@ -1171,6 +1172,7 @@ const ProgressBook = {
   gpOn: false,          // 비내신 요약 보기
 
   render(main, p) {
+    if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정 탭의 시험 일정에 맞춤 (내신 요약 D-day·자동 선택용)
     // 진도 탭은 진행 중인 반만 (종료된 반은 제외)
     // 단, 할일·보강 등 다른 화면의 링크로 종료된 반의 기록을 열 때는 그 반을 잠시 목록에 넣어 보여준다
     const act = Classes.sorted(Store.all('classes')).filter(c => c.active !== false);

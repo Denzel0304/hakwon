@@ -2,7 +2,8 @@
    exams.js — 시험정보 + 성적(내신 / 모의고사)
    exam:  { school, grade, year, semester, kind:'mid'|'final', start, end, range(기타 범위·메모),
             items(구조화된 시험 범위 — lessons.js의 NP 설명 참고), fmt:'mc'(객관식만)|'mix'(객관식+서술형), memo,
-            done(완료된 시험), doneAt }
+            done(완료된 시험), doneAt, dateEv(true: 시험 기간을 일정 탭의 시험 일정에서 가져옴) }
+   시험 기간(start·end)은 일정 탭의 '시험 일정'(학교·학년·연도·학기·중간/기말이 같은 것)에서만 정한다 → syncDates
    교재는 meta 테이블에 저장 (NP.mats): 시험 교재(모의고사·교과서·부교재) / 일반 교재(type 'gen', 사용하는 반 classIds)
    score: id = S_학생_연도_학기_시험, { studentId, year, semester, kind, score, level:'9-2'|'5-1'|'', school, grade }
    mock:  { year, month, grade, memo }
@@ -21,6 +22,30 @@ const Exams = {
   // 형식: fmt 'mc' | 'mix' (예전 기록은 문항 수로 판단)
   fmtOf(ex) { return this.FMT[ex.fmt] ? ex.fmt : (+ex.essayCount ? 'mix' : +ex.mcCount ? 'mc' : ''); },
   formatLabel(ex) { return this.FMT[this.fmtOf(ex)] || ''; },
+
+  /* ---------- 시험 기간 ← 일정 탭의 시험 일정 ---------- */
+  // 학교·학년·연도·학기·중간/기말이 같은 시험 일정 (여러 개면 가장 이른 날 ~ 가장 늦은 날)
+  evRange(school, grade, year, sem, kind) {
+    const s = schoolShort(school || '');
+    if (!s || !kind) return null;
+    const evs = Store.where('events', ev => evType(ev) === 'exam' && isYmd(ev.date) && schoolShort(ev.school || '') === s
+      && evGrades(ev).includes(+grade) && +ev.year === +year && +ev.semester === +sem && ev.kind === kind);
+    if (!evs.length) return null;
+    return { start: evs.map(ev => ev.date).sort()[0], end: evs.map(ev => evEnd(ev)).sort().pop() };
+  },
+  // 모든 시험의 기간을 시험 일정에 맞춘다 (바뀐 것만 저장). 일정이 없어진 시험은 '미정'으로,
+  // 일정과 연결된 적 없는 예전 직접 입력 날짜는 그대로 둔다
+  syncDates() {
+    Store.all('exams').forEach(ex => {
+      const r = this.evRange(ex.school, ex.grade, ex.year, ex.semester, ex.kind);
+      if (r) {
+        if (ex.start !== r.start || ex.end !== r.end || !ex.dateEv) Store.put('exams', Object.assign({}, ex, { start: r.start, end: r.end, dateEv: true }));
+      } else if (ex.dateEv) {
+        const n = Object.assign({}, ex, { start: '', end: '' }); delete n.dateEv; Store.put('exams', n);
+      }
+    });
+  },
+  dateText(start, end) { return start ? fmtMD(start) + (end && end !== start ? ' ~ ' + fmtMD(end) : '') : ''; },
 
   /* ---------- 공통 머리 · 탭 · 일괄 처리 줄 ---------- */
   headHtml() {
@@ -78,6 +103,7 @@ const Exams = {
 
   /* ---------- 시험 목록 (진행중 / 완료) ---------- */
   render(main) {
+    this.syncDates();                   // 다른 기기에서 바뀐 시험 일정도 반영
     if (this.tab === 'mat' || this.tab === 'gen') { this.renderMats(main); return; }
     const done = this.tab === 'done';
     const all = Store.all('exams');
@@ -232,6 +258,7 @@ const Exams = {
 
   /* ---------- 시험 등록 / 수정 ---------- */
   openModal(id) {
+    this.syncDates();
     const ex = id ? Store.get('exams', id) : null;
     const now = new Date();
     const v = ex || { school: '', grade: 10, year: now.getFullYear(), semester: now.getMonth() >= 6 ? 2 : 1, kind: 'mid', start: '', end: '', range: '', memo: '' };
@@ -243,7 +270,7 @@ const Exams = {
       <label class="req">시험</label><div class="row"><input type="number" name="year" value="${esc(v.year)}" min="2000" max="2100" style="width:90px">년
         <select name="semester"><option value="1" ${+v.semester === 1 ? 'selected' : ''}>1학기</option><option value="2" ${+v.semester === 2 ? 'selected' : ''}>2학기</option></select>
         <select name="kind"><option value="mid" ${v.kind === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${v.kind === 'final' ? 'selected' : ''}>기말고사</option></select></div>
-      <label>시험 기간</label><div class="row"><input type="date" name="start" value="${esc(v.start)}"> ~ <input type="date" name="end" value="${esc(v.end)}"><span class="hint">하루면 시작일만</span></div>
+      <label>시험 기간</label><div class="row"><input type="text" data-dshow readonly tabindex="-1" style="width:200px;cursor:not-allowed;background:var(--bg, #F4F6F8)"><span class="hint" data-dhint></span></div>
       <label class="top">시험 범위</label><div data-rbox></div>
       <label class="top">기타 범위·메모</label><textarea name="range" rows="3" placeholder="교재로 등록하지 않은 범위나 참고 사항 (예: 프린트 1-3)">${esc(v.range)}</textarea>
       <label class="req">형식</label><div class="row">${Object.keys(this.FMT).map(k => `<label class="chk"><input type="radio" name="fmt" value="${k}" ${fmt === k ? 'checked' : ''}>${this.FMT[k]}</label>`).join('')}</div>
@@ -253,6 +280,19 @@ const Exams = {
       title: ex ? '시험 수정' : '시험 등록', body, size: 'lg',
       onMount: (b) => {
         enhanceAll(b);
+        // 시험 기간: 일정 탭의 시험 일정에서만 가져온다 (여기서는 보기만)
+        const ds = $('[data-dshow]', b), dh = $('[data-dhint]', b);
+        const drawDates = () => {
+          const g = (n) => $(`[name=${n}]`, b).value;
+          const r = this.evRange(g('school'), g('grade'), g('year'), g('semester'), g('kind'));
+          if (r) { ds.value = this.dateText(r.start, r.end); dh.textContent = '일정에서 가져옴'; }
+          else if (ex && !ex.dateEv && ex.start) { ds.value = this.dateText(ex.start, ex.end); dh.textContent = '예전에 직접 입력한 날짜 · 일정 탭에 이 시험의 시험 일정을 등록하면 그 날짜로 바뀝니다'; }
+          else { ds.value = '미정'; dh.textContent = '일정 탭에 이 시험의 시험 일정을 등록하면 자동으로 들어옵니다'; }
+        };
+        drawDates();
+        ['school', 'grade', 'year', 'semester', 'kind'].forEach(n => { const x = $(`[name=${n}]`, b); x.addEventListener('input', drawDates); x.addEventListener('change', drawDates); });
+        const noEdit = (e) => { if (e.type === 'keydown' && (e.key === 'Tab' || e.key === 'Escape')) return; e.preventDefault(); toast('시험 일정변경은 일정 탭에서 해주세요.'); };
+        ds.addEventListener('mousedown', noEdit); ds.addEventListener('keydown', noEdit);
         const rb = $('[data-rbox]', b), gSel = $('[name=grade]', b);
         const draw = () => { rb.innerHTML = this.rangeHtml(items, +gSel.value); };
         draw();
@@ -313,16 +353,20 @@ const Exams = {
           const fv = ($('[name=fmt]:checked', b) || {}).value || '';
           const rec = Object.assign({}, ex || { id: uid('EX'), createdAt: new Date().toISOString() }, {
             school: g('school').trim(), grade: +g('grade'), year: +g('year'), semester: +g('semester'), kind: g('kind'),
-            start: g('start'), end: g('end'), range: stripZws(g('range')), fmt: fv,
+            range: stripZws(g('range')), fmt: fv,
             memo: stripZws(g('memo')),
           });
           delete rec.mcCount; delete rec.mcPoints; delete rec.essayCount; delete rec.essayPoints;   // 예전 문항 수·배점 (형식으로 바뀜)
           if (!rec.school) { toast('학교를 입력하세요'); return false; }
           if (!rec.year || rec.year < 2000) { toast('연도를 확인하세요'); return false; }
-          if (rec.end && !rec.start) { toast('시작일을 입력하세요'); return false; }
-          if (rec.start && rec.end && rec.end < rec.start) { toast('종료일이 시작일보다 빠릅니다'); return false; }
           if (!this.FMT[rec.fmt]) { toast('형식을 고르세요 (객관식만 / 객관식+서술형)'); return false; }
-          if (rec.start && !rec.end) rec.end = rec.start;
+          // 시험 기간: 일치하는 시험 일정 → 그 날짜 / 없으면 미정 (예전에 직접 입력한 날짜는 그대로)
+          const dr = this.evRange(rec.school, rec.grade, rec.year, rec.semester, rec.kind);
+          if (dr) Object.assign(rec, { start: dr.start, end: dr.end, dateEv: true });
+          else {
+            if (!ex || ex.dateEv) { rec.start = ''; rec.end = ''; }
+            delete rec.dateEv;
+          }
           // 시험 범위 정리·확인
           const out = [];
           for (const it of items) {

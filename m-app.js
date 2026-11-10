@@ -189,6 +189,7 @@ const MProgress = {
   todosOf(lid) { return Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt)); },
 
   render(main, p) {
+    if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정의 시험 일정에 맞춤 (내신 요약용)
     const classes = this.classes();
     if (p.classId) this.classId = p.classId;
     if (!this.classId || !Store.get('classes', this.classId)) this.classId = classes[0] ? classes[0].id : '';

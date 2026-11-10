@@ -1,10 +1,11 @@
 /* =========================================================
    calendar.js — 일정(시험 일정·직전 보강·영어 시험·기타) / 미니 달력 / 큰 달력 / 날짜 요약 / 일정 탭
    event: { type:'exam'|'pre'|'weekend'|'etc', date(시작일), endDate(기간일 때 끝날, 아니면 ''),
-            start, end(시간, 선택), school, grades:[학년…](선택, 여러 개), title, memo }
+            start, end(시간, 선택), school, grades:[학년…](선택, 여러 개), title, memo,
+            year, semester, kind:'mid'|'final' }  ← 시험 일정만 (학교·학년과 함께 필수) — 시험+교재의 시험 기간이 이것으로 자동 연동
    ※ 예전 기록의 grade(학년 하나)도 그대로 읽는다 (evGrades)
    ※ 영어 시험의 저장 키는 예전 이름 'weekend'를 그대로 쓴다 (하루짜리 일정)
-   ※ 시험정보 탭(시험 범위 기록)과 일정의 '시험 일정'(달력 알림)은 서로 별개
+   ※ 시험+교재 탭의 시험 기간은 학교·학년·연도·학기·중간/기말이 같은 '시험 일정'에서 자동으로 가져온다 (Exams.syncDates)
    ========================================================= */
 const EVENT_TYPES = {
   exam: { label: '시험 일정' },
@@ -19,6 +20,12 @@ const ONE_DAY = { weekend: true };        // 영어 시험은 하루짜리 (기�
 // 시험정보(시험 범위 기록) 표시용
 function examTitle(ex) {
   return schoolGradeLabel(ex.school, ex.grade).replace(/^학교미정 /, '') + ' ' + (EXAM_KIND[ex.kind] || '') + '고사';
+}
+// 날짜가 속한 학기 (3~8월 1학기 / 9~12월 2학기 / 1~2월은 지난해 2학기) — 시험 일정의 연도·학기 기본값
+function evTerm(d) {
+  if (!isYmd(d)) { const n = new Date(); return { year: n.getFullYear(), sem: n.getMonth() >= 6 ? 2 : 1 }; }
+  const y = +d.slice(0, 4), m = +d.slice(5, 7);
+  return m >= 3 && m <= 8 ? { year: y, sem: 1 } : m >= 9 ? { year: y, sem: 2 } : { year: y - 1, sem: 2 };
 }
 function evType(ev) { return EVENT_TYPES[ev.type] ? ev.type : 'etc'; }
 // 일정의 학년 목록 (예전 기록은 grade 하나)
@@ -475,13 +482,19 @@ const EventModal = {
     const v = ev || Object.assign({ type: '', date: d0, endDate: '', start: '', end: '', school: '', grades: [], title: '', memo: '' }, preset);
     let grades = evGrades(v);          // 고른 학년 (여러 개)
     const ranged = isRange(v);
+    const tm = evTerm(v.date);         // 시험 일정의 연도·학기 기본값 (날짜 기준)
+    const exY = v.year || tm.year, exS = +v.semester || tm.sem, exK = v.kind || '';
     const body = `<div class="form ev-form">
       <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type && evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
       <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
         <label class="chk" data-rangedwrap><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
       <label data-timelabel>시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}"> ~ <input type="time" name="end" step="300" value="${esc(v.end)}"></div>
-      <label>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
+      <label data-schlabel>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
+      <label class="req" data-exrow>시험</label><div class="row" data-exrow><input type="number" name="exYear" min="2000" max="2100" value="${esc(exY)}" style="width:90px">년
+        <select name="exSem"><option value="1" ${exS === 1 ? 'selected' : ''}>1학기</option><option value="2" ${exS === 2 ? 'selected' : ''}>2학기</option></select>
+        <select name="exKind"><option value="" ${exK ? '' : 'selected'}>중간/기말 선택</option><option value="mid" ${exK === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${exK === 'final' ? 'selected' : ''}>기말고사</option></select>
+        <span class="hint">시험+교재의 같은 시험에 기간이 자동으로 들어갑니다</span></div>
       <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)">
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>
     </div>`;
@@ -498,8 +511,15 @@ const EventModal = {
         };
         chk.addEventListener('change', sync);
         const tl = $('[data-timelabel]', b), rw = $('[data-rangedwrap]', b);
+        // 시험 일정: 연도·학기는 날짜를 따라가다가, 직접 고치면 그대로 둔다
+        let exTouched = !!(ev && ev.year);
+        ['exYear', 'exSem'].forEach(n => $(`[name=${n}]`, b).addEventListener('change', () => { exTouched = true; }));
+        dIn.addEventListener('change', () => { if (exTouched) return; const t = evTerm(dIn.value); $('[name=exYear]', b).value = t.year; $('[name=exSem]', b).value = t.sem; });
         const typeSync = () => {
           const t = $('[name=type]:checked', b);
+          const isEx = !!(t && t.value === 'exam');      // 시험 일정만 학교·학년·연도·학기·중간/기말 필수
+          $$('[data-exrow]', b).forEach(x => { x.style.display = isEx ? '' : 'none'; });
+          $('[data-schlabel]', b).classList.toggle('req', isEx);
           tl.classList.toggle('req', !!(t && NEED_TIME[t.value]));
           // 영어 시험은 하루짜리: 기간 끄고 숨김
           const one = !!(t && ONE_DAY[t.value]);
@@ -559,7 +579,9 @@ const EventModal = {
       buttons: [
         ...(ev ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
           if (!await confirmDlg('이 일정을 삭제할까요?', '삭제', true)) return false;
-          Store.del('events', ev.id); toast('일정을 삭제했습니다'); App.render();
+          Store.del('events', ev.id);
+          if (typeof Exams !== 'undefined') Exams.syncDates();   // 이 일정에서 가져온 시험 기간도 맞춘다
+          toast('일정을 삭제했습니다'); App.render();
         } }] : []),
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
@@ -578,6 +600,13 @@ const EventModal = {
             memo: stripZws($('[name=memo]', b).value),
           });
           delete rec.grade;                                   // 예전 학년 하나 필드는 grades로 대체
+          if (rec.type === 'exam') {                          // 시험 일정: 학교·학년·연도·학기·중간/기말 필수
+            rec.year = +$('[name=exYear]', b).value; rec.semester = +$('[name=exSem]', b).value; rec.kind = $('[name=exKind]', b).value;
+            if (!rec.school) { toast('시험 일정은 학교를 입력하세요'); return false; }
+            if (!rec.grades.length) { toast('시험 일정은 학년을 고르세요'); return false; }
+            if (!rec.year || rec.year < 2000) { toast('시험 연도를 확인하세요'); return false; }
+            if (!rec.kind) { toast('중간고사·기말고사를 고르세요'); return false; }
+          } else { delete rec.year; delete rec.semester; delete rec.kind; }
           if (ONE_DAY[rec.type]) rec.endDate = '';            // 영어 시험은 하루짜리
           if (!isYmd(rec.date)) { toast('날짜를 선택하세요'); return false; }
           if (ranged2 && !ONE_DAY[rec.type]) {
@@ -589,6 +618,7 @@ const EventModal = {
           if (rec.end && !rec.start) { toast('시작 시간을 입력하세요'); return false; }
           if (rec.start && rec.end && rec.end <= rec.start) { toast('종료 시간이 시작 시간보다 늦어야 합니다'); return false; }
           Store.put('events', rec);
+          if (typeof Exams !== 'undefined') Exams.syncDates();   // 같은 시험의 시험 기간을 바로 맞춘다
           toast('일정을 저장했습니다');
           App.render();
         } },
