@@ -170,6 +170,8 @@ const App = {
     else App.go(p, {});
   });
   $$('#nav .nav-cat').forEach(c => c.addEventListener('mouseleave', () => c.classList.remove('nav-hold')));
+  // 시간표 아이콘 → 시간표만 팝업으로
+  $('#nav-tt').addEventListener('click', () => Timetable.openPopup());
   // 입력이 끝나면 미뤄 둔 화면 갱신
   $('#main').addEventListener('focusout', () => setTimeout(() => App.flushRender(), 0));
 

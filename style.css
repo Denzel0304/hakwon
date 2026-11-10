@@ -96,6 +96,11 @@ body.app-on #mg-app { display: flex; }
 .mc-nav:hover { background: var(--side-strong); }
 .mc-today { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 7px; font-size: 13px; font-weight: 600; padding: 3px 9px; }
 .mc-today:hover { border-color: var(--accent); color: var(--accent-ink); }
+/* 좌측 미니 달력 머리줄만 크게 (날짜 선택 창의 같은 모양은 그대로) */
+#mini-cal .mc-head { min-height: 48px; margin: -4px -12px 8px; gap: 4px; }
+#mini-cal .mc-title { font-size: 19.5px; }
+#mini-cal .mc-nav { flex: none; width: 26px; height: 40px; font-size: 28px; }
+#mini-cal .mc-today { flex: none; white-space: nowrap; font-size: 14.5px; padding: 5px 9px; border-radius: 8px; }
 .mc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .mc-wd { text-align: center; font-size: 13.5px; color: var(--ink-mute); padding: 2px 0; }
 .mc-wd.sun, .mc-day.sun .n { color: var(--danger); }
@@ -126,7 +131,7 @@ body.app-on #mg-app { display: flex; }
 
 /* 메뉴 */
 #nav {
-  flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  flex: none; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px;
   padding: 10px 12px; border-bottom: 1px solid var(--line-strong);
 }
 #nav button {
@@ -155,6 +160,13 @@ body.app-on #mg-app { display: flex; }
 }
 .nav-cat:hover:not(.nav-hold) > .nav-menu { display: flex; }
 #nav .nav-menu button.active { background: var(--accent-soft); }
+/* 시간표 팝업 아이콘 (선생님 탭 오른쪽) */
+#nav .nav-tt {
+  width: 44px; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--line-strong); color: var(--ink-soft);
+}
+#nav .nav-tt svg { width: 22px; height: 22px; }
+#nav .nav-tt:hover { background: var(--surface); color: var(--accent-ink); border-color: var(--accent); }
 #sync-bar { margin-top: auto; padding: 12px 18px; font-size: 13px; color: var(--ink-soft); border-top: 1px solid var(--line); }
 
 /* ---------- 페이지 공통 ---------- */
@@ -162,6 +174,15 @@ body.app-on #mg-app { display: flex; }
 .page-head h1 { margin: 0 6px 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.6px; color: var(--ink); }
 .page-head .sub { color: var(--ink-soft); font-size: 14.5px; }
 .page-head .grow { flex: 1; }
+/* 화면 제목줄: 아래 연한 구분선 + 내용이 길어 스크롤해도 위에 고정 (큰 달력은 제외)
+   margin-top/padding-top -26px/26px = #main 위 여백만큼 끌어올려, 고정됐을 때 뒤 내용이 비치지 않게 함 */
+#main:not([data-page="calendar"]) > .page-head,
+#main:not([data-page="calendar"]) > .page-narrow > .page-head,
+.tt-probe > .page-head {
+  position: sticky; top: -26px; z-index: 20;
+  margin-top: -26px; padding-top: 26px; padding-bottom: 14px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 /* 학생 목록 선택 처리: 체크 칸 + 늘 자리를 차지하는 버튼 줄 (선택이 없으면 흐리게) */
 .bulk-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: -6px 0 10px; padding: 6px 10px; background: #F7FBFE; border: 1px solid var(--line); border-radius: 8px; }
@@ -466,6 +487,16 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tt2-col.today { background-color: #F6FAFD; border-left-color: #7D9DB8; box-shadow: inset -1px 0 0 #7D9DB8;
   background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px), radial-gradient(circle, rgba(125, 157, 184, .5) 1px, transparent 1.4px);
   background-size: 100% calc(var(--ppm) * 60), 11px 11px; }
+
+/* 시간표 팝업: 시간표만, 페이지와 같은 크기 (화면보다 클 때만 스크롤) */
+.mg-modal.tt-pop { width: auto; position: relative; }
+.mg-modal.tt-pop .mg-modal-head { position: absolute; top: 5px; right: 5px; padding: 0; border: 0; z-index: 6; }
+.mg-modal.tt-pop .mg-modal-head h3 { display: none; }
+.mg-modal.tt-pop .mg-x { width: 30px; height: 30px; padding: 0; border-radius: 50%; background: #fff; border: 1px solid var(--line-strong); }
+.mg-modal.tt-pop .mg-x:hover { background: var(--accent-soft); }
+.mg-modal.tt-pop .mg-modal-body { padding: 10px; overflow: auto; }
+.mg-modal.tt-pop .tt2 { border-bottom: 2px solid #7D9DB8; border-radius: 12px; }
+.mg-modal.tt-pop .tt-blk { cursor: default; }
 
 /* ---------- 수업일지 ---------- */
 .class-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

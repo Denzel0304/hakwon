@@ -557,8 +557,7 @@ const Timetable = {
   nowTimer: null,                // 오늘 끝난 수업·현재 시각 선을 1분마다 맞추는 타이머
   onLeave() { this.userH = 0; this.stopNow(); },
 
-  render(main) {
-    const today = todayStr();
+  gridHtml(today, viewOnly = false) {
     const tdow = dowOf(today);
     const classes = Store.all('classes').filter(c => c.active !== false);
     // 토·일은 수업이 없으므로 시간표에서 제외 (혹시 지정된 데이터가 있어도 그리지 않음)
@@ -580,8 +579,7 @@ const Timetable = {
     const friN = Math.max(2, ...friCol.items.map(it => it.cols));
     const gridCols = `grid-template-columns:56px ${ttDays.map(d => d === 5 ? `minmax(${130 * friN}px, ${friN}fr)` : 'minmax(130px, 1fr)').join(' ')}`;
     const span = this.END - this.START;
-    let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>
-      <div class="tt2"><div class="tt2-head" style="${gridCols}"><div></div>${ttDays.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<span class="tt2-today">오늘</span>' : ''}</div>`).join('')}</div>
+    let h = `<div class="tt2"><div class="tt2-head" style="${gridCols}"><div></div>${ttDays.map(d => `<div class="tt2-wd ${d === 0 ? 'sun' : d === 6 ? 'sat' : ''}${d === tdow ? ' today' : ''}">${DOW[d]}${d === tdow ? '<span class="tt2-today">오늘</span>' : ''}</div>`).join('')}</div>
       <div class="tt2-body" style="${gridCols}"><div class="tt2-time">`;
     for (let t = this.START; t < this.END; t += 60) {
       const hr = t / 60;
@@ -598,7 +596,7 @@ const Timetable = {
         const w = 100 / it.cols;
         const c = it.c;
         const cc = Classes.colorOf(c);
-        h += `<div class="tt-blk" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)} — 눌러서 반 수정"
+        h += `<div class="tt-blk" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)}${viewOnly ? '' : ' — 눌러서 반 수정'}"
           style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
           <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
           <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
@@ -606,7 +604,16 @@ const Timetable = {
       });
       h += '</div>';
     });
-    h += `</div></div><div class="bc2-resize tt2-resize" title="끌어서 시간표 높이 조절"><span></span></div>`;
+    h += '</div></div>';
+    return { html: h, span, gridCols };
+  },
+
+  render(main) {
+    const today = todayStr();
+    const g = this.gridHtml(today);
+    const span = g.span;
+    let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>` + g.html;
+    h += `<div class="bc2-resize tt2-resize" title="끌어서 시간표 높이 조절"><span></span></div>`;
     main.innerHTML = h;
 
     // 높이: 처음에는 아래 끝이 왼쪽 아래 '동기화됨' 칸 윗선에 오도록 맞춤
@@ -658,13 +665,7 @@ const Timetable = {
       if (!main.isConnected || App.page !== 'timetable') { this.stopNow(); return; }
       if (todayStr() !== day) { this.stopNow(); App.render(); return; }   // 자정이 지나면 오늘 요일이 바뀜
       if (!col) return;                                                   // 주말: 오늘 칸 없음
-      const d = new Date(), now = d.getHours() * 60 + d.getMinutes();
-      $$('.tt-blk[data-end]', col).forEach(b => b.classList.toggle('done', now >= +b.dataset.end));
-      const line = $('.tt2-now', col);
-      if (line) {
-        line.hidden = now < this.START || now > this.END;
-        line.style.setProperty('--nowm', now - this.START);
-      }
+      this.paintNow(col);
     };
     tick();
     const d = new Date();
@@ -672,6 +673,86 @@ const Timetable = {
   },
   stopNow() {
     if (this.nowTimer) { clearTimeout(this.nowTimer); clearInterval(this.nowTimer); this.nowTimer = null; }
+  },
+  // 오늘 칸(col)에 끝난 수업 흐림 + 현재 시각 선 표시 (페이지·팝업 공용)
+  paintNow(col) {
+    const d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+    $$('.tt-blk[data-end]', col).forEach(b => b.classList.toggle('done', now >= +b.dataset.end));
+    const line = $('.tt2-now', col);
+    if (line) {
+      line.hidden = now < this.START || now > this.END;
+      line.style.setProperty('--nowm', now - this.START);
+    }
+  },
+
+  /* ---------- 시간표 팝업 (왼쪽 메뉴의 시간표 아이콘) ----------
+     시간표 페이지에서 보이는 크기(너비·높이) 그대로 시간표만 띄운다. 보기 전용 (블록을 눌러도 반응 없음).
+     화면보다 클 때만 스크롤. */
+  popup: null,
+  openPopup() {
+    if (this.popup && !this.popup.closed) return;
+    let timer = null, onResize = null;
+    const m = Modal.open({
+      title: '시간표', size: 'tt-pop', autofocus: false,
+      onMount: (body, mm) => {
+        mm.refresh = () => { if (!mm.closed) this.popupRender(mm); };   // 다른 기기에서 바뀐 내용이 들어오면 다시 그림
+        this.popupRender(mm);
+        onResize = debounce(() => mm.refresh(), 200);
+        window.addEventListener('resize', onResize);
+        // 현재 시각 선·끝난 수업: 매 분 0초에 맞춰 1분마다 (자정이 지나면 다시 그림)
+        const tick = () => {
+          if (mm.closed) return;
+          if (todayStr() !== mm.day) { mm.refresh(); return; }
+          const col = $('.tt2-col.today', mm.body);
+          if (col) this.paintNow(col);
+        };
+        const d = new Date();
+        timer = setTimeout(() => { tick(); timer = setInterval(tick, 60000); }, (60 - d.getSeconds()) * 1000 - d.getMilliseconds() + 50);
+      },
+      onClose: () => {
+        clearTimeout(timer); clearInterval(timer);
+        if (onResize) window.removeEventListener('resize', onResize);
+        this.popup = null;
+      },
+    });
+    this.popup = m;
+  },
+  // 시간표 페이지의 크기를 계산해 팝업 안에 같은 크기로 그린다
+  popupRender(m) {
+    const today = todayStr();
+    m.day = today;
+    const g = this.gridHtml(today, true);
+    const span = g.span;
+    const main = $('#main');
+    const cs = getComputedStyle(main);
+    const padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0, padT = parseFloat(cs.paddingTop) || 0;
+    // 시간표 페이지에서 시간표 폭 = 본문 영역 폭 (최소 1000px, CSS의 .tt2 min-width와 같음)
+    const W = Math.max(1000, Math.floor(main.offsetWidth - padL - padR));
+    // 시간표 페이지의 제목줄·요일줄·높이 손잡이 높이를 화면 밖에서 재어, 페이지와 같은 높이를 구한다
+    const probe = document.createElement('div');
+    probe.className = 'tt-probe';
+    probe.style.cssText = `position:fixed;left:-20000px;top:0;width:${W}px;visibility:hidden;pointer-events:none`;
+    probe.innerHTML = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>${g.html}<div class="bc2-resize tt2-resize"><span></span></div>`;
+    $('.tt2', probe).style.setProperty('--ppm', '0px');
+    document.body.appendChild(probe);
+    const ph = $('.page-head', probe);
+    const phTopOnPage = main.getBoundingClientRect().top + padT + (parseFloat(getComputedStyle(ph).marginTop) || 0);
+    const bodyTop = phTopOnPage + ($('.tt2-body', probe).getBoundingClientRect().top - ph.getBoundingClientRect().top);
+    const gripH = $('.tt2-resize', probe).offsetHeight;
+    probe.remove();
+    const sb = $('#sync-bar');
+    const bottom = Math.min(sb.getBoundingClientRect().top, window.innerHeight - sb.offsetHeight);
+    const minH = span * 0.8;
+    const fit = bottom - bodyTop - gripH - 3;
+    const H = Math.max(minH, (App.page === 'timetable' && this.userH) || fit);
+    m.body.innerHTML = g.html;
+    const box = $('.tt2', m.body);
+    box.style.width = W + 'px';
+    box.style.setProperty('--ppm', (H / span) + 'px');
+    this.fitStudents(m.body);
+    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (box.isConnected) this.fitStudents(m.body); });
+    const col = $('.tt2-col.today', m.body);
+    if (col) this.paintNow(col);
   },
 
   // 가로 나열용: 같은 학교·학년끼리 묶어 "(이름 이름) [학교]" 로 이어서 나열, 예정 학생은 맨 끝
