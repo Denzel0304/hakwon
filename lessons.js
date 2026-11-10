@@ -769,15 +769,36 @@ const Lessons = {
   },
   hwOf(f) { return f.hw ? this.joinHw(f.hw) : f.homework; },
   // 이 학생에게 해당하는 숙제만: 공통 숙제 + 그 학생 학교·학년 숙제 (나눠 쓰지 않은 숙제는 그대로)
+  // 학생의 학교·학년 이름(금천고2)을 목록에서 찾는다 (그 뒤 학년이 바뀐 경우: 같은 학교가 하나뿐이면 그것)
+  stuLabel(labels, s) {
+    const sc = s ? NP.sch(s.school) : '';
+    if (!sc) return '';
+    const lb = +s.grade ? sc + gradeNum(s.grade) : '';
+    if (lb && labels.includes(lb)) return lb;
+    const same = labels.filter(x => x.startsWith(sc) && /^\d+$/.test(x.slice(sc.length)));
+    return same.length === 1 ? same[0] : '';
+  },
+  // 결석생 보강용: 이 학생 학교·학년의 내신 진도 · 배부 자료만 남긴 일지 (학교를 알 수 없으면 그대로)
+  forStudent(l, s) {
+    const lbOf = (e) => NP.sch(e.school) + gradeNum(e.grade);
+    const exs = (l.npExams || []).map(id => Store.get('exams', id)).filter(Boolean);
+    const out = Object.assign({}, l);
+    const labels = [...new Set(exs.map(lbOf))];
+    const lb = labels.length > 1 ? this.stuLabel(labels, s) : '';
+    if (lb) {
+      const mats = new Set();
+      exs.filter(e => lbOf(e) === lb).forEach(e => (e.items || []).forEach(it => mats.add(it.matId)));
+      out.np = (l.np || []).filter(en => mats.has(en.matId));
+    }
+    const grps = [...new Set((l.dist || []).map(d => d.grp).filter(Boolean))];
+    const dl = grps.length ? this.stuLabel(grps, s) : '';
+    if (dl) out.dist = (l.dist || []).filter(d => !d.grp || d.grp === dl);     // 학교 지정 안 된 자료 + 그 학교 자료
+    return out;
+  },
   hwFor(text, s) {
     const hw = this.parseHw(text, []);
     if (!hw.order.length) return stripZws(text || '');
-    const sc = s ? NP.sch(s.school) : '';
-    let lb = sc && +s.grade ? sc + gradeNum(s.grade) : '';
-    if (lb && !hw.order.includes(lb)) {            // 그 뒤 학년이 바뀐 경우: 같은 학교 칸이 하나뿐이면 그 칸
-      const same = hw.order.filter(x => sc && x.startsWith(sc) && /^\d+$/.test(x.slice(sc.length)));
-      lb = same.length === 1 ? same[0] : '';
-    }
+    const lb = this.stuLabel(hw.order, s);
     const out = [];
     if (hw.common.trim()) out.push(hw.common.replace(/\s+$/, ''));
     const t = lb ? (hw.by[lb] || '').trim() : '';
@@ -889,7 +910,8 @@ const Lessons = {
       <h2>수업 내용</h2>
       <div class="lesson-field"><label>진도</label><div data-npbox>${npHtml}</div>${hwRest.length ? `<div class="hw-split" style="margin:0 0 8px">
         <div class="small soft">학교별 숙제 (선택)</div>
-        ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}<textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
+        ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}</div>
+      <div class="lesson-field"><label>공통 진도</label><textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
       <div class="lesson-field"><label>${f.hw ? '공통 숙제' : '숙제'}</label>${f.hw ? `<textarea data-hw="" rows="3" placeholder="모든 학생 공통 숙제 (학교별 숙제는 진도 아래 칸)">${esc(f.hw.common)}</textarea>`
         : `<textarea data-f="homework" rows="3" placeholder="내준 숙제">${esc(f.homework)}</textarea>`}</div>
       <div class="lesson-field"><label>메모</label><textarea data-f="memo" rows="3">${esc(f.memo)}</textarea></div>
@@ -1532,7 +1554,8 @@ const Makeups = {
   },
 
   copyText(o) {
-    const np = NP.text(o.l), gp = NP.genText(o.l), dist = (o.l.dist || []).map(d => NP.distText(d));
+    const lf = Lessons.forStudent(o.l, o.s);           // 학교가 섞인 반: 그 학생 학교의 진도·배부 자료만
+    const np = NP.text(lf), gp = NP.genText(o.l), dist = (lf.dist || []).map(d => NP.distText(d));
     const pg = stripZws(o.l.progress);
     const lines = [`[${fmtDate(o.l.date)} ${o.c ? o.c.name : ''}]`];
     if (pg || (!np && !gp)) lines.push('진도: ' + (pg || '-'));
@@ -1540,6 +1563,8 @@ const Makeups = {
     if (gp) lines.push('비내신 진도: ' + gp);
     if (dist.length) lines.push('배부 자료: ' + dist.join(' / '));
     lines.push('숙제: ' + (Lessons.hwFor(o.l.homework, o.s).trim() || '-'));      // 공통 + 그 학생 학교·학년 숙제만
+    const memo = stripZws(o.l.memo || '').trim();
+    if (memo) lines.push('메모: ' + memo);
     return lines.join('\n');
   },
 
