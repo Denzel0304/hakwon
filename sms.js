@@ -3,7 +3,7 @@
    프로그램 → GAS(CFG.GAS_SMS_URL, 로그인 키 확인) → SMS Gateway 클라우드 → 내 폰
    - 받는 사람: 재원생만 (반 선택 / 이름 검색 / 전체 목록 체크), 학생·부모님·둘 다
    - 템플릿(meta): id SX7T_…, { kind:'sx7_tpl', name, text, createdAt }
-   - 발송 기록: Supabase mg77_sx7_log (mg77_sx7_add / mg77_sx7_list)
+   - 발송 기록: Supabase mg77_sx7_log (mg77_sx7_add / mg77_sx7_list / mg77_sx7_del)
    - 발송 후 성공 여부는 추적하지 않음 (발송 단계에서 거절된 문자만 '실패'로 표시)
    ========================================================= */
 const SmsPage = {
@@ -21,6 +21,8 @@ const SmsPage = {
   logTried: false,        // 자동 불러오기를 이미 시도했는지 (실패 시 무한 재시도 방지)
   logMore: false,
   open: new Set(),        // 펼친 묶음(batch_id)
+  del: new Set(),         // 삭제하려고 체크한 묶음(batch_id)
+  deleting: false,
 
   TOKENS: ['{이름}', '{성뺀이름}', '{반}', '{날짜}'],
   PAGE: 1000,             // 기록 한 번에 불러오는 줄 수
@@ -69,6 +71,7 @@ const SmsPage = {
     h += this.tab === 'log' ? this.logHtml() : this.sendHtml();
     main.innerHTML = h;
     this.bind(main);
+    if (this.tab === 'log') this.paintDel(main);   // 전체 선택의 일부 선택(−) 표시
     if (this.tab === 'log' && !this.log && !this.logBusy && !this.logTried) this.loadLog(false);
   },
 
@@ -352,6 +355,8 @@ const SmsPage = {
     });
     let h = `<div class="toolbar">
         <button class="btn sm" data-a="reload">새로고침</button>
+        <button class="btn sm danger" data-a="del" ${this.delCnt() && !this.deleting ? '' : 'disabled'}>${this.delLabel()}</button>
+        <label class="chk small"><input type="checkbox" data-gall ${groups.length && this.delCnt() === groups.length ? 'checked' : ''}>전체 선택</label>
         <span class="muted small">${groups.length}번 발송 · ${this.log.length}건</span></div>`;
     if (!groups.length) return h + '<div class="panel"><div class="empty">발송 기록이 없습니다.</div></div>';
     h += '<div class="panel sx7-log">' + groups.map(g => {
@@ -361,6 +366,7 @@ const SmsPage = {
       const opened = this.open.has(g.id);
       let x = `<div class="sx7-g ${opened ? 'on' : ''}">
         <div class="sx7-gh" data-g="${esc(g.id)}">
+          <label class="sx7-gsel"><input type="checkbox" data-gsel="${esc(g.id)}" ${this.del.has(g.id) ? 'checked' : ''} aria-label="삭제 선택"></label>
           <span class="sx7-when small soft">${esc(this.fmtTime(g.at))}</span>
           <span class="sx7-gb">${esc(firstLine(rows[0].body).slice(0, 60))}${sameBody ? '' : ' <span class="muted small">(학생마다 다름)</span>'}</span>
           <span class="sx7-gc">${rows.length}건 ${fail ? `<span class="badge red">실패 ${fail}</span>` : ''}</span>
@@ -384,7 +390,7 @@ const SmsPage = {
     if (!key || this.logBusy) return;
     this.logBusy = true;
     this.logTried = true;
-    if (!more) this.log = null;
+    if (!more) { this.log = null; this.del.clear(); }
     if (App.page === 'sms' && this.tab === 'log') App.render();
     try {
       const before = more && this.log && this.log.length ? Math.min(...this.log.map(r => r.id)) : null;
@@ -401,6 +407,50 @@ const SmsPage = {
       toast('기록을 불러오지 못했습니다: 네트워크 오류');
     }
     this.logBusy = false;
+    if (App.page === 'sms' && this.tab === 'log') App.render();
+  },
+
+  /* ---------- 발송 기록 삭제 ---------- */
+  batchIds() { return this.log ? [...new Set(this.log.map(r => r.batch_id))] : []; },
+  delCnt() { const ids = new Set(this.batchIds()); return [...this.del].filter(id => ids.has(id)).length; },
+  delLabel() { const n = this.delCnt(); return this.deleting ? '삭제 중…' : '삭제' + (n ? ` (${n})` : ''); },
+  // 다시 그리지 않고 삭제 버튼·전체 선택 상태만 갱신
+  paintDel(main) {
+    const n = this.delCnt(), all = this.batchIds().length;
+    const b = $('[data-a="del"]', main);
+    if (b) { b.disabled = !n || this.deleting; b.textContent = this.delLabel(); }
+    const ga = $('[data-gall]', main);
+    if (ga) { ga.checked = !!all && n === all; ga.indeterminate = n > 0 && n < all; }
+  },
+  async delLog() {
+    const key = Auth.key();
+    if (!key) { toast('로그인이 필요합니다'); return; }
+    if (this.deleting || !this.log) return;
+    const exist = new Set(this.batchIds());
+    const ids = [...this.del].filter(id => exist.has(id));
+    if (!ids.length) return;
+    const set = new Set(ids);
+    const rowN = this.log.filter(r => set.has(r.batch_id)).length;
+    if (!await confirmDlg(`${ids.length}번 발송(총 ${rowN}건)의 기록을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`, '삭제', true)) return;
+    this.deleting = true;
+    if (App.page === 'sms' && this.tab === 'log') App.render();
+    let n = 0, fail = false;
+    for (let i = 0; i < ids.length; i += 500) {
+      try {
+        const r = await Store.rpc('mg77_sx7_del', { p_key: key, p_batches: ids.slice(i, i + 500) });
+        if (r.ok && r.json && r.json.ok) n += r.json.n || 0;
+        else { fail = true; if (isUnauthorized(r)) toast('로그인 키가 유효하지 않습니다. 다시 로그인하세요'); break; }
+      } catch (_) { fail = true; break; }
+    }
+    this.deleting = false;
+    if (fail) {
+      if (!n) toast('기록을 삭제하지 못했습니다');
+      this.loadLog(false);        // 일부만 지워졌을 수 있으니 서버 기준으로 다시 불러옴
+      return;
+    }
+    this.log = this.log.filter(r => !set.has(r.batch_id));
+    ids.forEach(id => { this.del.delete(id); this.open.delete(id); });
+    toast(`발송 기록 ${n}건을 삭제했습니다`);
     if (App.page === 'sms' && this.tab === 'log') App.render();
   },
 
@@ -424,6 +474,7 @@ const SmsPage = {
         return;
       }
 
+      if (e.target.closest('.sx7-gsel')) return;          // 체크박스 칸은 묶음을 펼치지 않음
       const g = e.target.closest('[data-g]');
       if (g) { const id = g.dataset.g; if (this.open.has(id)) this.open.delete(id); else this.open.add(id); App.render(); return; }
 
@@ -444,6 +495,7 @@ const SmsPage = {
       else if (k === 'tpldel') this.delTpl();
       else if (k === 'reload') this.loadLog(false);
       else if (k === 'more') this.loadLog(true);
+      else if (k === 'del') this.delLog();
     };
     main.onchange = (e) => {
       const t = e.target;
@@ -451,6 +503,14 @@ const SmsPage = {
       else if (t.matches('[data-clssel]')) { this.cls = t.value; this.paintList(main); }
       else if (t.matches('[data-to]')) this.to = t.dataset.to;
       else if (t.matches('[data-tpl]')) this.loadTpl(t.value);
+      else if (t.matches('[data-gsel]')) { if (t.checked) this.del.add(t.dataset.gsel); else this.del.delete(t.dataset.gsel); this.paintDel(main); }
+      else if (t.matches('[data-gall]')) {
+        const on = t.checked;
+        this.del.clear();
+        if (on) this.batchIds().forEach(id => this.del.add(id));
+        $$('[data-gsel]', main).forEach(cb => { cb.checked = on; });
+        this.paintDel(main);
+      }
     };
     main.oninput = (e) => {
       const t = e.target;
@@ -493,6 +553,8 @@ const SmsPage = {
 .sx7-g:last-child { border-bottom: 0; }
 .sx7-gh { display: flex; align-items: center; gap: 12px; padding: 10px 4px; cursor: pointer; border-radius: 6px; }
 .sx7-gh:hover { background: var(--accent-soft); }
+.sx7-gsel { display: flex; align-items: center; padding: 2px; margin: 0; cursor: pointer; flex: none; }
+.sx7-gsel input { margin: 0; width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
 .sx7-when { flex: none; width: 160px; }
 .sx7-gb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx7-gc { flex: none; display: inline-flex; gap: 4px; align-items: center; font-size: 13.5px; color: var(--ink-soft); }
