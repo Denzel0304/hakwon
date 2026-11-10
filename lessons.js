@@ -1,6 +1,6 @@
 /* =========================================================
    lessons.js — 수업일지(입력 전용) / 출석부 / 진도 / 결석 보강
-   lesson: id = L_반ID_YYYYMMDD, { classId, date, progress, homework, memo, att:{학생ID:'P'|'L'|'A'|'E'}, npExams, np, dist }  (np·dist: 아래 내신 진도)
+   lesson: id = L_반ID_YYYYMMDD, { classId, date, progress, homework, memo, att:{학생ID:'P'|'L'|'A'|'E'}, npExams, np, dist, gp }  (np·dist: 아래 내신 진도 / gp: 비내신 진도)
    todo:   { lessonId, classId, date(할일 날짜), text, done, createdAt }
    makeup: id = M_수업ID_학생ID, { lessonId, studentId, classId, absentDate, date, time, status, memo, distGot:[배부 자료 순번] }
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
@@ -11,24 +11,34 @@ const MK_STATUS = { none: '미지정', plan: '예정', done: '완료', skip: '�
 
 /* =========================================================
    내신 진도 — 교재 · 시험 범위 · 진도 · 수업 준비 · 배부 자료 (공용)
-   교재(meta):      id MT_…, { kind:'mat', type:'mock'|'text'|'sub', name, year, month, grade, units:[{ id, name }], createdAt }
+   교재(meta):      id MT_…, { kind:'mat', type:'mock'|'text'|'sub', name, year, month, grade, units:[{ id, name }], createdAt }  ← 시험 교재
+                    id MT_…, { kind:'mat', type:'gen', name, units:[{ id, name }], classIds:[반ID], createdAt }               ← 일반 교재 (비내신, 시험 범위에는 못 씀)
+   시험(exams):      done: true 이면 완료된 시험 → 수업일지·진도 요약의 시험 후보에서 빠짐 (진도 기간 계산에는 그대로 쓰임)
    시험 범위(exams): items:[ { matId, nums:[] }                                  ← 모의고사 (18~45번)
                              { matId, units:[{ id(단위ID), note, nums:[] }] } ]  ← 교과서·부교재 (nums 비면 단위 전체)
    수업일지(lessons): npExams:[시험ID], np:[ { matId, nums:[] }                  ← 모의고사: 이 날 나간 번호
                                             { matId, unitId, nums:[], text, done } ] ← 과·강: 번호 / 메모 / 완결
                       dist:[ { name, refs:['교재ID' | '교재ID:단위ID'], memo } ]  ← 배부 자료
+                      gp:[ { matId(일반 교재), unitId, text, done } ]             ← 비내신 진도 (내신과 동시에 쓰지 않음)
    수동 진도(meta):  id PM_반ID_시험ID, { kind:'pman', classId, examId, mats:{ 교재ID: 표시 } }   (날짜 없이 끝낸 것으로 표시)
    수업 준비(meta):  id PP_교재ID, { kind:'prep', matId, mark: 표시 }                              (교재 기준, 모든 반 공통)
    표시 = { nums:[], units:{ 단위ID: true }, unums:{ 단위ID: [번호] } }
    ========================================================= */
 const MAT_TYPE = { mock: '모의고사', text: '교과서', sub: '부교재' };
-const MAT_ORDER = { mock: 0, text: 1, sub: 2 };
+const MAT_ORDER = { mock: 0, text: 1, sub: 2, gen: 3 };
 const NP = {
   MOCK_MIN: 18, MOCK_MAX: 45,
 
   /* ---------- 교재 ---------- */
   mats() { return Store.where('meta', m => m.kind === 'mat'); },
   mat(id) { const m = Store.get('meta', id); return m && m.kind === 'mat' ? m : null; },
+  examMats() { return this.mats().filter(m => m.type !== 'gen'); },       // 시험 교재 (시험 범위에 쓰는 것)
+  genMats() { return this.mats().filter(m => m.type === 'gen'); },        // 일반 교재 (비내신)
+  // 이 반에 연결된 일반 교재 (+ 이미 기록에 쓴 교재는 연결을 풀었어도 보이게)
+  genMatsFor(classId, extraIds) {
+    const ex = new Set(extraIds || []);
+    return this.genMats().filter(m => (m.classIds || []).includes(classId) || ex.has(m.id)).sort((a, b) => ko(a.name, b.name));
+  },
   matName(m) {
     if (!m) return '(삭제된 교재)';
     return m.type === 'mock' ? `${String(m.year).slice(-2)}년 ${m.month}월 ${gradeLabel(m.grade)} 모의고사` : (m.name || '');
@@ -84,7 +94,7 @@ const NP = {
   },
   // 이 날짜의 "이번 시험": 아직 끝나지 않은 가장 가까운 시험 → 없으면 이번 학기의 날짜 미정 시험
   autoExam(school, grade, date) {
-    const list = this.examsFor(school, grade);
+    const list = this.examsFor(school, grade).filter(e => !e.done);     // 완료된 시험은 자동 선택하지 않음
     const dated = list.filter(e => e.start && (e.end || e.start) >= date).sort((a, b) => ko(a.start, b.start));
     if (dated.length) return dated[0];
     const t = this.term(date);
@@ -111,10 +121,12 @@ const NP = {
   candExams(classId, date, sel) {
     const seen = {};
     const list = [];
-    this.groupsOf(classId, date).forEach(g => this.examsFor(g.school, g.grade).forEach(e => { if (!seen[e.id]) { seen[e.id] = 1; list.push(e); } }));
+    this.groupsOf(classId, date).forEach(g => this.examsFor(g.school, g.grade).filter(e => !e.done).forEach(e => { if (!seen[e.id]) { seen[e.id] = 1; list.push(e); } }));
     (sel || []).forEach(id => { const e = Store.get('exams', id); if (e && !seen[e.id]) { seen[e.id] = 1; list.push(e); } });
     return list.sort((a, b) => this.examKey(b) - this.examKey(a) || ko(this.sch(a.school), this.sch(b.school)) || a.grade - b.grade);
   },
+  // 진행중인 시험만 남김 (진도 탭 요약에서 고른 시험 중 완료 처리된 것은 뺀다)
+  liveIds(ids) { return (ids || []).filter(id => { const e = Store.get('exams', id); return e && !e.done; }); },
   // 이 시험을 위한 진도로 셀 기간: 바로 앞 시험이 끝난 다음날 ~ 이 시험 끝나는 날
   window(ex) {
     const prev = this.examsFor(ex.school, ex.grade).filter(e => e.id !== ex.id && e.end && this.examKey(e) < this.examKey(ex) && (!ex.start || e.end < ex.start));
@@ -239,6 +251,20 @@ const NP = {
     return '';
   },
   lastText(st, mid, uid) { const a = st.mats[mid]; return a && a.last[uid] ? a.last[uid] : null; },
+  // 비내신: 이 반이 일반 교재로 나간 진도 (exclude: 지금 고치는 수업일지는 빼고 계산)
+  genProgress(classId, exclude) {
+    const st = { done: new Set(), any: new Set(), last: {} };
+    Store.where('lessons', l => l.classId === classId && l.id !== exclude).sort((a, b) => ko(a.date, b.date)).forEach(l => {
+      (l.gp || []).forEach(en => {
+        const k = this.key(en.matId, en.unitId);
+        st.any.add(k);
+        if (en.done) st.done.add(k);
+        if (en.text && en.text.trim()) st.last[k] = { date: l.date, text: en.text.trim() };
+      });
+    });
+    return st;
+  },
+  genSt(st, mid, uid) { const k = this.key(mid, uid); return st.done.has(k) ? 'les' : st.any.has(k) ? 'part' : ''; },
   prepNum(k, n) { return k.nums.includes(n); },
   prepUnit(k, ru) { return !!k.units[ru.id] || !!(ru.nums && ru.nums.length && ru.nums.every(n => (k.unums[ru.id] || []).includes(n))); },
   prepUnum(k, uid, n) { return !!k.units[uid] || (k.unums[uid] || []).includes(n); },
@@ -260,6 +286,16 @@ const NP = {
         + (e.text && e.text.trim() ? ' ' + e.text.trim() : '') + (e.done ? '(완결)' : '')).join(', ');
     }).join(' / ');
   },
+  // 비내신 진도 문장
+  genText(l) {
+    const groups = {};
+    (l.gp || []).forEach(en => { (groups[en.matId] = groups[en.matId] || []).push(en); });
+    return Object.keys(groups).map(mid => {
+      const m = this.mat(mid);
+      return this.shortName(m) + ' ' + groups[mid].map(e => this.unitName(m, e.unitId)
+        + (e.text && e.text.trim() ? ' ' + e.text.trim() : '') + (e.done ? '(완결)' : '')).join(', ');
+    }).join(' / ');
+  },
   distText(d) { return (d.name || '자료') + ': ' + (d.refs || []).map(r => this.refLabel(r)).join(', ') + (d.memo ? ' ' + d.memo : ''); },
   distNames() {
     const set = new Set();
@@ -268,8 +304,9 @@ const NP = {
   },
 
   /* ---------- 수업일지 입력 (수업일지 탭 · 진도 탭 수정 창 공용) ---------- */
-  // 입력 상태: { on, exams:null(자동)|[시험ID], items:{ 키: 항목 }, dist:[{ name, refs, memo }] }
-  newState() { return { on: false, exams: null, items: {}, dist: [] }; },
+  // 입력 상태: { on(내신), exams:null(자동)|[시험ID], items:{ 키: 항목 }, dist:[{ name, refs, memo }], gen(비내신), gitems:{ 키: { matId, unitId, text, done } } }
+  // 내신(on)과 비내신(gen)은 둘 중 하나만 켤 수 있다
+  newState() { return { on: false, exams: null, items: {}, dist: [], gen: false, gitems: {} }; },
   key(mid, uid) { return uid ? mid + ':' + uid : mid; },
   fromLesson(l) {
     const st = this.newState();
@@ -278,6 +315,8 @@ const NP = {
     st.dist = JSON.parse(JSON.stringify(l.dist || []));
     st.exams = l.npExams && l.npExams.length ? l.npExams.slice() : null;
     st.on = !!((l.np && l.np.length) || st.dist.length || (l.npExams && l.npExams.length));
+    (l.gp || []).forEach(en => { st.gitems[this.key(en.matId, en.unitId)] = JSON.parse(JSON.stringify(en)); });
+    st.gen = !st.on && !!(l.gp && l.gp.length);
     return st;
   },
   selExams(st, ctx) {
@@ -286,7 +325,12 @@ const NP = {
   },
   // 수업일지에 저장할 값 (내신을 끄면 모두 비움)
   toLesson(st, ctx) {
-    if (!st.on) return { np: [], npExams: [], dist: [] };
+    if (st.gen) {   // 비내신: 일반 교재 진도만
+      const gp = Object.values(st.gitems).filter(en => { const m = this.mat(en.matId); return m && (m.units || []).some(u => u.id === en.unitId); })
+        .map(en => ({ matId: en.matId, unitId: en.unitId, text: stripZws(en.text || '').trim(), done: !!en.done }));
+      return { np: [], npExams: [], dist: [], gp };
+    }
+    if (!st.on) return { np: [], npExams: [], dist: [], gp: [] };
     const np = Object.values(st.items).map(en => {
       const e = { matId: en.matId };
       if (en.unitId) { e.unitId = en.unitId; e.nums = (en.nums || []).slice(); e.text = stripZws(en.text || '').trim(); e.done = !!en.done; }
@@ -295,22 +339,27 @@ const NP = {
     }).filter(e => (e.nums && e.nums.length) || e.text || e.done || e.unitId);
     const dist = st.dist.map(d => ({ name: (d.name || '').trim(), refs: (d.refs || []).slice(), memo: (d.memo || '').trim() }))
       .filter(d => d.name || d.refs.length || d.memo);
-    return { np, npExams: this.selExams(st, ctx).map(e => e.id), dist };
+    return { np, npExams: this.selExams(st, ctx).map(e => e.id), dist, gp: [] };
   },
-  hasInput(st) { return !!(st && st.on && (Object.keys(st.items).length || st.dist.some(d => (d.name || '').trim() || (d.refs || []).length))); },
+  hasInput(st) {
+    if (st && st.gen) return Object.keys(st.gitems).length > 0;
+    return !!(st && st.on && (Object.keys(st.items).length || st.dist.some(d => (d.name || '').trim() || (d.refs || []).length)));
+  },
 
   chipCls(s) { return s === 'les' ? 'done' : s === 'man' ? 'done man' : s === 'part' ? 'part' : ''; },
   editorHtml(st, ctx) {
-    let h = `<label class="chk np-on"><input type="checkbox" data-np-on ${st.on ? 'checked' : ''}>내신</label>`;
+    let h = `<div style="display:flex;gap:16px;flex-wrap:wrap"><label class="chk np-on"><input type="checkbox" data-np-on ${st.on ? 'checked' : ''}>내신</label>
+      <label class="chk np-on"><input type="checkbox" data-np-gen ${st.gen ? 'checked' : ''}>비내신</label></div>`;
+    if (st.gen) return h + this.genEditorHtml(st, ctx);
     if (!st.on) return h;
     const sel = this.selExams(st, ctx);
     const cands = this.candExams(ctx.classId, ctx.date, sel.map(e => e.id));
     h += `<div class="np-box"><div class="np-exams"><span class="small soft">시험</span>${cands.length ? cands.map(e => `<button type="button" class="np-ex ${sel.includes(e) ? 'on' : ''}" data-np-ex="${e.id}" title="${esc(this.examDates(e))}">${esc(this.examLabel(e))} <small>${esc(this.examDates(e))}</small></button>`).join('')
-      : '<span class="small muted">이 반 학생의 학교·학년으로 등록된 시험이 없습니다. 시험정보 탭에서 시험과 범위를 등록하세요.</span>'}
+      : '<span class="small muted">이 반 학생의 학교·학년으로 등록된 시험이 없습니다. 시험+교재 탭에서 시험과 범위를 등록하세요.</span>'}
       ${st.exams ? '<button type="button" class="np-auto" data-np-auto title="수업 날짜 기준으로 다시 고르기">자동</button>' : ''}</div>`;
     const range = this.rangeOf(sel);
     if (!sel.length) return h + '<div class="small muted" style="padding:6px 0">위에서 시험을 고르세요.</div></div>';
-    if (!range.length) return h + '<div class="small muted" style="padding:6px 0">고른 시험에 구조화된 시험 범위가 없습니다. 시험정보에서 범위를 입력하세요.</div></div>';
+    if (!range.length) return h + '<div class="small muted" style="padding:6px 0">고른 시험에 구조화된 시험 범위가 없습니다. 시험+교재 탭에서 범위를 입력하세요.</div></div>';
     const prog = this.progress(ctx.classId, sel, ctx.lessonId);
     range.forEach(r => {
       const m = r.mat, mid = m.id;
@@ -347,16 +396,40 @@ const NP = {
     h += '<div class="np-legend small soft"><span class="np-c done">나감</span><span class="np-c part">진행 중</span><span class="np-c on">오늘</span></div></div>';
     return h;
   },
+  // 비내신 입력: 이 반에 연결된 일반 교재의 과·강을 고르고 메모·완결
+  genEditorHtml(st, ctx) {
+    const mats = this.genMatsFor(ctx.classId, Object.values(st.gitems).map(en => en.matId));
+    if (!mats.length) return '<div class="np-box"><div class="small muted">이 반에 연결된 일반 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
+    const gpr = this.genProgress(ctx.classId, ctx.lessonId);
+    let h = '<div class="np-box">';
+    mats.forEach(m => {
+      const units = m.units || [];
+      h += `<div class="np-mat"><div class="np-mhead"><span class="np-tag">일반</span><b>${esc(m.name)}</b></div>`;
+      h += '<div class="np-chips">' + (units.map(u => `<button type="button" class="np-c ${this.chipCls(this.genSt(gpr, m.id, u.id))} ${st.gitems[this.key(m.id, u.id)] ? 'on' : ''}" data-np-gunit="${m.id}|${u.id}">${esc(u.name)}</button>`).join('')
+        || '<span class="small muted">이 교재에 단위가 없습니다.</span>') + '</div>';
+      units.filter(u => st.gitems[this.key(m.id, u.id)]).forEach(u => {
+        const k = this.key(m.id, u.id), en = st.gitems[k], last = gpr.last[k];
+        h += `<div class="np-urow"><span class="np-ul">${esc(u.name)}</span><input type="text" data-np-gtext="${k}" value="${esc(en.text || '')}" placeholder="${esc(last ? '지난 수업(' + fmtMD(last.date) + '): ' + last.text : '예: 본문3, 3번까지')}">
+          <label class="chk small"><input type="checkbox" data-np-gdone="${k}" ${en.done ? 'checked' : ''}>완결</label></div>`;
+      });
+      h += '</div>';
+    });
+    h += '<div class="np-legend small soft"><span class="np-c done">완결</span><span class="np-c part">진행 중</span><span class="np-c on">오늘</span></div></div>';
+    return h;
+  },
   // 이벤트 처리 → 'redraw'(다시 그림) / true(처리함) / false(관계없음)
   handle(e, st, ctx, type) {
     const t = e.target;
     if (type === 'change') {
-      if (t.matches('[data-np-on]')) { st.on = t.checked; return 'redraw'; }
+      if (t.matches('[data-np-on]')) { st.on = t.checked; if (t.checked) st.gen = false; return 'redraw'; }     // 내신·비내신은 하나만
+      if (t.matches('[data-np-gen]')) { st.gen = t.checked; if (t.checked) st.on = false; return 'redraw'; }
+      if (t.matches('[data-np-gdone]')) { const en = st.gitems[t.dataset.npGdone]; if (en) en.done = t.checked; return true; }
       if (t.matches('[data-np-done]')) { const en = st.items[t.dataset.npDone]; if (en) en.done = t.checked; return true; }
       return false;
     }
     if (type === 'input') {
       if (t.matches('[data-np-text]')) { const en = st.items[t.dataset.npText]; if (en) en.text = t.value; return true; }
+      if (t.matches('[data-np-gtext]')) { const en = st.gitems[t.dataset.npGtext]; if (en) en.text = t.value; return true; }
       if (t.matches('[data-np-dname]')) { const d = st.dist[+t.dataset.npDname]; if (d) d.name = t.value; return true; }
       if (t.matches('[data-np-dmemo]')) { const d = st.dist[+t.dataset.npDmemo]; if (d) d.memo = t.value; return true; }
       return false;
@@ -369,6 +442,11 @@ const NP = {
       return 'redraw';
     }
     if (b('[data-np-auto]')) { st.exams = null; return 'redraw'; }
+    if ((x = b('[data-np-gunit]'))) {
+      const [mid, uid] = x.dataset.npGunit.split('|'), k = this.key(mid, uid);
+      if (st.gitems[k]) delete st.gitems[k]; else st.gitems[k] = { matId: mid, unitId: uid, text: '', done: false };
+      return 'redraw';
+    }
     if ((x = b('[data-np-num]'))) {
       const [mid, n] = x.dataset.npNum.split('|');
       const en = st.items[mid] = st.items[mid] || { matId: mid, nums: [] };
@@ -403,14 +481,14 @@ const NP = {
   summaryHtml(classId, examIds) {
     const today = todayStr();
     const exams = examIds.map(id => Store.get('exams', id)).filter(Boolean);
-    if (!exams.length) return '<div class="panel np-sum"><div class="empty">이 반 학생의 학교·학년으로 볼 시험이 없습니다. 시험정보 탭에서 시험과 범위를 등록하세요.</div></div>';
+    if (!exams.length) return '<div class="panel np-sum"><div class="empty">이 반 학생의 학교·학년으로 볼 시험이 없습니다. 시험+교재 탭에서 시험과 범위를 등록하세요.</div></div>';
     return exams.map(ex => {
       const prog = this.progress(classId, [ex], null);
       const range = this.rangeOf([ex]);
       const dd = ex.start ? Math.round((parseYmd(ex.start) - parseYmd(today)) / 864e5) : null;
       let h = `<div class="panel np-sum"><h2>${esc(this.examLabel(ex))} <span class="sub">${esc(this.examDates(ex))}${dd != null ? (dd > 0 ? ' · D-' + dd : dd === 0 ? ' · D-day' : (ex.end || ex.start) >= today ? ' · 시험 중' : ' · 지난 시험') : ''}</span></h2>`;
       if (ex.range && ex.range.trim()) h += `<div class="small soft pre" style="margin:-6px 0 8px">${esc(ex.range)}</div>`;
-      if (!range.length) return h + '<div class="empty">구조화된 시험 범위가 없습니다. 시험정보에서 범위를 입력하세요.</div></div>';
+      if (!range.length) return h + '<div class="empty">구조화된 시험 범위가 없습니다. 시험+교재 탭에서 범위를 입력하세요.</div></div>';
       range.forEach(r => {
         const m = r.mat, mid = m.id, pk = this.prepOf(mid);
         let cells = [], prepCells = [], tot = 0, dn = 0, pr = 0;
@@ -444,6 +522,23 @@ const NP = {
       });
       return h + '</div>';
     }).join('');
+  },
+  /* ---------- 진도 탭: 비내신 요약 (보기 전용) ---------- */
+  genSummaryHtml(classId) {
+    const used = [];
+    Store.where('lessons', l => l.classId === classId).forEach(l => (l.gp || []).forEach(en => used.push(en.matId)));
+    const mats = this.genMatsFor(classId, used);
+    if (!mats.length) return '<div class="panel np-sum"><div class="empty">이 반에 연결된 일반 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
+    const gpr = this.genProgress(classId, null);
+    return '<div class="panel np-sum"><h2>비내신 진도</h2>' + mats.map(m => {
+      const units = m.units || [];
+      const dn = units.filter(u => this.genSt(gpr, m.id, u.id) === 'les').length;
+      return `<div class="np-srow"><div class="np-mhead"><span class="np-tag">일반</span><b>${esc(m.name)}</b><span class="small soft">완결 ${dn}/${units.length}</span></div>
+        <div class="np-chips">${units.map(u => {
+          const s = this.genSt(gpr, m.id, u.id), last = gpr.last[this.key(m.id, u.id)];
+          return `<span class="np-c ${this.chipCls(s)}" style="cursor:default" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${s === 'part' && last ? ' · ' + esc(last.text) : ''}</span>`;
+        }).join('') || '<span class="small muted">단위가 없습니다.</span>'}</div></div>`;
+    }).join('') + '<div class="np-legend small soft"><span class="np-c done">완결</span><span class="np-c part">진행 중</span></div></div>';
   },
   // 요약 칸 클릭 (처리했으면 true)
   handleSummary(e, classId) {
@@ -485,7 +580,7 @@ const Lessons = {
     if (!l) return true;
     if (Object.keys(l.att || {}).length) return false;
     if ([l.progress, l.homework, l.memo].some(v => stripZws(v || '').trim())) return false;
-    if ((l.np && l.np.length) || (l.dist && l.dist.length)) return false;
+    if ((l.np && l.np.length) || (l.dist && l.dist.length) || (l.gp && l.gp.length)) return false;
     if (Store.where('todos', t => t.lessonId === l.id).length) return false;
     if (Store.where('makeups', m => m.lessonId === l.id).length) return false;
     return true;
@@ -748,14 +843,15 @@ const Lessons = {
     $$('textarea[data-f]', $('#main')).forEach(ta => { f[ta.dataset.f] = ta.value; });
     const id = this.lessonId(f.classId, f.date);
     if (!f.editId && this.isSaved(f.classId, f.date)) { toast('이미 저장된 수업입니다. 수정은 진도 탭에서 하세요'); this.form = null; App.go('lessons', { date: f.date }); return; }
-    $$('[data-np-text],[data-np-dname],[data-np-dmemo]', $('#main')).forEach(i => NP.handle({ target: i }, f.np, { classId: f.classId, date: f.date }, 'input'));
+    $$('[data-np-text],[data-np-dname],[data-np-dmemo],[data-np-gtext]', $('#main')).forEach(i => NP.handle({ target: i }, f.np, { classId: f.classId, date: f.date }, 'input'));
     if (f.editId) { await this.saveEdit(f); return; }
     const np = NP.toLesson(f.np, { classId: f.classId, date: f.date, lessonId: null });
     const rec = { id, classId: f.classId, date: f.date, progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) };
-    if (np.np.length || np.dist.length) Object.assign(rec, np);      // 내신 진도·배부 자료
+    if (np.np.length || np.dist.length) Object.assign(rec, { np: np.np, npExams: np.npExams, dist: np.dist });      // 내신 진도·배부 자료
+    if (np.gp.length) rec.gp = np.gp;                                 // 비내신 진도
     // 아무것도 입력하지 않았으면 저장하지 않는다 (빈 일지는 '작성 안 됨'으로 남기 때문)
     if (!Object.keys(rec.att).length && ![rec.progress, rec.homework, rec.memo].some(v => (v || '').trim())
-      && !(rec.np && rec.np.length) && !(rec.dist && rec.dist.length) && !f.todos.some(d => d.text.trim())) {
+      && !(rec.np && rec.np.length) && !(rec.dist && rec.dist.length) && !(rec.gp && rec.gp.length) && !f.todos.some(d => d.text.trim())) {
       await alertDlg('저장할 내용 없음', '입력한 내용이 없습니다.\n이 수업의 일지를 쓰지 않으려면 "일지 건너뛰기"를 사용하세요.');
       return;
     }
@@ -781,7 +877,8 @@ const Lessons = {
     if (!old) { toast('일지를 찾을 수 없습니다'); this.form = null; App.go('lessons', { date: f.date }); return; }
     const np = NP.toLesson(f.np, { classId: f.classId, date: f.date, lessonId: id });
     const rec = Object.assign({}, old, { progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) });
-    if (np.np.length || np.dist.length) Object.assign(rec, np); else { delete rec.np; delete rec.npExams; delete rec.dist; }
+    if (np.np.length || np.dist.length) Object.assign(rec, { np: np.np, npExams: np.npExams, dist: np.dist }); else { delete rec.np; delete rec.npExams; delete rec.dist; }
+    if (np.gp.length) rec.gp = np.gp; else delete rec.gp;
     Store.put('lessons', rec);
     // 할일: 폼에 남은 기존 할일은 고치고, 빠진 기존 할일은 지우고, 새 칸은 추가
     const keep = new Set(f.todos.filter(d => d.id && d.text.trim()).map(d => d.id));
@@ -1071,6 +1168,7 @@ const ProgressBook = {
   q: '', from: '', to: '',
   npOn: false,          // 내신 요약 보기
   npSel: {},            // 반별로 고른 시험 { 반ID: [시험ID] } (없으면 오늘 기준 자동)
+  gpOn: false,          // 비내신 요약 보기
 
   render(main, p) {
     // 진도 탭은 진행 중인 반만 (종료된 반은 제외)
@@ -1089,29 +1187,30 @@ const ProgressBook = {
     const todosOf = (lid) => Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
     const list = Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l))
       .filter(l => (!this.from || l.date >= this.from) && (!this.to || l.date <= this.to))
-      .filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), ...(l.dist || []).map(d => NP.distText(d)), ...todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
+      .filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), NP.genText(l), ...(l.dist || []).map(d => NP.distText(d)), ...todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
       .sort((a, b) => ko(b.date, a.date));
     h += `<div class="toolbar">${clsSel}<input type="search" data-q value="${esc(this.q)}" placeholder="진도·숙제·메모·할일 검색" style="width:240px">
       <input type="date" data-from value="${esc(this.from)}"> ~ <input type="date" data-to value="${esc(this.to)}">
       ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}<span class="muted small">${list.length}회</span>
-      <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label></div>`;
+      <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     // 내신 요약: 시험 범위 · 진도 · 수업 준비 · 배부 자료
     if (this.npOn) {
       const today = todayStr();
-      const sel = this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id);
+      const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
       const cands = NP.candExams(this.classId, today, sel);
       h += `<div class="np-exams" style="margin-bottom:10px"><span class="small soft">시험</span>${cands.map(e => `<button type="button" class="np-ex ${sel.includes(e.id) ? 'on' : ''}" data-npsx="${e.id}">${esc(NP.examLabel(e))} <small>${esc(NP.examDates(e))}</small></button>`).join('') || '<span class="small muted">등록된 시험이 없습니다.</span>'}
         ${this.npSel[this.classId] ? '<button type="button" class="np-auto" data-npsauto>자동</button>' : ''}</div>`;
       h += NP.summaryHtml(this.classId, sel);
       h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 날짜 없이 끝낸 것으로 표시하거나 취소합니다 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
     }
+    if (this.gpOn) h += NP.genSummaryHtml(this.classId) + '<div style="height:14px"></div>';
     h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:760px"><colgroup><col style="width:100px"><col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th><th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '<span class="muted">-</span>';
       const tds = todosOf(l.id);
       return `<tr class="click ${p.date === l.date ? 'hl' : ''}" data-id="${l.id}"><td class="nowrap"><b>${fmtMD(l.date)}</b></td><td class="nowrap small">${att}</td>
-        <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(l.homework || '', q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
+        <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(l.homework || '', q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
         <td class="small">${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted">${fmtMD(t.date)}</span></div>`).join('')}</td></tr>`;
     }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
     h += '</div>';
@@ -1135,6 +1234,7 @@ const ProgressBook = {
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-npsum]')) { this.npOn = e.target.checked; App.render(); return; }
+      if (e.target.matches('[data-gpsum]')) { this.gpOn = e.target.checked; App.render(); return; }
       if (e.target.matches('[data-pcls]') && e.target.value) { this.classId = e.target.value; App.go('progress', {}); return; }
       if (e.target.matches('[data-from]')) { this.from = e.target.value; App.render(); }
       if (e.target.matches('[data-to]')) { this.to = e.target.value; App.render(); }
@@ -1208,7 +1308,8 @@ const ProgressBook = {
           }
           const npv = NP.toLesson(npSt, { classId: l.classId, date: nd, lessonId: id });
           const nrec = Object.assign({}, Store.get('lessons', id) || l, { id: lid, date: nd, progress: g('progress'), homework: g('homework'), memo: g('memo') });
-          if (npv.np.length || npv.dist.length) Object.assign(nrec, npv); else { delete nrec.np; delete nrec.npExams; delete nrec.dist; }
+          if (npv.np.length || npv.dist.length) Object.assign(nrec, { np: npv.np, npExams: npv.npExams, dist: npv.dist }); else { delete nrec.np; delete nrec.npExams; delete nrec.dist; }
+          if (npv.gp.length) nrec.gp = npv.gp; else delete nrec.gp;
           Store.put('lessons', nrec);
           if (lid !== id) {
             // 날짜를 옮기면 딸린 할일·보강 기록도 새 날짜 수업으로 옮긴다
@@ -1261,11 +1362,12 @@ const Makeups = {
   },
 
   copyText(o) {
-    const np = NP.text(o.l), dist = (o.l.dist || []).map(d => NP.distText(d));
+    const np = NP.text(o.l), gp = NP.genText(o.l), dist = (o.l.dist || []).map(d => NP.distText(d));
     const pg = stripZws(o.l.progress);
     const lines = [`[${fmtDate(o.l.date)} ${o.c ? o.c.name : ''}]`];
-    if (pg || !np) lines.push('진도: ' + (pg || '-'));
+    if (pg || (!np && !gp)) lines.push('진도: ' + (pg || '-'));
     if (np) lines.push('내신 진도: ' + np);
+    if (gp) lines.push('비내신 진도: ' + gp);
     if (dist.length) lines.push('배부 자료: ' + dist.join(' / '));
     lines.push('숙제: ' + (stripZws(o.l.homework) || '-'));
     return lines.join('\n');
@@ -1297,6 +1399,7 @@ const Makeups = {
           <button class="btn sm ghost" data-golesson="${o.l.id}">진도 보기</button></div>
         <div class="mk-copy"><div><span class="k">진도</span><span class="pre">${esc(stripZws(o.l.progress)) || '<span class="muted">입력 전</span>'}</span></div>
           ${(o.l.np || []).length ? `<div><span class="k">내신</span><span>${esc(NP.text(o.l))}</span></div>` : ''}
+          ${(o.l.gp || []).length ? `<div><span class="k">비내신</span><span>${esc(NP.genText(o.l))}</span></div>` : ''}
           <div><span class="k">숙제</span><span class="pre">${esc(stripZws(o.l.homework)) || '<span class="muted">입력 전</span>'}</span></div>
           ${(o.l.dist || []).length ? `<div><span class="k">배부</span><span>${o.l.dist.map((d, i) => `<label class="chk small mk-dist ${(mk.distGot || []).includes(i) ? 'got' : ''}"><input type="checkbox" data-mdist="${i}" ${(mk.distGot || []).includes(i) ? 'checked' : ''}>${esc(NP.distText(d))}</label>`).join('')}</span></div>` : ''}</div>
         <div class="mk-ctl">

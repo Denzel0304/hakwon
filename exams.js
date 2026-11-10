@@ -1,8 +1,9 @@
 /* =========================================================
    exams.js — 시험정보 + 성적(내신 / 모의고사)
    exam:  { school, grade, year, semester, kind:'mid'|'final', start, end, range(기타 범위·메모),
-            items(구조화된 시험 범위 — lessons.js의 NP 설명 참고), mcCount, mcPoints, essayCount, essayPoints, memo }
-   교재(모의고사·교과서·부교재)는 meta 테이블에 저장 (NP.mats)
+            items(구조화된 시험 범위 — lessons.js의 NP 설명 참고), fmt:'mc'(객관식만)|'mix'(객관식+서술형), memo,
+            done(완료된 시험), doneAt }
+   교재는 meta 테이블에 저장 (NP.mats): 시험 교재(모의고사·교과서·부교재) / 일반 교재(type 'gen', 사용하는 반 classIds)
    score: id = S_학생_연도_학기_시험, { studentId, year, semester, kind, score, level:'9-2'|'5-1'|'', school, grade }
    mock:  { year, month, grade, memo }
    mock_score: id = MS_회차_학생, { mockId, studentId, raw, wrong:[번호] }
@@ -11,60 +12,232 @@ const Exams = {
   year: '',
   sem: '',
   q: '',
-  tab: 'exam',          // 'exam' 시험 / 'mat' 교재
+  tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재
   matType: '',
+  sel: new Set(),       // 체크한 항목 (탭을 바꾸거나 조건을 바꾸면 비움)
+  prepOpen: new Set(),  // 수업 준비 칸을 펼친 시험
 
-  formatLabel(ex) {
-    const mc = +ex.mcCount || 0, es = +ex.essayCount || 0;
-    if (!mc && !es) return '';
-    if (!es) return `전 문항 객관식 ${mc}문항` + (ex.mcPoints !== '' && ex.mcPoints != null ? ` (${ex.mcPoints}점)` : '');
-    const a = mc ? `객관식 ${mc}문항${ex.mcPoints !== '' && ex.mcPoints != null ? ' ' + ex.mcPoints + '점' : ''}` : '';
-    const b = `서술형 ${es}문항${ex.essayPoints !== '' && ex.essayPoints != null ? ' ' + ex.essayPoints + '점' : ''}`;
-    return [a, b].filter(Boolean).join(' / ');
+  FMT: { mc: '객관식만', mix: '객관식+서술형' },
+  // 형식: fmt 'mc' | 'mix' (예전 기록은 문항 수로 판단)
+  fmtOf(ex) { return this.FMT[ex.fmt] ? ex.fmt : (+ex.essayCount ? 'mix' : +ex.mcCount ? 'mc' : ''); },
+  formatLabel(ex) { return this.FMT[this.fmtOf(ex)] || ''; },
+
+  /* ---------- 공통 머리 · 탭 · 일괄 처리 줄 ---------- */
+  headHtml() {
+    return `<div class="page-head"><h1>시험+교재</h1><button class="btn primary" data-a="add">+ 시험 등록</button><button class="btn primary" data-a="addmat">+ 교재 등록</button>
+      <span class="sub">학교별 시험 기간·범위·형식 · 시험 교재 · 일반 교재</span></div>`;
+  },
+  tabsHtml() {
+    const ex = Store.all('exams'), dn = ex.filter(e => e.done).length;
+    const t = (k, label, n) => `<button data-xtab="${k}" class="${this.tab === k ? 'active' : ''}">${label}<span class="cnt">${n}</span></button>`;
+    return `<div class="tabs">${t('exam', '진행중인 시험', ex.length - dn)}${t('done', '완료된 시험', dn)}${t('mat', '시험 교재', NP.examMats().length)}${t('gen', '일반 교재', NP.genMats().length)}</div>`;
+  },
+  tabClick(e) {
+    const t = e.target.closest('[data-xtab]'); if (!t) return false;
+    if (this.tab !== t.dataset.xtab) { this.tab = t.dataset.xtab; this.sel.clear(); }
+    App.render(); return true;
+  },
+  // 체크하면 살아나는 버튼 줄 (늘 자리를 차지해서 목록이 밀리지 않게)
+  bulkHtml(acts) {
+    const n = this.sel.size;
+    return `<div class="bulk-bar${n ? '' : ' off'}" data-bulkbar><b class="x7-cnt" data-selcnt>${n}개 선택</b>
+      ${acts.map(([a, t, cls]) => `<button class="btn sm ${cls || ''}" data-bulk="${a}" ${n ? '' : 'disabled'}>${t}</button>`).join('')}
+      <span style="flex:1"></span><button class="btn sm" data-bulk="clear" ${n ? '' : 'disabled'}>선택 해제</button></div>`;
+  },
+  chkTh(ids) {
+    const all = ids.length > 0 && ids.every(id => this.sel.has(id));
+    return `<th class="chk-th"><label class="chk-hit" title="전체 선택"><input type="checkbox" data-chkall ${all ? 'checked' : ''}></label></th>`;
+  },
+  chkTd(id) { return `<td class="chk-td"><label class="chk-hit"><input type="checkbox" data-chk="${id}" ${this.sel.has(id) ? 'checked' : ''}></label></td>`; },
+  // 다시 그리지 않고 일괄 처리 줄과 전체 선택 칸만 맞춘다
+  updBulk(main) {
+    const bar = $('[data-bulkbar]', main), cnt = $('[data-selcnt]', main), ca = $('[data-chkall]', main);
+    const boxes = $$('[data-chk]', main);
+    if (bar) { bar.classList.toggle('off', !this.sel.size); $$('[data-bulk]', bar).forEach(b => { b.disabled = !this.sel.size; }); }
+    if (cnt) cnt.textContent = this.sel.size + '개 선택';
+    if (ca) { ca.checked = boxes.length > 0 && boxes.every(c => c.checked); ca.indeterminate = this.sel.size > 0 && !ca.checked; }
+  },
+  // 체크박스·일괄 버튼·등록 버튼 (시험·교재 화면 공용). 처리했으면 true
+  commonClick(e, main) {
+    if (this.tabClick(e)) return true;
+    if (e.target.closest('[data-a=add]')) { this.openModal(null); return true; }
+    if (e.target.closest('[data-a=addmat]')) { this.openMatModal(null); return true; }
+    const bk = e.target.closest('[data-bulk]');
+    if (bk) { if (!bk.disabled) this.bulk(bk.dataset.bulk); return true; }
+    if (e.target.closest('.chk-hit')) return true;       // 체크박스 칸은 창을 열지 않음
+    return false;
+  },
+  commonChange(e, main) {
+    if (e.target.matches('[data-chk]')) { if (e.target.checked) this.sel.add(e.target.dataset.chk); else this.sel.delete(e.target.dataset.chk); this.updBulk(main); return true; }
+    if (e.target.matches('[data-chkall]')) {
+      $$('[data-chk]', main).forEach(c => { c.checked = e.target.checked; if (c.checked) this.sel.add(c.dataset.chk); else this.sel.delete(c.dataset.chk); });
+      this.updBulk(main); return true;
+    }
+    return false;
   },
 
+  /* ---------- 시험 목록 (진행중 / 완료) ---------- */
   render(main) {
-    if (this.tab === 'mat') { this.renderMats(main); return; }
+    if (this.tab === 'mat' || this.tab === 'gen') { this.renderMats(main); return; }
+    const done = this.tab === 'done';
     const all = Store.all('exams');
     const years = [...new Set([new Date().getFullYear(), ...all.map(e => +e.year)])].sort((a, b) => b - a);
     const q = this.q.trim();
-    const list = all.filter(e => (!this.year || +e.year === +this.year) && (!this.sem || +e.semester === +this.sem))
+    const list = all.filter(e => !!e.done === done)
+      .filter(e => (!this.year || +e.year === +this.year) && (!this.sem || +e.semester === +this.sem))
       .filter(e => !q || [e.school, examTitle(e), e.range, NP.rangeText(e), e.memo].some(v => String(v || '').includes(q)))
       .sort((a, b) => b.year - a.year || b.semester - a.semester || (a.kind === b.kind ? 0 : a.kind === 'final' ? -1 : 1) || ko(a.school, b.school) || a.grade - b.grade);
-    let h = `<div class="page-head"><h1>시험정보</h1><button class="btn primary" data-a="add">+ 시험 등록</button><span class="sub">학교별 시험 기간·범위·형식</span></div>
-      ${this.tabsHtml()}
+    const ids = list.map(e => e.id);
+    [...this.sel].forEach(id => { if (!ids.includes(id)) this.sel.delete(id); });     // 보이지 않는 항목은 선택에서 뺀다
+    const cols = done ? 6 : 7;
+    let h = this.headHtml() + this.tabsHtml() + `
       <div class="toolbar">
         <select data-year><option value="">전체 연도</option>${years.map(y => `<option value="${y}" ${+this.year === y ? 'selected' : ''}>${y}년</option>`).join('')}</select>
         <select data-sem><option value="">전체 학기</option><option value="1" ${this.sem === '1' ? 'selected' : ''}>1학기</option><option value="2" ${this.sem === '2' ? 'selected' : ''}>2학기</option></select>
         <input type="search" data-q placeholder="학교, 범위, 메모 검색" value="${esc(this.q)}" style="width:240px">
         <span class="muted small">${list.length}건</span></div>`;
-    h += list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>학교·학년</th><th>시험</th><th>시험 기간</th><th>범위</th><th>형식</th></tr></thead><tbody>${list.map(e => `
-      <tr class="click" data-id="${e.id}"><td class="nowrap"><b>${highlight(schoolShort(e.school), q)}</b> ${gradeLabel(e.grade)}</td>
+    h += this.bulkHtml(done ? [['undone', '진행중으로 되돌리기'], ['delexam', '선택 삭제', 'danger']] : [['done', '완료 처리'], ['delexam', '선택 삭제', 'danger']]);
+    h += list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr>${this.chkTh(ids)}<th>학교·학년</th><th>시험</th><th>시험 기간</th><th>범위</th><th>형식</th>${done ? '' : '<th>수업 준비</th>'}</tr></thead><tbody>${list.map(e => {
+      const open = !done && this.prepOpen.has(e.id);
+      const pi = done ? null : this.prepInfo(e);
+      return `<tr class="click" data-id="${e.id}">${this.chkTd(e.id)}<td class="nowrap"><b>${highlight(schoolShort(e.school), q)}</b> ${gradeLabel(e.grade)}</td>
       <td class="nowrap">${e.year}년 ${e.semester}학기 ${EXAM_KIND[e.kind]}</td>
       <td class="nowrap">${e.start ? fmtMD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtMD(e.end) : '') : '<span class="muted">미정</span>'}</td>
-      <td class="pre small">${NP.rangeText(e) ? `<div>${highlight(NP.rangeText(e), q)}</div>` : ''}${e.range ? `<div class="${NP.rangeText(e) ? 'soft' : ''}">${highlight(e.range, q)}</div>` : ''}</td><td class="small">${esc(this.formatLabel(e))}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 시험이 없습니다.' : '등록된 시험이 없습니다. “시험 등록”으로 학교별 시험 범위를 기록하세요.'}</div></div>`;
+      <td class="pre small">${NP.rangeText(e) ? `<div>${highlight(NP.rangeText(e), q)}</div>` : ''}${e.range ? `<div class="${NP.rangeText(e) ? 'soft' : ''}">${highlight(e.range, q)}</div>` : ''}</td><td class="small nowrap">${esc(this.formatLabel(e))}</td>
+      ${done ? '' : `<td class="x7-prepcell ${open ? 'on' : ''}" data-prep="${e.id}" title="눌러서 수업 준비 표시">${this.prepCellHtml(pi, open)}</td>`}</tr>
+      ${open ? `<tr class="x7-prow"><td colspan="${cols}">${this.prepChipsHtml(pi)}</td></tr>` : ''}`;
+    }).join('')}</tbody></table></div>`
+      : `<div class="panel"><div class="empty">${all.some(e => !!e.done === done) ? '조건에 맞는 시험이 없습니다.' : done ? '완료된 시험이 없습니다. 진행중인 시험에서 체크한 뒤 “완료 처리”를 누르면 이곳으로 옮겨집니다.' : '진행중인 시험이 없습니다. “시험 등록”으로 학교별 시험 범위를 기록하세요.'}</div></div>`;
     main.innerHTML = h;
+    this.updBulk(main);
     main.onclick = (e) => {
-      if (this.tabClick(e)) return;
-      if (e.target.closest('[data-a=add]')) { this.openModal(null); return; }
+      if (this.commonClick(e, main)) return;
+      const pp = e.target.closest('[data-pp]');
+      if (pp) { const [mid, what, uid, n] = pp.dataset.pp.split('|'); NP.togglePrep(mid, what, uid, n ? +n : null); App.render(); return; }
+      const pc = e.target.closest('[data-prep]');
+      if (pc) { const id = pc.dataset.prep; if (this.prepOpen.has(id)) this.prepOpen.delete(id); else this.prepOpen.add(id); App.render(); return; }
+      if (e.target.closest('.x7-prow')) return;
       const tr = e.target.closest('tr[data-id]'); if (tr) this.openModal(tr.dataset.id);
     };
     main.onchange = (e) => {
-      if (e.target.matches('[data-year]')) { this.year = e.target.value; App.render(); }
-      if (e.target.matches('[data-sem]')) { this.sem = e.target.value; App.render(); }
+      if (this.commonChange(e, main)) return;
+      if (e.target.matches('[data-year]')) { this.year = e.target.value; this.sel.clear(); App.render(); }
+      if (e.target.matches('[data-sem]')) { this.sem = e.target.value; this.sel.clear(); App.render(); }
     };
     main.oninput = debounce((e) => {
-      if (e.target.matches('[data-q]')) { this.q = e.target.value; App.render(); const i = $('[data-q]', main); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+      if (e.target.matches('[data-q]')) { this.q = e.target.value; this.sel.clear(); App.render(); const i = $('[data-q]', main); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
     }, 250);
   },
 
+  /* ---------- 수업 준비 (교재 기준 · 진도 탭 내신 요약과 같은 기록) ---------- */
+  // 범위를 칸 하나하나로 펼쳐 준비 여부를 센다 → { groups:[{ mat, cells }], tot, ok, next }
+  prepInfo(ex) {
+    const groups = [];
+    let tot = 0, ok = 0, next = null;
+    NP.rangeOf([ex]).forEach(r => {
+      const m = r.mat, pk = NP.prepOf(m.id), cells = [];
+      const add = (c) => { cells.push(c); tot++; if (c.ok) ok++; else if (!next) { next = c; c.next = true; } };
+      if (m.type === 'mock') r.nums.forEach(n => add({ ok: NP.prepNum(pk, n), pp: `${m.id}|num||${n}`, text: String(n), label: `${NP.shortName(m)} ${n}번` }));
+      else r.units.forEach(u => {
+        if (!u.nums) add({ ok: NP.prepUnit(pk, u), pp: `${m.id}|unit|${u.id}|`, text: u.name, label: `${m.name} ${u.name}` });
+        else u.nums.forEach(n => add({ ok: NP.prepUnum(pk, u.id, n), pp: `${m.id}|unum|${u.id}|${n}`, text: String(n), unit: u, label: `${m.name} ${u.name} ${n}번` }));
+      });
+      groups.push({ mat: m, cells });
+    });
+    return { groups, tot, ok, next };
+  },
+  prepCellHtml(pi, open) {
+    if (!pi.tot) return '<span class="small muted">범위 없음</span>';
+    const pct = Math.round(pi.ok / pi.tot * 100);
+    return `<div class="x7-pp"><b>준비 ${pi.ok} / ${pi.tot}</b><span class="x7-bar"><i style="width:${pct}%"></i></span><span class="x7-ar">${open ? '▲' : '▼'}</span></div>
+      <div class="small ${pi.next ? 'x7-nx' : 'x7-ok'}">${pi.next ? '다음: ' + esc(pi.next.label) : '준비 완료 ✓'}</div>`;
+  },
+  prepChipsHtml(pi) {
+    if (!pi.tot) return '<div class="small muted">구조화된 시험 범위가 없습니다. 시험을 눌러 범위를 입력하세요.</div>';
+    const chip = (c) => `<button type="button" class="np-c ${c.ok ? 'prep' : ''} ${c.next ? 'x7-next' : ''}" data-pp="${c.pp}">${esc(c.text)}</button>`;
+    return pi.groups.map(g => {
+      const m = g.mat, okN = g.cells.filter(c => c.ok).length;
+      // 번호가 있는 과·강은 이름표 뒤에 번호를 묶어 보여준다
+      let body = '', grp = null;
+      g.cells.forEach(c => {
+        if (c.unit) {
+          if (grp !== c.unit.id) { if (grp) body += '</span>'; grp = c.unit.id; body += `<span class="np-grp"><span class="np-ul">${esc(c.unit.name)}</span>`; }
+        } else if (grp) { body += '</span>'; grp = null; }
+        body += chip(c);
+      });
+      if (grp) body += '</span>';
+      return `<div class="np-srow"><div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(NP.matName(m))}</b><span class="small soft">준비 ${okN}/${g.cells.length}</span></div>
+        <div class="np-chips">${body}</div></div>`;
+    }).join('') + `<div class="np-legend small soft"><span class="np-c prep">준비 완료</span><span class="np-c x7-next">다음</span>
+      <span>누르면 준비 완료 / 취소 · 같은 교재를 쓰는 다른 시험과 진도 탭 내신 요약에도 함께 표시됩니다</span></div>`;
+  },
+
+  /* ---------- 일괄 처리 ---------- */
+  async bulk(act) {
+    if (act === 'clear') { this.sel.clear(); App.render(); return; }
+    if (act === 'delmat') { await this.delMats([...this.sel]); return; }
+    const list = [...this.sel].map(id => Store.get('exams', id)).filter(Boolean);
+    if (!list.length) return;
+    if (act === 'done') {
+      if (!await confirmDlg(`시험 ${list.length}개를 완료 처리할까요?\n완료된 시험 탭으로 옮겨지고, 수업일지·진도 요약의 시험 선택에는 나오지 않습니다.`, '완료 처리')) return;
+      const now = new Date().toISOString();
+      list.forEach(e => Store.put('exams', Object.assign({}, e, { done: true, doneAt: now })));
+      list.forEach(e => this.prepOpen.delete(e.id));
+      this.sel.clear(); toast(`시험 ${list.length}개를 완료된 시험으로 옮겼습니다`); App.render();
+    } else if (act === 'undone') {
+      if (!await confirmDlg(`시험 ${list.length}개를 진행중인 시험으로 되돌릴까요?`, '되돌리기')) return;
+      list.forEach(e => { const r = Object.assign({}, e); delete r.done; delete r.doneAt; Store.put('exams', r); });
+      this.sel.clear(); toast(`시험 ${list.length}개를 진행중인 시험으로 되돌렸습니다`); App.render();
+    } else if (act === 'delexam') {
+      if (!await confirmDlg(`시험 ${list.length}개를 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`, '삭제', true)) return;
+      list.forEach(e => {
+        Store.del('exams', e.id);
+        Store.delWhere('meta', m => m.kind === 'pman' && m.examId === e.id);   // 이 시험의 수동 진도 표시
+        this.prepOpen.delete(e.id);
+      });
+      this.sel.clear(); toast(`시험 ${list.length}개를 삭제했습니다`); App.render();
+    }
+  },
+  // 교재가 연결된 곳 (시험 교재: 시험 / 일반 교재: 반) → 문장 목록
+  matLinks(m) {
+    if (m.type === 'gen') return (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean).map(c => '반: ' + c.name + (c.active === false ? ' (종료)' : ''));
+    return Store.where('exams', e => (e.items || []).some(it => it.matId === m.id))
+      .sort((a, b) => b.year - a.year || b.semester - a.semester || ko(a.school, b.school) || a.grade - b.grade)
+      .map(e => `시험: ${schoolShort(e.school)} ${gradeLabel(e.grade)} · ${e.year}년 ${e.semester}학기 ${EXAM_KIND[e.kind] || ''}${e.done ? ' (완료된 시험)' : ''}`);
+  },
+  // 연결돼 있어 지우지 못한 교재 안내 (메모할 수 있게 모달로)
+  showBlocked(blocked, deleted) {
+    Modal.open({
+      title: '삭제할 수 없는 교재', size: 'lg', autofocus: false,
+      body: `${deleted ? `<p class="small" style="margin-top:0">${deleted}개는 삭제했습니다.</p>` : ''}
+        <p class="small" style="margin-top:0">아래 교재는 연결된 곳이 있어 삭제하지 않았습니다. 연결을 먼저 풀어 주세요.
+        <span class="soft">(시험 교재: 시험 범위에서 빼기 / 일반 교재: 교재 수정에서 반 연결 해제)</span></p>
+        ${blocked.map(({ m, links }) => `<div class="x7-blk"><div><span class="np-tag ${m.type}">${m.type === 'gen' ? '일반' : MAT_TYPE[m.type]}</span> <b>${esc(NP.matName(m))}</b> <span class="small soft">${links.length}곳</span></div>
+          <ul>${links.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('')}`,
+      buttons: [{ text: '확인', cls: 'primary', primary: true }],
+    });
+  },
+  async delMats(ids) {
+    const mats = ids.map(id => NP.mat(id)).filter(Boolean);
+    if (!mats.length) return;
+    const blocked = [], ok = [];
+    mats.forEach(m => { const links = this.matLinks(m); if (links.length) blocked.push({ m, links }); else ok.push(m); });
+    if (!ok.length) { this.showBlocked(blocked, 0); return; }
+    if (!await confirmDlg(`교재 ${ok.length}개를 삭제할까요?${blocked.length ? `\n연결된 교재 ${blocked.length}개는 삭제하지 않습니다.` : ''}\n시험 교재의 수업 준비 표시도 함께 지워집니다.`, '삭제', true)) return;
+    ok.forEach(m => { Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id)); this.sel.delete(m.id); });
+    toast(`교재 ${ok.length}개를 삭제했습니다`);
+    App.render();
+    if (blocked.length) this.showBlocked(blocked, ok.length);
+  },
+
+  /* ---------- 시험 등록 / 수정 ---------- */
   openModal(id) {
     const ex = id ? Store.get('exams', id) : null;
     const now = new Date();
-    const v = ex || { school: '', grade: 10, year: now.getFullYear(), semester: now.getMonth() >= 6 ? 2 : 1, kind: 'mid', start: '', end: '', range: '', mcCount: '', mcPoints: '', essayCount: '', essayPoints: '', memo: '' };
+    const v = ex || { school: '', grade: 10, year: now.getFullYear(), semester: now.getMonth() >= 6 ? 2 : 1, kind: 'mid', start: '', end: '', range: '', memo: '' };
+    const fmt = ex ? this.fmtOf(ex) : '';
     // 구조화된 시험 범위 (편집용 사본)
-    const items = JSON.parse(JSON.stringify(v.items || [])).filter(it => NP.mat(it.matId));
+    const items = JSON.parse(JSON.stringify(v.items || [])).filter(it => { const m = NP.mat(it.matId); return m && m.type !== 'gen'; });
     const body = `<div class="form">
       <label class="req">학교·학년</label><div class="row"><input type="text" name="school" list="dl-schools" value="${esc(v.school)}" placeholder="예: 금천고" style="flex:1"><select name="grade">${gradeOptions(v.grade)}</select></div>
       <label class="req">시험</label><div class="row"><input type="number" name="year" value="${esc(v.year)}" min="2000" max="2100" style="width:90px">년
@@ -73,8 +246,7 @@ const Exams = {
       <label>시험 기간</label><div class="row"><input type="date" name="start" value="${esc(v.start)}"> ~ <input type="date" name="end" value="${esc(v.end)}"><span class="hint">하루면 시작일만</span></div>
       <label class="top">시험 범위</label><div data-rbox></div>
       <label class="top">기타 범위·메모</label><textarea name="range" rows="3" placeholder="교재로 등록하지 않은 범위나 참고 사항 (예: 프린트 1-3)">${esc(v.range)}</textarea>
-      <label>객관식</label><div class="row"><input type="number" name="mcCount" min="0" max="100" value="${esc(v.mcCount)}">문항 <input type="number" name="mcPoints" min="0" max="1000" step="0.1" value="${esc(v.mcPoints)}">점</div>
-      <label>서술형</label><div class="row"><input type="number" name="essayCount" min="0" max="100" value="${esc(v.essayCount)}">문항 <input type="number" name="essayPoints" min="0" max="1000" step="0.1" value="${esc(v.essayPoints)}">점<span class="hint">없으면 비워 두세요 (전 문항 객관식)</span></div>
+      <label class="req">형식</label><div class="row">${Object.keys(this.FMT).map(k => `<label class="chk"><input type="radio" name="fmt" value="${k}" ${fmt === k ? 'checked' : ''}>${this.FMT[k]}</label>`).join('')}</div>
       <label class="top">메모</label><textarea name="memo" rows="3">${esc(v.memo)}</textarea>
     </div>`;
     Modal.open({
@@ -124,7 +296,7 @@ const Exams = {
             draw();
             return;
           }
-          if (t.closest('[data-gomat]')) { Modal.top().close(); this.tab = 'mat'; App.go('exams', {}); }
+          if (t.closest('[data-gomat]')) { Modal.top().close(); this.tab = 'mat'; this.sel.clear(); App.go('exams', {}); }
         });
       },
       buttons: [
@@ -132,27 +304,29 @@ const Exams = {
           if (!await confirmDlg('이 시험 정보를 삭제할까요?', '삭제', true)) return false;
           Store.del('exams', ex.id);
           Store.delWhere('meta', m => m.kind === 'pman' && m.examId === ex.id);   // 이 시험의 수동 진도 표시
+          this.sel.delete(ex.id); this.prepOpen.delete(ex.id);
           toast('삭제했습니다'); App.render();
         } }] : []),
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
           const b = m.body, g = (n) => $(`[name=${n}]`, b).value;
-          const num = (n) => g(n) === '' ? '' : +g(n);
+          const fv = ($('[name=fmt]:checked', b) || {}).value || '';
           const rec = Object.assign({}, ex || { id: uid('EX'), createdAt: new Date().toISOString() }, {
             school: g('school').trim(), grade: +g('grade'), year: +g('year'), semester: +g('semester'), kind: g('kind'),
-            start: g('start'), end: g('end'), range: stripZws(g('range')),
-            mcCount: num('mcCount'), mcPoints: num('mcPoints'), essayCount: num('essayCount'), essayPoints: num('essayPoints'),
+            start: g('start'), end: g('end'), range: stripZws(g('range')), fmt: fv,
             memo: stripZws(g('memo')),
           });
+          delete rec.mcCount; delete rec.mcPoints; delete rec.essayCount; delete rec.essayPoints;   // 예전 문항 수·배점 (형식으로 바뀜)
           if (!rec.school) { toast('학교를 입력하세요'); return false; }
           if (!rec.year || rec.year < 2000) { toast('연도를 확인하세요'); return false; }
           if (rec.end && !rec.start) { toast('시작일을 입력하세요'); return false; }
           if (rec.start && rec.end && rec.end < rec.start) { toast('종료일이 시작일보다 빠릅니다'); return false; }
+          if (!this.FMT[rec.fmt]) { toast('형식을 고르세요 (객관식만 / 객관식+서술형)'); return false; }
           if (rec.start && !rec.end) rec.end = rec.start;
           // 시험 범위 정리·확인
           const out = [];
           for (const it of items) {
-            const m = NP.mat(it.matId); if (!m) continue;
+            const m = NP.mat(it.matId); if (!m || m.type === 'gen') continue;
             if (m.type === 'mock') {
               const p = NP.parseNums(it._txt != null ? it._txt : NP.compress(it.nums), NP.MOCK_MIN, NP.MOCK_MAX);
               if (p.bad.length) { toast(`${NP.matName(m)}: 번호를 확인하세요 (${p.bad.join(' ')})`); return false; }
@@ -172,24 +346,19 @@ const Exams = {
           rec.items = out;
           Store.put('exams', rec);
           toast('시험 정보를 저장했습니다');
-          App.render();
+          const tab = rec.done ? 'done' : 'exam';          // 저장된 곳의 탭을 보여준다
+          if (this.tab !== tab) { this.tab = tab; this.sel.clear(); }
+          if (App.page === 'exams') App.render(); else App.go('exams', {});
         } },
       ],
     });
   },
 
-  /* ---------- 시험 / 교재 하위 탭 ---------- */
-  tabsHtml() {
-    return `<div class="tabs"><button data-xtab="exam" class="${this.tab === 'exam' ? 'active' : ''}">시험<span class="cnt">${Store.all('exams').length}</span></button>
-      <button data-xtab="mat" class="${this.tab === 'mat' ? 'active' : ''}">교재<span class="cnt">${NP.mats().length}</span></button></div>`;
-  },
-  tabClick(e) { const t = e.target.closest('[data-xtab]'); if (!t) return false; this.tab = t.dataset.xtab; App.render(); return true; },
-
-  /* ---------- 시험 범위 입력 (시험 모달 안) ---------- */
+  /* ---------- 시험 범위 입력 (시험 모달 안) — 시험 교재만 ---------- */
   rangeHtml(items, grade) {
     const middle = isMiddle(grade);
     const used = new Set(items.map(it => it.matId));
-    const avail = NP.sortMats(NP.mats().filter(m => !used.has(m.id) && (!middle || m.type === 'text')));
+    const avail = NP.sortMats(NP.examMats().filter(m => !used.has(m.id) && (!middle || m.type === 'text')));
     let h = items.map((it, i) => {
       const m = NP.mat(it.matId);
       let r = `<div class="np-ritem"><div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(NP.matName(m))}</b>
@@ -200,7 +369,7 @@ const Exams = {
         r += `<div class="row"><input type="text" data-rnums="${i}" value="${esc(txt)}" placeholder="예: 23, 25, 28, 31-42" style="flex:1"><span class="small soft" data-rprev>${p.bad.length ? `<span class="np-err">인식 못 함: ${esc(p.bad.join(' '))}</span>` : p.nums.length ? p.nums.length + '문항' : ''}</span></div>`;
       } else {
         const sel = new Set(it.units.map(u => u.id));
-        r += `<div class="np-chips">${(m.units || []).map(u => `<button type="button" class="np-c ${sel.has(u.id) ? 'on' : ''}" data-runit="${i}|${u.id}">${esc(u.name)}</button>`).join('') || '<span class="small muted">이 교재에 단위가 없습니다. 교재 탭에서 추가하세요.</span>'}</div>`;
+        r += `<div class="np-chips">${(m.units || []).map(u => `<button type="button" class="np-c ${sel.has(u.id) ? 'on' : ''}" data-runit="${i}|${u.id}">${esc(u.name)}</button>`).join('') || '<span class="small muted">이 교재에 단위가 없습니다. 시험 교재 탭에서 추가하세요.</span>'}</div>`;
         r += it.units.map(u => {
           const txt = u._txt != null ? u._txt : NP.compress(u.nums);
           return `<div class="np-urow"><span class="np-ul">${esc(NP.unitName(m, u.id))}</span>
@@ -218,36 +387,57 @@ const Exams = {
     return h;
   },
 
-  /* ---------- 교재 목록 ---------- */
+  /* ---------- 교재 목록 (시험 교재 / 일반 교재) ---------- */
   renderMats(main) {
-    const all = NP.sortMats(NP.mats());
-    const list = all.filter(m => !this.matType || m.type === this.matType);
+    const gen = this.tab === 'gen';
+    const all = NP.sortMats(gen ? NP.genMats() : NP.examMats());
+    const list = gen ? all : all.filter(m => !this.matType || m.type === this.matType);
+    const ids = list.map(m => m.id);
+    [...this.sel].forEach(id => { if (!ids.includes(id)) this.sel.delete(id); });
     const usedBy = (m) => Store.where('exams', e => (e.items || []).some(it => it.matId === m.id)).length;
-    let h = `<div class="page-head"><h1>시험정보</h1><button class="btn primary" data-a="addmat">+ 교재 등록</button><span class="sub">시험 범위·진도에 쓰는 모의고사·교과서·부교재</span></div>
-      ${this.tabsHtml()}
-      <div class="toolbar"><select data-mtype><option value="">전체 종류</option>${Object.keys(MAT_TYPE).map(k => `<option value="${k}" ${this.matType === k ? 'selected' : ''}>${MAT_TYPE[k]}</option>`).join('')}</select><span class="muted small">${list.length}개</span></div>`;
-    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th>단위</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
-      <tr class="click" data-mat="${m.id}"><td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
-      <td class="small">${m.type === 'mock' ? `${NP.MOCK_MIN}~${NP.MOCK_MAX}번` : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td><td class="num">${usedBy(m) || '<span class="muted">-</span>'}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 교재가 없습니다.' : '등록된 교재가 없습니다. “교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하면 시험 범위를 고를 수 있습니다.'}</div></div>`;
+    const clsOf = (m) => (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean);
+    let h = this.headHtml() + this.tabsHtml();
+    h += gen ? `<div class="toolbar"><span class="muted small">${list.length}개 · 비내신 수업에 쓰는 교재 (시험 범위에는 쓰지 않음)</span></div>`
+      : `<div class="toolbar"><select data-mtype><option value="">전체 종류</option>${Object.keys(MAT_TYPE).map(k => `<option value="${k}" ${this.matType === k ? 'selected' : ''}>${MAT_TYPE[k]}</option>`).join('')}</select><span class="muted small">${list.length}개 · 시험 범위·내신 진도에 쓰는 교재</span></div>`;
+    h += this.bulkHtml([['delmat', '선택 삭제', 'danger']]);
+    if (!list.length) {
+      h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 교재가 없습니다.' : gen ? '등록된 일반 교재가 없습니다. “교재 등록”에서 일반 교재를 고르고 사용하는 반을 연결하세요.' : '등록된 시험 교재가 없습니다. “교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하면 시험 범위를 고를 수 있습니다.'}</div></div>`;
+    } else if (gen) {
+      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
+      <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><b>${esc(m.name)}</b></td>
+      <td class="small">${esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
+      <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || '<span class="muted">연결된 반 없음</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+    } else {
+      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
+      <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
+      <td class="small">${m.type === 'mock' ? `${NP.MOCK_MIN}~${NP.MOCK_MAX}번` : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td><td class="num">${usedBy(m) || '<span class="muted">-</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+    }
     main.innerHTML = h;
+    this.updBulk(main);
     main.onclick = (e) => {
-      if (this.tabClick(e)) return;
-      if (e.target.closest('[data-a=addmat]')) { this.openMatModal(null); return; }
+      if (this.commonClick(e, main)) return;
       const tr = e.target.closest('tr[data-mat]'); if (tr) this.openMatModal(tr.dataset.mat);
     };
-    main.onchange = (e) => { if (e.target.matches('[data-mtype]')) { this.matType = e.target.value; App.render(); } };
+    main.onchange = (e) => {
+      if (this.commonChange(e, main)) return;
+      if (e.target.matches('[data-mtype]')) { this.matType = e.target.value; this.sel.clear(); App.render(); }
+    };
     main.oninput = null;
   },
 
-  /* ---------- 교재 등록 / 수정 ---------- */
+  /* ---------- 교재 등록 / 수정 (시험 교재 · 일반 교재) ---------- */
   openMatModal(id) {
     const m = id ? NP.mat(id) : null;
     const now = new Date();
-    let type = m ? m.type : 'mock';
+    let cat = m ? (m.type === 'gen' ? 'gen' : 'exam') : (this.tab === 'gen' ? 'gen' : 'exam');   // 등록한 뒤에는 바꿀 수 없음
+    let type = m && m.type !== 'gen' ? m.type : 'mock';
     const units = JSON.parse(JSON.stringify((m && m.units) || []));
+    const cls = new Set(((m && m.classIds) || []).filter(cid => Store.get('classes', cid)));
+    const clsList = Classes.sorted(Store.all('classes')).filter(c => c.active !== false || cls.has(c.id));
     const body = `<div class="form">
-      <label class="req">종류</label><div class="row">${Object.keys(MAT_TYPE).map(k => `<label class="chk"><input type="radio" name="mtype" value="${k}" ${type === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${MAT_TYPE[k]}</label>`).join('')}</div>
+      <label class="req">구분</label><div class="row">${[['exam', '시험 교재'], ['gen', '일반 교재']].map(([k, t]) => `<label class="chk"><input type="radio" name="mcat" value="${k}" ${cat === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${t}</label>`).join('')}
+        <span class="hint">${m ? '등록한 뒤에는 바꿀 수 없습니다' : '시험 교재는 시험 범위·내신, 일반 교재는 비내신 수업에 씁니다'}</span></div>
+      <label class="req" data-mc="exam">종류</label><div class="row" data-mc="exam">${Object.keys(MAT_TYPE).map(k => `<label class="chk"><input type="radio" name="mtype" value="${k}" ${type === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${MAT_TYPE[k]}</label>`).join('')}</div>
       <label class="req" data-mk="mock">모의고사</label><div class="row" data-mk="mock"><input type="number" name="year" min="2000" max="2100" value="${esc(m && m.type === 'mock' ? m.year : now.getFullYear())}" style="width:90px">년
         <select name="month">${Array.from({ length: 12 }, (_, i) => i + 1).map(i => `<option value="${i}" ${(m && m.type === 'mock' ? +m.month : 3) === i ? 'selected' : ''}>${i}월</option>`).join('')}</select>
         <select name="mgrade">${GRADES.filter(isHigh).map(g => `<option value="${g}" ${(m && m.type === 'mock' ? +m.grade : 10) === g ? 'selected' : ''}>${gradeLabel(g)}</option>`).join('')}</select>
@@ -256,8 +446,10 @@ const Exams = {
       <label class="top req" data-mk="book">단위</label><div data-mk="book"><div data-units></div>
         <div class="row" style="margin-top:6px"><button type="button" class="btn sm" data-uadd>+ 단위 추가</button>
         <span class="small soft">한 번에 만들기</span><input type="number" data-qn min="1" max="60" value="8" style="width:70px"><span class="small soft">개</span>
-        <input type="text" data-qs value="${type === 'sub' ? '강' : '과'}" style="width:60px"><button type="button" class="btn sm ghost" data-qmake>만들기</button></div>
+        <input type="text" data-qs value="${cat === 'gen' || type === 'sub' ? '강' : '과'}" style="width:60px"><button type="button" class="btn sm ghost" data-qmake>만들기</button></div>
         <div class="hint" style="margin-top:4px">예: 1과, 2과 … / Special Lesson / 1강 … 단위 이름은 나중에 바꿔도 기록이 유지됩니다.</div></div>
+      <label class="top req" data-mc="gen">사용하는 반</label><div data-mc="gen"><div class="np-chips" data-cls>${clsList.map(c => `<button type="button" class="np-c ${cls.has(c.id) ? 'on' : ''}" data-mcls="${c.id}">${esc(c.name)}${c.active === false ? ' (종료)' : ''}</button>`).join('') || '<span class="small muted">반이 없습니다.</span>'}</div>
+        <div class="hint" style="margin-top:4px">고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다.</div></div>
     </div>`;
     Modal.open({
       title: m ? '교재 수정' : '교재 등록', size: 'lg', body,
@@ -269,17 +461,24 @@ const Exams = {
             : '<div class="small muted">단위가 없습니다. 아래에서 추가하세요.</div>';
         };
         const sync = () => {
+          cat = ($('[name=mcat]:checked', b) || {}).value || cat;
           type = ($('[name=mtype]:checked', b) || {}).value || type;
-          $$('[data-mk=mock]', b).forEach(x => { x.style.display = type === 'mock' ? '' : 'none'; });
-          $$('[data-mk=book]', b).forEach(x => { x.style.display = type === 'mock' ? 'none' : ''; });
+          const mock = cat === 'exam' && type === 'mock';
+          $$('[data-mc=exam]', b).forEach(x => { x.style.display = cat === 'exam' ? '' : 'none'; });
+          $$('[data-mc=gen]', b).forEach(x => { x.style.display = cat === 'gen' ? '' : 'none'; });
+          $$('[data-mk=mock]', b).forEach(x => { x.style.display = mock ? '' : 'none'; });
+          $$('[data-mk=book]', b).forEach(x => { x.style.display = mock ? 'none' : ''; });
+          $('[name=mname]', b).placeholder = cat === 'gen' ? '예: 리딩튜터 2, 문법 기본편' : '예: 능률(오) 고2, 수능특강 영어독해';
         };
         drawU(); sync();
         b.addEventListener('change', (e) => {
-          if (e.target.name === 'mtype') { sync(); $('[data-qs]', b).value = type === 'sub' ? '강' : '과'; }
+          if (e.target.name === 'mtype' || e.target.name === 'mcat') { sync(); $('[data-qs]', b).value = cat === 'gen' || type === 'sub' ? '강' : '과'; }
         });
         b.addEventListener('input', (e) => { if (e.target.matches('[data-uname]')) units[+e.target.dataset.uname].name = e.target.value; });
         b.addEventListener('click', (e) => {
           const t = e.target;
+          const cb = t.closest('[data-mcls]');
+          if (cb) { const cid = cb.dataset.mcls; if (cls.has(cid)) cls.delete(cid); else cls.add(cid); cb.classList.toggle('on', cls.has(cid)); return; }
           if (t.closest('[data-uadd]')) { units.push({ id: uid('U'), name: '' }); drawU(); const ins = $$('[data-uname]', ub); ins[ins.length - 1].focus(); return; }
           const d = t.closest('[data-udel]'); if (d) { units.splice(+d.dataset.udel, 1); drawU(); return; }
           const up = t.closest('[data-uup]'); if (up) { const i = +up.dataset.uup; if (i) { [units[i - 1], units[i]] = [units[i], units[i - 1]]; drawU(); } return; }
@@ -293,17 +492,17 @@ const Exams = {
       },
       buttons: [
         ...(m ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
-          const n = Store.where('exams', e => (e.items || []).some(it => it.matId === m.id)).length;
-          if (n) { toast(`시험 ${n}개의 범위에서 쓰고 있어 삭제할 수 없습니다. 먼저 시험 범위에서 빼세요`); return false; }
-          if (!await confirmDlg(`“${NP.matName(m)}” 교재를 삭제할까요?\n이 교재의 수업 준비 표시도 함께 지워집니다.`, '삭제', true)) return false;
-          Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id));
+          const links = this.matLinks(m);
+          if (links.length) { this.showBlocked([{ m, links }], 0); return false; }
+          if (!await confirmDlg(`“${NP.matName(m)}” 교재를 삭제할까요?${m.type === 'gen' ? '' : '\n이 교재의 수업 준비 표시도 함께 지워집니다.'}`, '삭제', true)) return false;
+          Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id)); this.sel.delete(m.id);
           toast('교재를 삭제했습니다'); App.render();
         } }] : []),
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: async (md) => {
           const b = md.body;
-          const rec = Object.assign({}, m || { id: uid('MT'), kind: 'mat', createdAt: new Date().toISOString() }, { type });
-          if (type === 'mock') {
+          const rec = Object.assign({}, m || { id: uid('MT'), kind: 'mat', createdAt: new Date().toISOString() }, { type: cat === 'gen' ? 'gen' : type });
+          if (rec.type === 'mock') {
             rec.year = +$('[name=year]', b).value; rec.month = +$('[name=month]', b).value; rec.grade = +$('[name=mgrade]', b).value;
             if (!rec.year || rec.year < 2000) { toast('연도를 확인하세요'); return false; }
             if (NP.mats().some(x => x.id !== rec.id && x.type === 'mock' && +x.year === rec.year && +x.month === rec.month && +x.grade === rec.grade)) { toast('같은 모의고사가 이미 있습니다'); return false; }
@@ -313,25 +512,55 @@ const Exams = {
             const us = units.map(u => ({ id: u.id, name: stripZws(u.name || '').trim() })).filter(u => u.name);
             if (!rec.name) { toast('교재 이름을 입력하세요'); return false; }
             if (!us.length) { toast('단위(과·강)를 하나 이상 넣으세요'); return false; }
-            // 지운 단위가 시험 범위에 들어 있으면 확인 후 범위에서도 뺀다
-            const gone = ((m && m.units) || []).filter(u => !us.some(x => x.id === u.id)).map(u => u.id);
-            const hit = gone.length ? Store.where('exams', e => (e.items || []).some(it => it.matId === rec.id && (it.units || []).some(u => gone.includes(u.id)))) : [];
-            if (hit.length && !await confirmDlg(`지운 단위가 시험 ${hit.length}개의 범위에 들어 있습니다.\n그 시험 범위에서도 빠집니다. 계속할까요?`, '계속', true)) return false;
-            hit.forEach(e => Store.put('exams', Object.assign({}, e, {
-              items: e.items.map(it => it.matId === rec.id ? Object.assign({}, it, { units: it.units.filter(u => !gone.includes(u.id)) }) : it)
-                .filter(it => it.matId !== rec.id || it.units.length),
-            })));
+            if (rec.type === 'gen') {
+              if (!cls.size) { toast('사용하는 반을 하나 이상 고르세요'); return false; }
+              rec.classIds = [...cls];
+            } else {
+              // 지운 단위가 시험 범위에 들어 있으면 확인 후 범위에서도 뺀다
+              const gone = ((m && m.units) || []).filter(u => !us.some(x => x.id === u.id)).map(u => u.id);
+              const hit = gone.length ? Store.where('exams', e => (e.items || []).some(it => it.matId === rec.id && (it.units || []).some(u => gone.includes(u.id)))) : [];
+              if (hit.length && !await confirmDlg(`지운 단위가 시험 ${hit.length}개의 범위에 들어 있습니다.\n그 시험 범위에서도 빠집니다. 계속할까요?`, '계속', true)) return false;
+              hit.forEach(e => Store.put('exams', Object.assign({}, e, {
+                items: e.items.map(it => it.matId === rec.id ? Object.assign({}, it, { units: it.units.filter(u => !gone.includes(u.id)) }) : it)
+                  .filter(it => it.matId !== rec.id || it.units.length),
+              })));
+              delete rec.classIds;
+            }
             rec.units = us;
             delete rec.year; delete rec.month; delete rec.grade;
           }
           Store.put('meta', rec);
           toast('교재를 저장했습니다');
-          App.render();
+          const tab = rec.type === 'gen' ? 'gen' : 'mat';   // 저장된 곳의 탭을 보여준다
+          if (this.tab !== tab) { this.tab = tab; this.sel.clear(); }
+          if (App.page === 'exams') App.render(); else App.go('exams', {});
         } },
       ],
     });
   },
 };
+
+/* 시험+교재 화면 전용 스타일 */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+.x7-cnt { display: inline-block; min-width: 5.2em; font-variant-numeric: tabular-nums; }
+.x7-prepcell { min-width: 150px; cursor: pointer; }
+.x7-prepcell:hover, .x7-prepcell.on { background: var(--accent-soft); }
+.x7-pp { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.x7-bar { flex: 1; min-width: 40px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.x7-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.x7-ar { color: var(--ink-mute); font-size: 10px; }
+.x7-nx { color: var(--accent-ink); font-weight: 600; margin-top: 2px; }
+.x7-ok { color: var(--ok); font-weight: 600; margin-top: 2px; }
+.x7-prow > td { background: #F9FCFE; padding: 8px 12px 10px; cursor: default; }
+.x7-prow .np-srow:first-child { border-top: 0; padding-top: 0; }
+.np-c.x7-next { outline: 2px dashed var(--accent); outline-offset: 1px; }
+.x7-blk { border-top: 1px dashed var(--line); padding: 8px 0; user-select: text; }
+.x7-blk ul { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; }
+`;
+  document.head.appendChild(st);
+})();
 
 /* =========================================================
    성적

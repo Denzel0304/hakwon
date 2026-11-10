@@ -182,7 +182,7 @@ const MSms = {
    진도 — 보기 전용 (반별 수업 기록 · 내신 요약)
    ========================================================= */
 const MProgress = {
-  classId: '', q: '', npOn: false, npSel: {},
+  classId: '', q: '', npOn: false, npSel: {}, gpOn: false,   // gpOn: 비내신 요약
   jump: '',                 // 보강에서 '진도 보기'로 왔을 때 그 날짜로 스크롤
 
   classes() { return Classes.sorted(Store.all('classes')).sort((a, b) => (a.active === false) - (b.active === false)); },
@@ -196,15 +196,16 @@ const MProgress = {
     if (!this.classId) { main.innerHTML = '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
     const opt = (c) => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`;
     let h = `<div class="m-bar">${Classes.selDot(Store.get('classes', this.classId))}<select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
-    h += `<div class="m-bar">${mSearchHtml(this.q, '진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label></div>`;
+    h += `<div class="m-bar" style="flex-wrap:wrap">${mSearchHtml(this.q, '진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk m-tg"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     if (this.npOn) {
       const today = todayStr();
-      const sel = this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id);
+      const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
       const cands = NP.candExams(this.classId, today, sel);
       h += `<div class="np-exams m-npx">${cands.map(e => `<button type="button" class="np-ex ${sel.includes(e.id) ? 'on' : ''}" data-npsx="${e.id}">${esc(NP.examLabel(e))} <small>${esc(NP.examDates(e))}</small></button>`).join('') || '<span class="small muted">등록된 시험이 없습니다.</span>'}
         ${this.npSel[this.classId] ? '<button type="button" class="np-auto" data-npsauto>자동</button>' : ''}</div>
         <div class="m-ro">${NP.summaryHtml(this.classId, sel)}</div>`;
     }
+    if (this.gpOn) h += `<div class="m-ro">${NP.genSummaryHtml(this.classId)}</div>`;
     h += `<div id="m-list">${this.listHtml(p.date)}</div>`;
     main.innerHTML = h;
     this.bind(main);
@@ -218,7 +219,7 @@ const MProgress = {
   listHtml(hlDate) {
     const q = this.q.trim();
     const all = Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l));
-    const list = all.filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), ...(l.dist || []).map(d => NP.distText(d)), ...this.todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
+    const list = all.filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), NP.genText(l), ...(l.dist || []).map(d => NP.distText(d)), ...this.todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
       .sort((a, b) => ko(b.date, a.date));
     if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
     return `<div class="m-cnt">${list.length}회</div>` + list.map(l => {
@@ -227,7 +228,7 @@ const MProgress = {
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '';
       const tds = this.todosOf(l.id);
       const pg = stripZws(l.progress || '').trim(), hw = stripZws(l.homework || '').trim(), mm = stripZws(l.memo || '').trim();
-      let f = `<span class="k">진도</span><div class="pre">${pg ? highlight(pg, q) : ((l.np || []).length || (l.dist || []).length ? '' : '<span class="muted">-</span>')}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</div>`;
+      let f = `<span class="k">진도</span><div class="pre">${pg ? highlight(pg, q) : ((l.np || []).length || (l.gp || []).length || (l.dist || []).length ? '' : '<span class="muted">-</span>')}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</div>`;
       f += `<span class="k">숙제</span><div class="pre">${hw ? highlight(hw, q) : '<span class="muted">-</span>'}</div>`;
       if (mm) f += `<span class="k">메모</span><div class="pre soft">${highlight(mm, q)}</div>`;
       if (tds.length) f += `<span class="k">할일</span><div>${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted small">${fmtMD(t.date)}</span></div>`).join('')}</div>`;
@@ -249,6 +250,7 @@ const MProgress = {
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-npsum]')) { this.npOn = e.target.checked; App.render(); return; }
+      if (e.target.matches('[data-gpsum]')) { this.gpOn = e.target.checked; App.render(); return; }
       if (e.target.matches('[data-clsel]') && e.target.value) { this.classId = e.target.value; e.target.blur(); App.params = {}; App.render(true); }
     };
     main.oninput = debounce((e) => {
@@ -302,6 +304,7 @@ const MMakeups = {
       if (mk.memo) f += `<span class="k">메모</span><div class="pre">${esc(mk.memo)}</div>`;
       f += `<span class="k">진도</span><div class="pre">${esc(stripZws(o.l.progress)) || '<span class="muted">입력 전</span>'}</div>`;
       if ((o.l.np || []).length) f += `<span class="k">내신</span><div>${esc(NP.text(o.l))}</div>`;
+      if ((o.l.gp || []).length) f += `<span class="k">비내신</span><div>${esc(NP.genText(o.l))}</div>`;
       f += `<span class="k">숙제</span><div class="pre">${esc(stripZws(o.l.homework)) || '<span class="muted">입력 전</span>'}</div>`;
       if (dist.length) f += `<span class="k">배부</span><div>${dist.map((d, i) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
       return `<div class="m-card ${o.status === 'done' || o.status === 'skip' ? 'm-dim' : ''}">
