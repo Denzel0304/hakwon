@@ -397,7 +397,24 @@ const NP = {
     if (!sel.length) return h + '<div class="small muted np-msg">위에서 시험을 고르세요.</div></div>';
     if (!range.length) return h + '<div class="small muted" style="padding:6px 0">고른 시험에 구조화된 시험 범위가 없습니다. 시험+교재 탭에서 범위를 입력하세요.</div></div>';
     const prog = this.progress(ctx.classId, sel, ctx.lessonId);
-    range.forEach(r => {
+    // 학교별 숙제(수업일지 작성 화면만, ctx.hw): 교재를 학교·학년 순으로 모으고, 그 학교의 마지막 교재 바로 아래에 그 학교 숙제
+    const hwAt = {};
+    ctx.hwPlaced = new Set();
+    if (ctx.hw) {
+      const lbOf = (e) => this.sch(e.school) + gradeNum(e.grade);
+      const lbs = [], own = {};
+      sel.forEach(e => {
+        const lb = lbOf(e); if (!lbs.includes(lb)) lbs.push(lb);
+        (e.items || []).forEach(it => { (own[it.matId] = own[it.matId] || new Set()).add(lb); });
+      });
+      const first = (r) => Math.min(...[...(own[r.mat.id] || [])].map(lb => lbs.indexOf(lb)).concat(lbs.length));
+      range.map((r, i) => ({ r, i })).sort((a, b) => first(a.r) - first(b.r) || a.i - b.i).forEach((x, i) => { range[i] = x.r; });
+      lbs.filter(lb => ctx.hw.order.includes(lb)).forEach(lb => {
+        let last = -1; range.forEach((r, i) => { if ((own[r.mat.id] || new Set()).has(lb)) last = i; });
+        if (last >= 0) { (hwAt[last] = hwAt[last] || []).push(lb); ctx.hwPlaced.add(lb); }
+      });
+    }
+    range.forEach((r, ri) => {
       const m = r.mat, mid = m.id;
       h += `<div class="np-mat"><div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
       if (m.type === 'mock') {
@@ -418,6 +435,9 @@ const NP = {
             <label class="chk small"><input type="checkbox" data-np-done="${k}" ${en.done ? 'checked' : ''}>완결</label>${u.notes.length ? `<span class="small soft">${esc(u.notes.join(' · '))}</span>` : ''}</div>`;
         });
       }
+      (hwAt[ri] || []).forEach(lb => {
+        h += `<div class="hw-row np-hw"><span class="hw-lb">${esc(lb)} 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(ctx.hw.by[lb] || '')}</textarea></div>`;
+      });
       h += '</div>';
     });
     // 배부 자료
@@ -847,11 +867,15 @@ const Lessons = {
       return `<div class="att-row"><div class="nm"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span></div>
         <div class="att-seg">${Object.keys(ATT).map(k => `<button class="${k} ${a === k ? 'on' : ''}" data-att="${k}" data-sid="${s.id}">${ATT[k]}</button>`).join('')}</div></div>`;
     }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 관리에서 학생을 배정하세요.</div>';
+    // 내신 진도 입력 (학교별 숙제는 그 학교 교재 바로 아래에 들어감 · 못 넣은 학교 숙제는 진도 칸 아래에 따로)
+    const npCtx0 = { classId, date, lessonId: f.editId || null, hw: f.hw || null };
+    const npHtml = NP.editorHtml(f.np, npCtx0);
+    const hwRest = f.hw ? f.hw.order.filter(lb => !npCtx0.hwPlaced || !npCtx0.hwPlaced.has(lb)) : [];
     h += `</div><div class="panel">
       <h2>수업 내용</h2>
-      <div class="lesson-field"><label>진도</label><div data-npbox>${NP.editorHtml(f.np, { classId, date, lessonId: f.editId || null })}</div>${f.hw ? `<div class="hw-split" style="margin:0 0 8px">
+      <div class="lesson-field"><label>진도</label><div data-npbox>${npHtml}</div>${hwRest.length ? `<div class="hw-split" style="margin:0 0 8px">
         <div class="small soft">학교별 숙제 (선택)</div>
-        ${f.hw.order.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}<textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
+        ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}<textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
       <div class="lesson-field"><label>${f.hw ? '공통 숙제' : '숙제'}</label>${f.hw ? `<textarea data-hw="" rows="3" placeholder="모든 학생 공통 숙제 (학교별 숙제는 진도 아래 칸)">${esc(f.hw.common)}</textarea>`
         : `<textarea data-f="homework" rows="3" placeholder="내준 숙제">${esc(f.homework)}</textarea>`}</div>
       <div class="lesson-field"><label>메모</label><textarea data-f="memo" rows="3">${esc(f.memo)}</textarea></div>
