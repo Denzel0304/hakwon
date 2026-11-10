@@ -769,14 +769,12 @@ const Lessons = {
   },
   hwOf(f) { return f.hw ? this.joinHw(f.hw) : f.homework; },
   // 이 학생에게 해당하는 숙제만: 공통 숙제 + 그 학생 학교·학년 숙제 (나눠 쓰지 않은 숙제는 그대로)
-  // 학생의 학교·학년 이름(금천고2)을 목록에서 찾는다 (그 뒤 학년이 바뀐 경우: 같은 학교가 하나뿐이면 그것)
+  // 학생의 학교·학년 이름(금천고2)이 목록에 있으면 그 이름
   stuLabel(labels, s) {
     const sc = s ? NP.sch(s.school) : '';
-    if (!sc) return '';
-    const lb = +s.grade ? sc + gradeNum(s.grade) : '';
-    if (lb && labels.includes(lb)) return lb;
-    const same = labels.filter(x => x.startsWith(sc) && /^\d+$/.test(x.slice(sc.length)));
-    return same.length === 1 ? same[0] : '';
+    if (!sc || !+s.grade) return '';
+    const lb = sc + gradeNum(s.grade);
+    return labels.includes(lb) ? lb : '';
   },
   // 결석생 보강용: 이 학생 학교·학년의 내신 진도 · 배부 자료만 남긴 일지 (학교를 알 수 없으면 그대로)
   forStudent(l, s) {
@@ -1553,6 +1551,17 @@ const Makeups = {
     return out;
   },
 
+  // 결석생 몫: 그 학생 학교의 내신 진도·숙제·배부 자료 (배부 자료는 원래 순번 i를 같이 — 전달 체크 distGot이 이 순번을 씀)
+  mine(o) {
+    const lf = Lessons.forStudent(o.l, o.s);
+    const keep = new Set(lf.dist || []);
+    const dist = (o.l.dist || []).map((d, i) => [d, i]).filter(([d]) => keep.has(d));
+    const got = ((o.mk && o.mk.distGot) || []);
+    return {
+      np: (lf.np || []).length ? NP.text(lf) : '', hw: Lessons.hwFor(o.l.homework, o.s).trim(), memo: stripZws(o.l.memo || '').trim(),
+      dist, left: dist.filter(([, i]) => !got.includes(i)).length,
+    };
+  },
   copyText(o) {
     const lf = Lessons.forStudent(o.l, o.s);           // 학교가 섞인 반: 그 학생 학교의 진도·배부 자료만
     const np = NP.text(lf), gp = NP.genText(o.l), dist = (lf.dist || []).map(d => NP.distText(d));
@@ -1585,18 +1594,20 @@ const Makeups = {
     list.forEach(o => {
       const mk = o.mk || {};
       const key = this.id(o.l.id, o.s.id);
+      const my = this.mine(o);                 // 학교가 섞인 반: 이 학생 학교 것만
       h += `<div class="mk-card ${o.status === 'done' || o.status === 'skip' ? 'done' : ''}" data-key="${key}">
         <div class="mk-top"><span class="who">${esc(o.s.name)}</span><span class="tag">${esc(stTag(o.s))}</span>
           ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
           <span class="badge red">결석 ${fmtMD(o.l.date)}</span><span class="soft small">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>
-          ${(o.l.dist || []).length > (mk.distGot || []).filter(i => i < o.l.dist.length).length ? `<span class="badge orange">미전달 자료 ${o.l.dist.length - (mk.distGot || []).filter(i => i < o.l.dist.length).length}</span>` : ''}
+          ${my.left ? `<span class="badge orange">미전달 자료 ${my.left}</span>` : ''}
           <span style="flex:1"></span><button class="btn sm" data-copy="${key}">진도·숙제 복사</button>
           <button class="btn sm ghost" data-golesson="${o.l.id}">진도 보기</button></div>
         <div class="mk-copy"><div><span class="k">진도</span><span class="pre">${esc(stripZws(o.l.progress)) || '<span class="muted">입력 전</span>'}</span></div>
-          ${(o.l.np || []).length ? `<div><span class="k">내신</span><span>${esc(NP.text(o.l))}</span></div>` : ''}
+          ${my.np ? `<div><span class="k">내신</span><span>${esc(my.np)}</span></div>` : ''}
           ${(o.l.gp || []).length ? `<div><span class="k">비내신</span><span>${esc(NP.genText(o.l))}</span></div>` : ''}
-          <div><span class="k">숙제</span><span class="pre">${esc(stripZws(o.l.homework)) || '<span class="muted">입력 전</span>'}</span></div>
-          ${(o.l.dist || []).length ? `<div><span class="k">배부</span><span>${o.l.dist.map((d, i) => `<label class="chk small mk-dist ${(mk.distGot || []).includes(i) ? 'got' : ''}"><input type="checkbox" data-mdist="${i}" ${(mk.distGot || []).includes(i) ? 'checked' : ''}>${esc(NP.distText(d))}</label>`).join('')}</span></div>` : ''}</div>
+          <div><span class="k">숙제</span><span class="pre">${esc(my.hw) || '<span class="muted">입력 전</span>'}</span></div>
+          ${my.memo ? `<div><span class="k">수업 메모</span><span class="pre">${esc(my.memo)}</span></div>` : ''}
+          ${my.dist.length ? `<div><span class="k">배부</span><span>${my.dist.map(([d, i]) => `<label class="chk small mk-dist ${(mk.distGot || []).includes(i) ? 'got' : ''}"><input type="checkbox" data-mdist="${i}" ${(mk.distGot || []).includes(i) ? 'checked' : ''}>${esc(NP.distText(d))}</label>`).join('')}</span></div>` : ''}</div>
         <div class="mk-ctl">
           <span class="small soft">보강일</span><input type="date" data-mf="date" value="${esc(mk.date || '')}">
           <input type="time" data-mf="time" step="300" value="${esc(mk.time || '')}">

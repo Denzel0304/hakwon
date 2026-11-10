@@ -298,22 +298,23 @@ const MMakeups = {
       const mk = o.mk || {};
       const key = Makeups.id(o.l.id, o.s.id);
       this._byKey[key] = o;
-      const dist = o.l.dist || [];
-      const got = (mk.distGot || []).filter(i => i < dist.length);
+      const my = Makeups.mine(o);                // 학교가 섞인 반: 이 학생 학교 것만
+      const got = mk.distGot || [];
       const when = mk.date ? fmtDate(mk.date) + (mk.time ? ' ' + mk.time : '') : '';
       let f = `<span class="k">보강일</span><div>${when ? esc(when) : '<span class="muted">미정</span>'}</div>`;
       if (mk.memo) f += `<span class="k">메모</span><div class="pre">${esc(mk.memo)}</div>`;
       f += `<span class="k">진도</span><div class="pre">${esc(stripZws(o.l.progress)) || '<span class="muted">입력 전</span>'}</div>`;
-      if ((o.l.np || []).length) f += `<span class="k">내신</span><div>${esc(NP.text(o.l))}</div>`;
+      if (my.np) f += `<span class="k">내신</span><div>${esc(my.np)}</div>`;
       if ((o.l.gp || []).length) f += `<span class="k">비내신</span><div>${esc(NP.genText(o.l))}</div>`;
-      f += `<span class="k">숙제</span><div class="pre">${esc(stripZws(o.l.homework)) || '<span class="muted">입력 전</span>'}</div>`;
-      if (dist.length) f += `<span class="k">배부</span><div>${dist.map((d, i) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
+      f += `<span class="k">숙제</span><div class="pre">${esc(my.hw) || '<span class="muted">입력 전</span>'}</div>`;
+      if (my.memo) f += `<span class="k">수업 메모</span><div class="pre">${esc(my.memo)}</div>`;
+      if (my.dist.length) f += `<span class="k">배부</span><div>${my.dist.map(([d, i]) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
       return `<div class="m-card ${o.status === 'done' || o.status === 'skip' ? 'm-dim' : ''}">
         <div class="m-card-hd"><b class="m-who">${highlight(o.s.name, q)}</b><span class="tag">${esc(stTag(o.s))}</span>
           ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
           <span class="m-grow"></span><span class="badge ${this.ST_BADGE[o.status] || 'gray'}">${MK_STATUS[o.status] || '미지정'}</span></div>
         <div class="m-card-sub"><span class="badge red">결석 ${fmtMD(o.l.date)}</span><span class="soft small">${o.c ? highlight(o.c.name, q) : '(삭제된 반)'}</span>
-          ${dist.length > got.length ? `<span class="badge orange">미전달 자료 ${dist.length - got.length}</span>` : ''}</div>
+          ${my.left ? `<span class="badge orange">미전달 자료 ${my.left}</span>` : ''}</div>
         <div class="m-f">${f}</div>
         <div class="m-card-act"><button type="button" class="btn sm" data-copy="${esc(key)}">진도·숙제 복사</button>
           <button type="button" class="btn sm ghost" data-golesson="${esc(o.l.id)}">진도 보기</button></div></div>`;
