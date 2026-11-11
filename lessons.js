@@ -3,6 +3,10 @@
    lesson: id = L_반ID_YYYYMMDD, { classId, date, progress, homework, memo, att:{학생ID:'P'|'L'|'A'|'E'}, npExams, np, dist, gp }  (np·dist: 아래 내신 진도 / gp: 비내신 진도)
    todo:   { lessonId, classId, date(할일 날짜), text, done, createdAt }
    makeup: id = M_수업ID_학생ID, { lessonId, studentId, classId, absentDate, date, time, status, memo, distGot:[배부 자료 순번] }
+           결석 예정이면 + { pre:true, absKey, base(이전 수업일), createdAt } — 출결(att)에는 쓰지 않고, 그 날 출결이 따로 기록되기 전까지
+           출석부·수업일지·보강에서 '결석'으로 본다. status 'skip'(보강 안 함)은 보강 목록에서 지운 것으로 보고 어디에도 보이지 않는다
+   결석 예정 할일: 일반 할일(lessonId·classId 없음) + absKey = AB_학생ID_YYYYMMDD
+   결석 예정 할일 템플릿(meta): id ABT_…, { kind:'abs_tpl', text, off(이전 수업일 기준 며칠 뒤), importance, memo, remind, checklist, time, createdAt }
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴' };
@@ -655,7 +659,7 @@ const Lessons = {
     if ([l.progress, l.homework, l.memo].some(v => stripZws(v || '').trim())) return false;
     if ((l.np && l.np.length) || (l.dist && l.dist.length) || (l.gp && l.gp.length)) return false;
     if (Store.where('todos', t => t.lessonId === l.id).length) return false;
-    if (Store.where('makeups', m => m.lessonId === l.id).length) return false;
+    if (Store.where('makeups', m => m.lessonId === l.id && !m.pre).length) return false;   // 결석 예정 기록은 일지가 아님
     return true;
   },
   isSaved(classId, date) { return !this.isEmpty(Store.get('lessons', this.lessonId(classId, date))); },
@@ -735,12 +739,13 @@ const Lessons = {
   ret: null,
   onLeave() { this.form = null; this.ret = null; },
   // 새 일지: 출석은 그 날 수강생 전원 '출석'이 기본
-  defAtt(classId, date) { const a = {}; if (classId) Classes.rosterOn(classId, date).forEach(s => { a[s.id] = 'P'; }); return a; },
+  // 결석 예정으로 등록한 학생은 '결석'이 기본
+  defAtt(classId, date) { const a = {}; if (classId) Classes.rosterOn(classId, date).forEach(s => { a[s.id] = Makeups.preRec(classId, date, s.id) ? 'A' : 'P'; }); return a; },
   newForm(date, classId) { return { date, classId, att: this.defAtt(classId, date), progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
   // 출석이 기본값(전원 출석) 그대로인지
   attIsDefault(f) {
     const d = this.defAtt(f.classId, f.date), a = f.att || {};
-    return Object.keys(a).length === Object.keys(d).length && Object.keys(d).every(id => a[id] === 'P');
+    return Object.keys(a).length === Object.keys(d).length && Object.keys(d).every(id => a[id] === d[id]);
   },
   /* ---------- 숙제: 학교·학년이 섞인 반은 공통 + 학교·학년별로 나눠 입력 ----------
      저장은 숙제 칸 하나에 합쳐서: 공통 숙제 다음 줄부터 "[금천고2] 숙제" (다시 열면 나눠서 보여줌) */
@@ -819,7 +824,9 @@ const Lessons = {
       .map(t => ({ id: t.id, text: t.text, date: t.date, done: !!t.done, importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
         checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])), time: t.time || '' }));
     todos.push({ text: '', date });
-    return { date, classId, editId: l.id, att: Object.assign({}, l.att || {}), progress: l.progress || '', homework: l.homework || '', memo: l.memo || '', todos, np: NP.fromLesson(l) };
+    const att = Object.assign({}, l.att || {});
+    Classes.rosterOn(classId, date).forEach(s => { if (!att[s.id] && Makeups.preRec(classId, date, s.id)) att[s.id] = 'A'; });   // 결석 예정 학생
+    return { date, classId, editId: l.id, att, progress: l.progress || '', homework: l.homework || '', memo: l.memo || '', todos, np: NP.fromLesson(l) };
   },
 
   render(main, p) {
@@ -1187,12 +1194,15 @@ const AttBook = {
         const src = this.cellSrc(c, srcs, s.id, d);
         const sc = Store.get('classes', src);
         const l = Store.get('lessons', Lessons.lessonId(src, d));
-        const st = l && l.att ? l.att[s.id] || '' : '';
+        const st0 = l && l.att ? l.att[s.id] || '' : '';
+        const pre = !st0 && Makeups.preRec(src, d, s.id);        // 결석 예정 (출결 기록 전)
+        const st = st0 || (pre ? 'A' : '');
         if (st) sum[st]++;
         const out = !this.enrolledOn(s.id, src, d);
         const reg = (c.days || []).includes(dowOf(d));
-        const tip = src !== c.id ? `이전 반: ${sc ? sc.name : ''}` : out ? '수강하지 않는 날' : '';
-        h += `<td class="ab-c ${st} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-cid="${src}" data-d="${d}" data-sid="${s.id}" title="${esc(tip)}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
+        const fut = d > today;
+        const tip = [src !== c.id ? `이전 반: ${sc ? sc.name : ''}` : out ? '수강하지 않는 날' : '', pre ? '결석 예정' : '', fut ? '내일 이후 날짜는 고칠 수 없습니다' : ''].filter(Boolean).join(' · ');
+        h += `<td class="ab-c ${st} ${pre ? 'pre' : ''} ${fut ? 'fut' : ''} ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-cid="${src}" data-d="${d}" data-sid="${s.id}" title="${esc(tip)}">${ATT_SHORT[st] || '<span class="dash">-</span>'}</td>`;
       });
       h += `<td class="num">${sum.P}</td><td class="num">${sum.L}</td><td class="num">${sum.A}</td><td class="num">${sum.E}</td></tr>`;
     });
@@ -1229,7 +1239,7 @@ const AttBook = {
           if (!on.has(d)) return '<td class="off"></td>';
           const src = this.cellSrc(c, srcs, s.id, d);
           const l = Store.get('lessons', Lessons.lessonId(src, d));
-          const st = l && l.att ? l.att[s.id] || '' : '';
+          const st = (l && l.att ? l.att[s.id] || '' : '') || (Makeups.preRec(src, d, s.id) ? 'A' : '');   // 결석 예정 포함
           if (st) sum[st]++;
           const out = !this.enrolledOn(s.id, src, d);
           return `<td class="${st} ${!st && out ? 'out' : ''}">${ATT_SHORT[st] || ''}</td>`;
@@ -1290,7 +1300,7 @@ const AttBook = {
     this._mv = {};
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
-    h += `<div class="toolbar small soft"><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 보강 등 다른 날은 반마다 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요.</span></div>`;
+    h += `<div class="toolbar small soft"><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다 (오늘까지만). 보강 등 다른 날은 반마다 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요. 미리 알게 된 결석은 결석+보강의 “결석 예정”에서 등록합니다 (점선 칸).</span></div>`;
     this.shownClasses(Y, M).forEach(c => {
       const { dates, studs, srcs } = this.monthData(c, Y, M);
       h += `<div class="panel ab-sec" data-sec="${c.id}"><div class="ab-sec-head"><h2>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
@@ -1316,6 +1326,7 @@ const AttBook = {
       if (e.target.closest('[data-pdf]')) { this.pdf(); return; }
       const cell = e.target.closest('td[data-d]');
       if (cell) {
+        if (cell.dataset.d > todayStr()) { toast('내일 이후 날짜는 결석+보강의 “결석 예정”에서 등록하세요'); return; }
         const l = Lessons.getOrNew(cell.dataset.cid, cell.dataset.d);
         const att = Object.assign({}, l.att || {});
         const cur = att[cell.dataset.sid] || '';
@@ -1530,23 +1541,39 @@ const ProgressBook = {
 };
 
 /* =========================================================
-   결석 보강 — 출석부의 결석을 자동으로 모아 보여준다
+   결석+보강 — 출석부의 결석 + 결석 예정을 모아 보여준다 (결석 예정 탭: 내일 이후 / 처리 필요·완료·전체: 오늘까지)
    ========================================================= */
 const Makeups = {
   tab: 'open',
   q: '',
   id(lessonId, sid) { return 'M_' + lessonId + '_' + sid; },
+  absKey(sid, date) { return 'AB_' + sid + '_' + compactDate(date); },
+  // 이 반·날짜·학생의 결석 예정 기록 (없으면 null)
+  preRec(cid, d, sid) { const m = Store.get('makeups', this.id(Lessons.lessonId(cid, d), sid)); return m && m.pre ? m : null; },
 
+  // 결석 목록: 출석부의 결석 + 결석 예정(그 날 출결이 따로 기록되기 전까지). 보강 안 함(skip)은 지운 것으로 보고 뺀다
+  // fut: 내일 이후 날짜 (결석 예정 탭에만 보임)
   collect() {
-    const out = [];
+    const out = [], seen = new Set(), today = todayStr();
     Store.all('lessons').forEach(l => {
       Object.keys(l.att || {}).forEach(sid => {
         if (l.att[sid] !== 'A') return;
         const s = Store.get('students', sid);
         if (!s) return;
-        const mk = Store.get('makeups', this.id(l.id, sid));
-        out.push({ l, s, c: Store.get('classes', l.classId), mk, status: (mk && mk.status) || 'none' });
+        const key = this.id(l.id, sid);
+        seen.add(key);
+        const mk = Store.get('makeups', key);
+        if (mk && mk.status === 'skip') return;
+        out.push({ l, s, c: Store.get('classes', l.classId), mk, status: (mk && mk.status) || 'none', fut: l.date > today });
       });
+    });
+    Store.where('makeups', m => m.pre && m.status !== 'skip' && !seen.has(m.id)).forEach(mk => {
+      const l0 = Store.get('lessons', mk.lessonId);
+      if (l0 && l0.att && l0.att[mk.studentId]) return;          // 그 날 출결을 따로 기록함 (출석 등)
+      const s = Store.get('students', mk.studentId);
+      if (!s || !isYmd(mk.absentDate)) return;
+      const l = l0 || { id: mk.lessonId, classId: mk.classId, date: mk.absentDate, progress: '', homework: '', memo: '', att: {} };
+      out.push({ l, s, c: Store.get('classes', mk.classId), mk, status: mk.status || 'none', fut: l.date > today });
     });
     return out;
   },
@@ -1577,28 +1604,309 @@ const Makeups = {
     return lines.join('\n');
   },
 
+  /* ---------- 결석 예정 ---------- */
+  // 할일 앞에 붙는 말: "홍길동 결석 예정(11/14 금) — "
+  prefix(s, date) { const d = parseYmd(date); return `${s.name} 결석 예정(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) — `; },
+  dayDiff(a, b) { return Math.round((parseYmd(a) - parseYmd(b)) / 864e5); },
+  offLabel(off) { off = +off || 0; return off === 0 ? '당일' : off > 0 ? '+' + off + '일' : off + '일'; },
+  // 이 학생이 그 날 수강하는 반 (반의 정규 요일 · 수강 기간 · 일부 요일 수강 반영, 시작 시간 순)
+  // future: 앞으로의 날짜면 종료된 반은 뺀다
+  classesFor(sid, date, future) {
+    const dw = dowOf(date), seen = {};
+    return Store.where('enrollments', e => e.studentId === sid).map(e => ({ e, c: Store.get('classes', e.classId) }))
+      .filter(({ e, c }) => c && (!future || c.active !== false) && (c.days || []).includes(dw) && !(Classes.startOf(c) > date) && Classes.attendsOn(e, date, c))
+      .map(x => x.c).filter(c => !seen[c.id] && (seen[c.id] = 1))
+      .sort((a, b) => ko(Classes.timeOn(a, dw).start, Classes.timeOn(b, dw).start));
+  },
+  // 그 날 그 반에 결석(출결 기록 또는 결석 예정)인지
+  absentOn(sid, cid, d) {
+    const l = Store.get('lessons', Lessons.lessonId(cid, d));
+    const a = l && l.att ? l.att[sid] : '';
+    return a ? a === 'A' : !!this.preRec(cid, d, sid);
+  },
+  // 결석일 바로 전 수업일: 이 학생의 모든 반 기준 (반이 요일별로 나뉘어 있어도 됨) · 공휴일 · 그 날도 결석인 날은 건너뜀
+  prevLesson(sid, date) {
+    const hol = Holidays.map();
+    for (let i = 1; i <= 62; i++) {
+      const d = addDaysStr(date, -i);
+      if (hol[d]) continue;
+      const cs = this.classesFor(sid, d, false).filter(c => !this.absentOn(sid, c.id, d));
+      if (cs.length) return d;
+    }
+    return '';
+  },
+  // 그 날 마지막 수업이 끝나는 시각 (그 날 수업이 없으면 '')
+  endOn(sid, d) {
+    if (!isYmd(d)) return '';
+    const cs = this.classesFor(sid, d, false);
+    if (!cs.length) return '';
+    return cs.map(c => Classes.endTime(c, dowOf(d))).sort().pop();
+  },
+  clsLabel(cs, d) { return cs.map(c => `${c.name} ${Classes.dayTimeLabel(c, dowOf(d))}`).join(', '); },
+
+  tpls() { return Store.where('meta', m => m.kind === 'abs_tpl').sort((a, b) => (+a.off || 0) - (+b.off || 0) || ko(a.text, b.text)); },
+
+  // 결석 예정 묶음 (학생·날짜마다 하나, 그 날 여러 반이면 함께)
+  preGroups(all) {
+    const g = {};
+    all.filter(o => o.fut).forEach(o => {
+      const k = this.absKey(o.s.id, o.l.date);
+      (g[k] = g[k] || { key: k, s: o.s, date: o.l.date, items: [] }).items.push(o);
+    });
+    return Object.values(g).sort((a, b) => ko(a.date, b.date) || ko(a.s.name, b.s.name));
+  },
+  linkedTodos(key) { return Store.where('todos', t => t.absKey === key).sort((a, b) => ko(a.date, b.date) || Todos.sortFn(a, b)); },
+  baseOf(g) { const m = g.items.map(o => o.mk).find(m => m && isYmd(m.base)); return m ? m.base : ''; },
+
+  // 결석 예정 등록 / 할일 수정 창. key가 있으면 그 결석 예정의 할일을 고친다
+  absDlg(key) {
+    const today = todayStr();
+    const g0 = key ? this.preGroups(this.collect()).find(g => g.key === key) : null;
+    if (key && !g0) { toast('결석 예정을 찾을 수 없습니다'); return; }
+    const edit = !!g0;
+    const st = { sid: edit ? g0.s.id : '', date: edit ? g0.date : '', base: edit ? this.baseOf(g0) : '', rows: [] };
+    const blank = (text, off) => ({ text: text || '', off: off || 0, date: '', importance: 0, memo: '', remind: 0, checklist: [], time: '', autoTime: false });
+    if (edit) {
+      const pre = this.prefix(g0.s, g0.date);
+      st.rows = this.linkedTodos(key).map(t => ({
+        id: t.id, done: !!t.done, text: String(t.text || '').startsWith(pre) ? t.text.slice(pre.length) : t.text, date: t.date,
+        off: isYmd(st.base) ? this.dayDiff(t.date, st.base) : 0, importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
+        checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])), time: t.time || '', autoTime: false,
+      }));
+    } else {
+      const r = blank('숙제 안내', 0); r.autoTime = true;      // 언제나 들어가는 할일 (수업 끝나는 시각이 기본)
+      st.rows = [r];
+    }
+    const map = studentChoices(s => s.status !== 'left');
+    const body = `<div class="form ab-form">
+      <label class="req">학생</label>${edit ? `<div><b>${esc(g0.s.name)}</b> <span class="tag">${esc(stTag(g0.s))}</span></div>` : `<div>${studentInputHtml('dl-absst', '')}</div>`}
+      <label class="req">결석일</label>${edit ? `<div><b>${esc(fmtDate(g0.date))}</b> <span class="small soft">${esc(this.clsLabel(g0.items.map(o => o.c).filter(Boolean), g0.date))}</span></div>`
+        : `<div class="row"><input type="date" data-absdate min="${today}" style="width:150px"><span class="small soft" data-absinfo></span></div>`}
+      <label>이전 수업일</label><div class="row"><input type="date" data-absbase value="${esc(st.base)}" style="width:150px"><span class="small soft" data-baseinfo></span></div>
+      <label class="top">할일</label><div><div class="small soft ab-prefix" data-absprefix></div><div data-absrows></div>
+        <div class="ab-tplbar"><button type="button" class="btn sm" data-radd>+ 직접 입력</button><span class="small soft">저장된 할일</span><span data-abstpls></span></div>
+        <p class="small muted" style="margin:6px 0 0">할일 내용 앞에 “학생 결석 예정(날짜) — ”가 자동으로 붙습니다. 이전 수업일을 바꾸면 할일 날짜도 같이 옮겨집니다. “저장”(☆)을 누르면 그 할일을 다음에 불러 쓸 수 있습니다.</p></div>
+    </div>`;
+    return new Promise(res => {
+      Modal.open({
+        title: edit ? '결석 예정 할일 수정' : '결석 예정 등록', size: 'lg', body, autofocus: !edit,
+        onMount: (b) => {
+          const rowsEl = $('[data-absrows]', b), tplEl = $('[data-abstpls]', b), baseIn = $('[data-absbase]', b);
+          if (!edit) bindStudentInput(b, 'dl-absst', map);
+          const stu = () => Store.get('students', st.sid);
+          const drawPrefix = () => { const s = stu(); $('[data-absprefix]', b).textContent = s && isYmd(st.date) ? this.prefix(s, st.date) : '학생과 결석일을 고르면 할일 앞에 붙을 말이 보입니다'; };
+          const drawBaseInfo = () => {
+            const el = $('[data-baseinfo]', b);
+            if (!st.sid || !isYmd(st.base)) { el.textContent = st.sid && isYmd(st.date) ? '이전 수업을 찾지 못했습니다. 직접 고르세요' : ''; return; }
+            const cs = this.classesFor(st.sid, st.base, false);
+            el.textContent = (cs.length ? this.clsLabel(cs, st.base) : '이 날은 수업이 없습니다') + (Holidays.has(st.base) ? ' · 공휴일' : '');
+          };
+          // 이전 수업일이 바뀌면 할일 날짜를 같은 간격으로 옮기고, 수업 끝 시각 기본값도 맞춘다
+          const applyBase = () => {
+            const end = this.endOn(st.sid, st.base);
+            st.rows.forEach(r => {
+              if (isYmd(st.base)) r.date = addDaysStr(st.base, r.off);
+              if (r.autoTime) r.time = end;
+            });
+          };
+          const drawRows = () => {
+            rowsEl.innerHTML = st.rows.length ? st.rows.map((r, i) => { const sm = TodoX.detailSummary(r); return `<div class="todo-row"><input type="text" data-rtext="${i}" value="${esc(r.text)}" placeholder="할일 (예: 숙제 안내)"><input type="date" class="todo-date" data-rdate="${i}" value="${esc(r.date)}">
+              <button type="button" class="btn sm todo-detb${sm ? ' on' : ''}" data-rdet="${i}" title="시간·중요도·메모·상기·체크리스트">상세</button>
+              <button type="button" class="btn sm" data-rsave="${i}" title="이 할일을 다음에 불러 쓸 수 있게 저장">☆ 저장</button>
+              <button type="button" class="icon-btn" data-rdel="${i}" title="칸 지우기">✕</button></div>${sm || r.done ? `<div class="todo-det">${r.done ? '✓ 완료한 할일 · ' : ''}${esc(sm)}</div>` : ''}`; }).join('')
+              : '<div class="small muted" style="padding:4px 0">할일이 없습니다. 아래에서 추가하세요.</div>';
+          };
+          const drawTpls = () => {
+            const ts = this.tpls();
+            tplEl.innerHTML = ts.length ? ts.map(t => `<span class="ab-chip"><button type="button" data-tpl="${t.id}" title="눌러서 할일에 추가">${esc(t.text)} · ${this.offLabel(t.off)}${t.time ? ' ' + esc(t.time) : ''}</button><button type="button" class="x" data-tpldel="${t.id}" title="저장된 할일 삭제">✕</button></span>`).join('')
+              : '<span class="small muted">없음 (할일 칸의 ☆ 저장으로 만듭니다)</span>';
+          };
+          const refresh = () => { drawPrefix(); drawBaseInfo(); drawRows(); };
+          // 학생·결석일이 정해지면: 그 날 수업 표시 + 이전 수업일 자동 계산
+          const recalc = () => {
+            const info = $('[data-absinfo]', b);
+            if (st.sid && isYmd(st.date)) {
+              const cs = this.classesFor(st.sid, st.date, true);
+              const dup = Store.where('makeups', m => m.pre && m.absKey === this.absKey(st.sid, st.date) && m.status !== 'skip').length;
+              info.innerHTML = (cs.length ? esc(this.clsLabel(cs, st.date)) : '<span style="color:var(--danger)">이 날 수강하는 수업이 없습니다</span>')
+                + (Holidays.has(st.date) ? ' · <span style="color:var(--danger)">공휴일</span>' : '') + (dup ? ' · <span style="color:var(--danger)">이미 등록된 결석 예정</span>' : '');
+              st.base = this.prevLesson(st.sid, st.date);
+              baseIn.value = st.base;
+              applyBase();
+            } else if (info) info.textContent = '';
+            refresh();
+          };
+          if (edit) { refresh(); } else recalc();
+          drawTpls();
+
+          b.addEventListener('input', (e) => {
+            const t = e.target;
+            if (t.matches('[data-rtext]')) st.rows[+t.dataset.rtext].text = t.value;
+            else if (t.matches('.st-input')) { const sid = map[t.value.trim()] || ''; if (sid !== st.sid) { st.sid = sid; recalc(); } }
+          });
+          b.addEventListener('change', (e) => {
+            const t = e.target;
+            if (t.matches('[data-absdate]')) { st.date = isYmd(t.value) ? t.value : ''; recalc(); }
+            else if (t.matches('[data-absbase]')) { st.base = isYmd(t.value) ? t.value : ''; applyBase(); refresh(); }
+            else if (t.matches('[data-rdate]')) {
+              const r = st.rows[+t.dataset.rdate];
+              r.date = isYmd(t.value) ? t.value : '';
+              if (r.date && isYmd(st.base)) r.off = this.dayDiff(r.date, st.base);
+            }
+          });
+          b.addEventListener('click', async (e) => {
+            const add = (r) => { st.rows.push(r); drawRows(); const all = $$('[data-rtext]', rowsEl); if (all.length) all[all.length - 1].focus(); };
+            if (e.target.closest('[data-radd]')) { const r = blank('', 0); if (isYmd(st.base)) r.date = st.base; add(r); return; }
+            const tp = e.target.closest('[data-tpl]');
+            if (tp) {
+              const t = Store.get('meta', tp.dataset.tpl); if (!t) return;
+              const r = Object.assign(blank(t.text, +t.off || 0), { importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
+                checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])).map(x => ({ t: x.t, d: false })), time: t.time || '' });
+              if (isYmd(st.base)) r.date = addDaysStr(st.base, r.off);
+              add(r);
+              return;
+            }
+            const td = e.target.closest('[data-tpldel]');
+            if (td) {
+              const t = Store.get('meta', td.dataset.tpldel); if (!t) return;
+              if (!await confirmDlg(`저장된 할일 “${t.text}”을 삭제할까요?\n(이미 만든 할일은 그대로 남습니다)`, '삭제', true)) return;
+              Store.del('meta', t.id); drawTpls(); toast('저장된 할일을 삭제했습니다');
+              return;
+            }
+            const dl = e.target.closest('[data-rdel]'); if (dl) { st.rows.splice(+dl.dataset.rdel, 1); drawRows(); return; }
+            const dt = e.target.closest('[data-rdet]');
+            if (dt) { const r = st.rows[+dt.dataset.rdet]; if (r && await TodoX.detailDlg(r, '할일 내용과 날짜는 할일 칸에서 입력합니다. 결석 예정을 저장할 때 함께 저장됩니다.')) { r.autoTime = false; drawRows(); } return; }
+            const sv = e.target.closest('[data-rsave]');
+            if (sv) {
+              const r = st.rows[+sv.dataset.rsave]; if (!r) return;
+              const text = r.text.trim();
+              if (!text) { toast('할일 내용을 먼저 입력하세요'); return; }
+              const off = isYmd(r.date) && isYmd(st.base) ? this.dayDiff(r.date, st.base) : (+r.off || 0);
+              const same = this.tpls().find(t => t.text === text);
+              if (same && !await confirmDlg(`“${text}” 저장된 할일을 지금 내용으로 바꿀까요?`, '바꾸기')) return;
+              const v = TodoX.detailVals(r);
+              Store.put('meta', Object.assign({}, same || { id: uid('ABT'), kind: 'abs_tpl', createdAt: new Date().toISOString() },
+                { text, off, importance: v.importance, memo: v.memo, remind: v.remind, checklist: v.checklist.map(x => ({ t: x.t, d: false })), time: v.time }));
+              drawTpls();
+              toast(`“${text}” (${this.offLabel(off)})을 저장했습니다`);
+            }
+          });
+        },
+        buttons: [
+          { text: '취소' },
+          { text: edit ? '저장' : '등록', cls: 'primary', primary: true, onClick: () => {
+            const s = Store.get('students', st.sid);
+            if (!s) { toast('학생을 목록에서 고르세요'); return false; }
+            if (!isYmd(st.date)) { toast('결석일을 고르세요'); return false; }
+            const k = this.absKey(s.id, st.date);
+            let cs = [];
+            if (!edit) {
+              if (st.date < today) { toast('지난 날짜는 출석부에서 결석으로 체크하세요'); return false; }
+              cs = this.classesFor(s.id, st.date, true);
+              if (!cs.length) { toast('이 날 이 학생이 수강하는 수업이 없습니다'); return false; }
+              if (Store.where('makeups', m => m.pre && m.absKey === k && m.status !== 'skip').length) { toast('이미 등록된 결석 예정입니다. 결석 예정 탭에서 할일을 고치세요'); return false; }
+            }
+            const rows = st.rows.filter(r => r.text.trim());
+            if (rows.some(r => !isYmd(r.date))) { toast('할일 날짜를 모두 고르세요'); return false; }
+            const pre = this.prefix(s, st.date);
+            const now = Date.now(), iso = new Date(now).toISOString();
+            if (!edit) {
+              cs.forEach(c => {
+                const lid = Lessons.lessonId(c.id, st.date), id = this.id(lid, s.id);
+                const old = Store.get('makeups', id) || {};
+                Store.put('makeups', Object.assign({}, old, { id, lessonId: lid, studentId: s.id, classId: c.id, absentDate: st.date, date: '', time: '', status: 'none', memo: old.memo || '',
+                  pre: true, absKey: k, base: st.base || '', createdAt: iso }));
+              });
+            } else {
+              g0.items.forEach(o => { if (o.mk && o.mk.pre && (o.mk.base || '') !== (st.base || '')) Store.put('makeups', Object.assign({}, o.mk, { base: st.base || '' })); });
+              const keep = new Set(rows.filter(r => r.id).map(r => r.id));
+              this.linkedTodos(k).forEach(t => { if (!keep.has(t.id)) Store.del('todos', t.id); });
+            }
+            let n = 0;
+            rows.forEach((r, i) => {
+              const text = pre + r.text.trim();
+              const cur = r.id ? Store.get('todos', r.id) : null;
+              if (cur) { Store.put('todos', Lessons.editTodo(cur, r, text, !!cur.done)); return; }
+              const rec = Object.assign(Lessons.newTodo(Object.assign({}, r, { text }), i, now, '', '', r.date), { order: TodoX.maxOrder(r.date) + 1, doneAt: '', remindDone: false, absKey: k });
+              Store.put('todos', rec);
+              n++;
+            });
+            toast(edit ? '결석 예정 할일을 저장했습니다' : `${s.name} ${fmtMD(st.date)} 결석 예정 등록` + (n ? ` · 할일 ${n}개` : ''));
+            App.render();
+            res(true);
+          } },
+        ],
+        onClose() { res(false); },
+      });
+    });
+  },
+
+  // 결석 예정 취소: 결석 예정 기록 + 완료하지 않은 할일 삭제 (완료한 할일은 남김)
+  async cancelPre(g) {
+    const tds = this.linkedTodos(g.key), open = tds.filter(t => !t.done);
+    if (!await confirmDlg(`${g.s.name} ${fmtMD(g.date)} 결석 예정을 취소할까요?` + (open.length ? `\n완료하지 않은 할일 ${open.length}개도 함께 삭제됩니다.` : ''), '결석 예정 취소', true)) return;
+    g.items.forEach(o => {
+      if (o.mk) Store.del('makeups', o.mk.id);
+      const l = Store.get('lessons', o.l.id);
+      if (l && l.att && l.att[g.s.id] === 'A') {           // 출석부에서 미리 결석으로 찍어 둔 경우
+        const att = Object.assign({}, l.att); delete att[g.s.id];
+        const nl = Object.assign({}, l, { att });
+        if (Lessons.isEmpty(nl)) Store.del('lessons', nl.id); else Store.put('lessons', nl);
+      }
+    });
+    open.forEach(t => Store.del('todos', t.id));
+    toast('결석 예정을 취소했습니다');
+    App.render();
+  },
+
+  preHtml(groups) {
+    const today = todayStr();
+    if (!groups.length) return `<div class="panel"><div class="empty">결석 예정이 없습니다. 미리 알게 된 결석은 “+ 결석 예정 등록”으로 넣으세요.</div></div>`;
+    return groups.map(g => {
+      const base = this.baseOf(g), tds = this.linkedTodos(g.key), pre = this.prefix(g.s, g.date);
+      const dd = this.dayDiff(g.date, today);
+      return `<div class="mk-card ab-card" data-abs="${g.key}">
+        <div class="mk-top"><span class="who">${esc(g.s.name)}</span><span class="tag">${esc(stTag(g.s))}</span>
+          ${g.s.status !== 'active' ? Students.statusBadge(g.s) : ''}
+          <span class="badge red">결석 예정 ${fmtMD(g.date)}</span><span class="badge gray">D-${dd}</span>
+          <span class="soft small">${esc(this.clsLabel(g.items.map(o => o.c).filter(Boolean), g.date) || '(삭제된 반)')}</span>
+          <span style="flex:1"></span><button class="btn sm" data-absedit="${g.key}">할일 수정</button>
+          <button class="btn sm danger" data-abscancel="${g.key}">결석 예정 취소</button></div>
+        <div class="small soft" style="margin-bottom:4px">이전 수업일 ${base ? `<b>${esc(fmtDate(base))}</b>` : '<span class="muted">없음</span>'}</div>
+        ${tds.length ? `<div class="ab-tds">${tds.map(t => `<label class="ab-td ${t.done ? 'done' : ''} ${!t.done && t.date < today ? 'late' : ''}"><input type="checkbox" data-abstd="${t.id}" ${t.done ? 'checked' : ''}>
+          <span class="nowrap when">${fmtMD(t.date)}${t.time ? ' ' + esc(t.time) : ''}</span><span>${esc(String(t.text || '').startsWith(pre) ? t.text.slice(pre.length) : t.text)}</span></label>`).join('')}</div>`
+          : '<div class="small muted">연결된 할일이 없습니다.</div>'}</div>`;
+    }).join('');
+  },
+
   render(main) {
     const all = this.collect();
-    const cnt = { open: 0, done: 0, skip: 0, all: all.length };
-    all.forEach(o => { if (o.status === 'done') cnt.done++; else if (o.status === 'skip') cnt.skip++; else cnt.open++; });
+    const groups = this.preGroups(all);
+    const past = all.filter(o => !o.fut);
+    const cnt = { pre: groups.length, open: 0, done: 0, all: past.length };
+    past.forEach(o => { if (o.status === 'done') cnt.done++; else cnt.open++; });
     const q = this.q.trim();
-    let list = all.filter(o => this.tab === 'all' || (this.tab === 'open' ? ['none', 'plan'].includes(o.status) : o.status === this.tab))
-      .filter(o => !q || o.s.name.includes(q) || (o.c && o.c.name.includes(q)));
-    if (this.tab === 'open') list.sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
-    else list.sort((a, b) => ko(b.l.date, a.l.date));
-
-    let h = `<div class="page-head"><h1>보강</h1><span class="sub">출석부에서 결석 처리한 학생이 자동으로 모입니다</span></div>
-      <div class="tabs">${[['open', '처리 필요'], ['done', '완료'], ['skip', '보강 안 함'], ['all', '전체']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
+    let h = `<div class="page-head"><h1>결석+보강</h1><button class="btn primary" data-absadd>+ 결석 예정 등록</button><span class="sub">출석부에서 결석 처리한 학생과 지난 결석 예정이 처리 필요로 모입니다</span></div>
+      <div class="tabs">${[['pre', '결석 예정'], ['open', '처리 필요'], ['done', '완료'], ['all', '전체']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
       <div class="toolbar"><input type="search" data-q placeholder="학생 이름, 반 이름 검색" value="${esc(this.q)}" style="width:260px"></div>`;
-    if (!list.length) h += `<div class="panel"><div class="empty">${all.length ? '해당하는 보강이 없습니다.' : '결석 기록이 없습니다.'}</div></div>`;
+    let list = [];
+    if (this.tab === 'pre') {
+      h += this.preHtml(groups.filter(g => !q || g.s.name.includes(q) || g.items.some(o => o.c && o.c.name.includes(q))));
+    } else {
+      list = past.filter(o => this.tab === 'all' || (this.tab === 'open' ? ['none', 'plan'].includes(o.status) : o.status === this.tab))
+        .filter(o => !q || o.s.name.includes(q) || (o.c && o.c.name.includes(q)));
+      if (this.tab === 'open') list.sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
+      else list.sort((a, b) => ko(b.l.date, a.l.date));
+      if (!list.length) h += `<div class="panel"><div class="empty">${past.length ? '해당하는 보강이 없습니다.' : '결석 기록이 없습니다.'}</div></div>`;
+    }
     list.forEach(o => {
       const mk = o.mk || {};
       const key = this.id(o.l.id, o.s.id);
       const my = this.mine(o);                 // 학교가 섞인 반: 이 학생 학교 것만
-      h += `<div class="mk-card ${o.status === 'done' || o.status === 'skip' ? 'done' : ''}" data-key="${key}">
+      h += `<div class="mk-card ${o.status === 'done' ? 'done' : ''}" data-key="${key}">
         <div class="mk-top"><span class="who">${esc(o.s.name)}</span><span class="tag">${esc(stTag(o.s))}</span>
           ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
-          <span class="badge red">결석 ${fmtMD(o.l.date)}</span><span class="soft small">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>
+          <span class="badge red">결석 ${fmtMD(o.l.date)}</span>${mk.pre ? '<span class="badge gray" title="미리 등록한 결석 예정">예정</span>' : ''}<span class="soft small">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>
           ${my.left ? `<span class="badge orange">미전달 자료 ${my.left}</span>` : ''}
           <span style="flex:1"></span><button class="btn sm" data-copy="${key}">진도·숙제 복사</button>
           <button class="btn sm ghost" data-golesson="${o.l.id}">진도 보기</button></div>
@@ -1616,6 +1924,7 @@ const Makeups = {
     });
     main.innerHTML = h;
     const byKey = {}; list.forEach(o => { byKey[this.id(o.l.id, o.s.id)] = o; });
+    const gByKey = {}; groups.forEach(g => { gByKey[g.key] = g; });
     const saveField = (card, field, val) => {
       const o = byKey[card.dataset.key]; if (!o) return;
       const cur = Store.get('makeups', card.dataset.key) || { id: card.dataset.key, lessonId: o.l.id, studentId: o.s.id, classId: o.l.classId, absentDate: o.l.date, date: '', time: '', status: 'none', memo: '' };
@@ -1626,6 +1935,9 @@ const Makeups = {
     };
     main.onclick = async (e) => {
       const tb = e.target.closest('[data-tab]'); if (tb) { this.tab = tb.dataset.tab; App.render(); return; }
+      if (e.target.closest('[data-absadd]')) { this.absDlg(); return; }
+      const ae = e.target.closest('[data-absedit]'); if (ae) { this.absDlg(ae.dataset.absedit); return; }
+      const ac = e.target.closest('[data-abscancel]'); if (ac) { const g = gByKey[ac.dataset.abscancel]; if (g) this.cancelPre(g); return; }
       const cp = e.target.closest('[data-copy]');
       if (cp) {
         const txt = this.copyText(byKey[cp.dataset.copy]);
@@ -1636,7 +1948,13 @@ const Makeups = {
       const gl = e.target.closest('[data-golesson]');
       if (gl) { const l = Store.get('lessons', gl.dataset.golesson); if (l) { App.selDate = l.date; MiniCal.showMonthOf(l.date); App.go('progress', { classId: l.classId, date: l.date }); } }
     };
-    main.onchange = (e) => {
+    main.onchange = async (e) => {
+      const at = e.target.closest('[data-abstd]');
+      if (at) {
+        const t = Store.get('todos', at.dataset.abstd);
+        if (t) { Store.put('todos', Object.assign({}, t, { done: at.checked, doneAt: at.checked ? new Date().toISOString() : '' })); App.render(); }
+        return;
+      }
       const md = e.target.closest('[data-mdist]');
       if (md) {
         // 결석생에게 배부 자료를 전달했는지
@@ -1649,6 +1967,15 @@ const Makeups = {
         return;
       }
       const f = e.target.closest('[data-mf]'); if (!f) return;
+      // 보강 안 함 = 보강 목록에서 삭제 (출석부의 결석 기록은 그대로)
+      if (f.dataset.mf === 'status' && f.value === 'skip') {
+        const card = f.closest('[data-key]'), o = byKey[card.dataset.key];
+        if (!await confirmDlg(`${o ? o.s.name + ' ' + fmtMD(o.l.date) + ' ' : ''}결석을 보강 목록에서 삭제할까요?\n출석부의 결석 기록은 그대로 남습니다.\n삭제하면 되돌릴 수 없습니다.`, '삭제', true)) { App.render(); return; }
+        saveField(card, 'status', 'skip');
+        toast('보강 목록에서 삭제했습니다');
+        App.render();
+        return;
+      }
       saveField(f.closest('[data-key]'), f.dataset.mf, f.value.trim());
       if (f.dataset.mf !== 'memo') App.render();
     };

@@ -263,17 +263,19 @@ const MProgress = {
 };
 
 /* =========================================================
-   보강 — 보기 전용 (출석부 결석이 자동으로 모임) + 진도·숙제 복사
+   보강 — 보기 전용 (출석부 결석 + 지난 결석 예정이 자동으로 모임) + 진도·숙제 복사
+   보강 안 함은 목록에서 삭제된 것이라 보이지 않고, 내일 이후 결석 예정은 PC의 결석+보강에서만 본다
    ========================================================= */
 const MMakeups = {
   tab: 'open', q: '',
   ST_BADGE: { none: 'gray', plan: '', done: 'green', skip: 'gray' },
 
   render(main) {
-    const all = Makeups.collect();
-    const cnt = { open: 0, done: 0, skip: 0, all: all.length };
-    all.forEach(o => { if (o.status === 'done') cnt.done++; else if (o.status === 'skip') cnt.skip++; else cnt.open++; });
-    main.innerHTML = `<div class="tabs m-tabs4">${[['open', '처리 필요'], ['done', '완료'], ['skip', '안 함'], ['all', '전체']].map(([k, t]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
+    const all = Makeups.collect().filter(o => !o.fut);
+    const cnt = { open: 0, done: 0, all: all.length };
+    all.forEach(o => { if (o.status === 'done') cnt.done++; else cnt.open++; });
+    if (!(this.tab in cnt)) this.tab = 'open';
+    main.innerHTML = `<div class="tabs m-tabs4">${[['open', '처리 필요'], ['done', '완료'], ['all', '전체']].map(([k, t]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
       <div class="m-bar">${mSearchHtml(this.q, '학생 이름, 반 이름 검색')}</div>
       <div id="m-list">${this.listHtml(all)}</div>`;
     this.bind(main);
@@ -289,7 +291,7 @@ const MMakeups = {
   },
 
   listHtml(all) {
-    all = all || Makeups.collect();
+    all = all || Makeups.collect().filter(o => !o.fut);
     const list = this.filtered(all);
     this._byKey = {};
     if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '해당하는 보강이 없습니다.' : '결석 기록이 없습니다.'}</div></div>`;
@@ -309,7 +311,7 @@ const MMakeups = {
       f += `<span class="k">숙제</span><div class="pre">${esc(my.hw) || '<span class="muted">입력 전</span>'}</div>`;
       if (my.memo) f += `<span class="k">수업 메모</span><div class="pre">${esc(my.memo)}</div>`;
       if (my.dist.length) f += `<span class="k">배부</span><div>${my.dist.map(([d, i]) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
-      return `<div class="m-card ${o.status === 'done' || o.status === 'skip' ? 'm-dim' : ''}">
+      return `<div class="m-card ${o.status === 'done' ? 'm-dim' : ''}">
         <div class="m-card-hd"><b class="m-who">${highlight(o.s.name, q)}</b><span class="tag">${esc(stTag(o.s))}</span>
           ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
           <span class="m-grow"></span><span class="badge ${this.ST_BADGE[o.status] || 'gray'}">${MK_STATUS[o.status] || '미지정'}</span></div>
@@ -357,8 +359,8 @@ const MEvents = {
   month: '',              // 'YYYY-MM'
   sel: '',                // 달력에서 고른 날짜
   _dir: 0,                // 넘긴 방향 (넘김 효과용)
-  TCLS: { exam: 'red', pre: '', weekend: 'green', etc: 'purple' },
-  ORDER: ['exam', 'pre', 'weekend', 'etc'],
+  TCLS: { exam: 'red', pre: '', weekend: 'green', etc: 'purple', holiday: 'orange' },
+  ORDER: ['exam', 'pre', 'weekend', 'etc', 'holiday'],
 
   render(main) {
     const today = todayStr();

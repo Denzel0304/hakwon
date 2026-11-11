@@ -585,7 +585,8 @@ const TodoX = {
 
   /* ---------- 수업일지 할일 상세 (수업일지 작성 · 진도 탭 수정 창 공용) ----------
      d: 할일 칸 { text, date, importance, memo, remind, checklist, time } → 고른 값을 d에 넣고 true / 취소 false
-     값 형식은 할일 창(editor·save)과 같다. 반복은 수업일지 할일에 쓸 수 없어 없음. 실제 저장은 일지를 저장할 때 */
+     값 형식은 할일 창(editor·save)과 같다. 반복은 수업일지 할일에 쓸 수 없어 없음. 실제 저장은 일지를 저장할 때
+     note: 아래 안내 문구를 바꿀 때 (결석 예정 등록 창) */
   detailHas(d) { return !!(d && ((+d.importance || 0) || (d.memo || '').trim() || (+d.remind || 0) || (d.checklist || []).length || d.time)); },
   // 할일 칸 옆에 보일 짧은 요약
   detailSummary(d) {
@@ -606,7 +607,7 @@ const TodoX = {
       remind: Math.max(0, Math.min(30, Math.round(+d.remind || 0))), checklist: cl,
     };
   },
-  detailDlg(d) {
+  detailDlg(d, note) {
     const st = {
       importance: +d.importance || 0, memo: d.memo || '', remind: +d.remind || 0,
       checklist: JSON.parse(JSON.stringify(Array.isArray(d.checklist) ? d.checklist : [])),
@@ -628,7 +629,7 @@ const TodoX = {
           <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분</div>
         <div class="tx-clbox" ${st.checklist.length ? '' : 'hidden'}><div data-cllist></div>
           <div class="tx-cladd"><input type="text" data-cladd placeholder="항목 추가" autocomplete="off"><button type="button" class="btn sm" data-claddb>＋</button></div></div>
-        <p class="small muted" style="margin:8px 0 0">할일 내용과 날짜는 할일 칸에서 입력합니다. 수업일지를 저장할 때 함께 저장됩니다. (반복은 개별 할일에만 쓸 수 있습니다)</p>
+        <p class="small muted" style="margin:8px 0 0">${note ? esc(note) : '할일 내용과 날짜는 할일 칸에서 입력합니다. 수업일지를 저장할 때 함께 저장됩니다.'} (반복은 개별 할일에만 쓸 수 있습니다)</p>
       </div></div>`;
     return new Promise(res => {
       let ok = false, useCl = st.checklist.length > 0;

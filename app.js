@@ -89,6 +89,7 @@ const App = {
     const n = Lessons.cleanEmpty() + Classes.assignColors() + this.applySchedules();
     if (n) { this.render(); this.refreshModals(); }
     Promo.check();
+    HolidayRemind.check();            // 달마다 처음 열 때 공휴일 입력 확인
   },
 
   /* ---------- 로그인 ---------- */
@@ -225,5 +226,6 @@ const App = {
     App.render();
     App.refreshModals();
     Promo.check();
+    HolidayRemind.check();            // 달이 바뀌면 공휴일 입력 확인
   }, 60000);
 })();

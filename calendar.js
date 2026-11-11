@@ -6,12 +6,18 @@
    ※ 예전 기록의 grade(학년 하나)도 그대로 읽는다 (evGrades)
    ※ 영어 시험의 저장 키는 예전 이름 'weekend'를 그대로 쓴다 (하루짜리 일정)
    ※ 시험+교재 탭의 시험 기간은 학교·학년·연도·학기·중간/기말이 같은 '시험 일정'에서 자동으로 가져온다 (Exams.syncDates)
+   ※ 공휴일: type 'holiday', { date, endDate, title(이름) } — '공휴일 추가' 창(HolidayModal)으로만 입력.
+      결석 예정의 '이전 수업일' 계산에서 이 날은 건너뛴다 (Holidays.has). 출석부·시간표·수업일지에는 영향 없음
+   ※ 일정+공휴일 탭: 시작일의 연도로 '올해(+내년 이후)' / '이전 해'를 나눠 보여준다 (1월 1일이 되면 저절로 넘어감)
+   ※ 월초 공휴일 확인 창(HolidayRemind): 달마다 처음 열 때 띄움. 확인 = 다음에 또 뜸 / 완료 = 그 달은 다시 안 뜸
+      (완료 기록 meta: id HR_YYYYMM, { kind:'hol_done', ym, createdAt })
    ========================================================= */
 const EVENT_TYPES = {
   exam: { label: '시험 일정' },
   pre: { label: '직전 보강' },
   weekend: { label: '영어 시험' },      // 키는 예전 '주말 보강'의 것을 그대로 사용
   etc: { label: '기타 일정' },
+  holiday: { label: '공휴일' },          // 공휴일 추가 창으로만 입력 (일정 추가 창의 종류에는 없음)
 };
 const EXAM_KIND = { mid: '중간', final: '기말' };
 const NEED_TIME = { pre: true };          // 직전 보강만 시간 필수
@@ -52,6 +58,7 @@ function eventTitle(ev) {
 // 달력 띠·칸에 쓰는 짧은 이름: "금천고1·2 기말" / "영어 시험 금천고1"
 function eventShort(ev) {
   const tg = eventTarget(ev);
+  if (evType(ev) === 'holiday') return ev.title || '공휴일';
   if (evType(ev) === 'exam') return (tg ? tg + ' ' : '') + (ev.title || '시험');
   return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
 }
@@ -82,10 +89,118 @@ function barColorMap(list) {
 const CalIndex = {
   build() {
     const idx = {};
-    const slot = (d) => (idx[d] = idx[d] || { exam: [], pre: [], weekend: [], etc: [] });
+    const slot = (d) => (idx[d] = idx[d] || { exam: [], pre: [], weekend: [], etc: [], holiday: [] });
     Store.all('events').forEach(ev => eventDates(ev).forEach(d => slot(d)[evType(ev)].push(ev)));
     Object.values(idx).forEach(o => Object.keys(o).forEach(k => o[k].sort((a, b) => ko(a.start, b.start) || ko(eventShort(a), eventShort(b)))));
     return idx;
+  },
+};
+
+/* ---------- 공휴일 ---------- */
+const Holidays = {
+  // 공휴일 날짜 → 이름 { 'YYYY-MM-DD': '추석' } (기간이면 그 안의 날짜 모두)
+  map() {
+    const m = {};
+    Store.all('events').filter(ev => evType(ev) === 'holiday').forEach(ev => eventDates(ev).forEach(d => { m[d] = m[d] ? m[d] + ', ' + eventShort(ev) : eventShort(ev); }));
+    return m;
+  },
+  has(d, map) { return !!(map || this.map())[d]; },
+  // 그 달(YYYY-MM)에 걸친 공휴일 일정
+  ofMonth(ym) {
+    return Store.all('events').filter(ev => evType(ev) === 'holiday' && isYmd(ev.date) && ev.date.slice(0, 7) <= ym && evEnd(ev).slice(0, 7) >= ym)
+      .sort((a, b) => ko(a.date, b.date));
+  },
+};
+
+/* ---------- 공휴일 추가·수정 창 ---------- */
+const HolidayModal = {
+  // onSaved: 저장·삭제 뒤 부를 함수 (월초 확인 창의 목록 갱신용)
+  open(id, preset = {}, onSaved) {
+    const ev = id ? Store.get('events', id) : null;
+    const v = ev || { date: preset.date || App.selDate, endDate: '', title: '' };
+    const ranged = isRange(v);
+    const body = `<div class="form ev-form">
+      <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
+        <label class="chk"><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
+        <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
+      <label class="req">이름</label><input type="text" name="title" value="${esc(v.title || '')}" placeholder="예: 추석, 개천절, 학원 휴무" maxlength="30">
+      <div></div><div class="hint">결석 예정의 '이전 수업일'을 정할 때 이 날은 건너뜁니다.</div>
+    </div>`;
+    Modal.open({
+      title: ev ? '공휴일 수정' : '공휴일 추가', size: 'md', body,
+      onMount: (b) => {
+        const chk = $('[name=ranged]', b), endIn = $('[name=endDate]', b), wrap = $('[data-endwrap]', b), dIn = $('[name=date]', b);
+        chk.addEventListener('change', () => {
+          endIn.disabled = !chk.checked;
+          wrap.classList.toggle('off', !chk.checked);
+          if (chk.checked && (!endIn.value || endIn.value <= dIn.value) && isYmd(dIn.value)) endIn.value = addDaysStr(dIn.value, 1);
+        });
+        setTimeout(() => $('[name=title]', b).focus(), 30);
+      },
+      buttons: [
+        ...(ev ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
+          if (!await confirmDlg('이 공휴일을 삭제할까요?', '삭제', true)) return false;
+          Store.del('events', ev.id);
+          toast('공휴일을 삭제했습니다'); App.render();
+          if (onSaved) onSaved();
+        } }] : []),
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
+          const b = m.body;
+          const ranged2 = $('[name=ranged]', b).checked;
+          const rec = Object.assign({}, ev || { id: uid('EV'), createdAt: new Date().toISOString() }, {
+            type: 'holiday', date: $('[name=date]', b).value, endDate: ranged2 ? $('[name=endDate]', b).value : '',
+            start: '', end: '', school: '', grades: [], title: $('[name=title]', b).value.trim(), memo: (ev && ev.memo) || '',
+          });
+          if (!isYmd(rec.date)) { toast('날짜를 선택하세요'); return false; }
+          if (!rec.title) { toast('공휴일 이름을 입력하세요'); return false; }
+          if (ranged2) {
+            if (!isYmd(rec.endDate)) { toast('끝나는 날짜를 선택하세요'); return false; }
+            if (rec.endDate < rec.date) { toast('끝나는 날짜가 시작일보다 빠릅니다'); return false; }
+            if (rec.endDate === rec.date) rec.endDate = '';
+          }
+          Store.put('events', rec);
+          toast('공휴일을 저장했습니다');
+          App.render();
+          if (onSaved) onSaved();
+        } },
+      ],
+    });
+  },
+};
+
+/* ---------- 월초 공휴일 확인 창 (PC) ---------- */
+const HolidayRemind = {
+  shown: '',                   // 이번에 연 동안 이미 띄운 달 (확인을 누르면 다음에 열 때 다시 뜸)
+  doneId(ym) { return 'HR_' + ym.replace('-', ''); },
+  check() {
+    if (!Store.firstPullDone) return;
+    const ym = todayStr().slice(0, 7);
+    if (this.shown === ym || Store.get('meta', this.doneId(ym))) return;
+    this.shown = ym;
+    const [Y, M] = ym.split('-').map(Number);
+    const listHtml = () => {
+      const hs = Holidays.ofMonth(ym);
+      return hs.length ? hs.map(ev => `<div class="small">· ${esc(eventRangeLabel(ev))} <b>${esc(eventShort(ev))}</b></div>`).join('')
+        : '<div class="small muted">아직 등록된 공휴일이 없습니다.</div>';
+    };
+    Modal.open({
+      title: `${M}월 공휴일 확인`, size: 'sm', autofocus: false,
+      body: `<p class="confirm-msg">${Y}년 ${M}월 공휴일·쉬는 날을 입력했는지 확인하세요.</p>
+        <div class="small soft" style="margin:8px 0 4px">이번 달에 등록된 공휴일</div><div data-hrlist>${listHtml()}</div>
+        <p class="small muted" style="margin:10px 0 0">확인: 다음에 열 때 다시 알려줍니다 · 완료: 이번 달은 다시 띄우지 않습니다</p>`,
+      buttons: [
+        { text: '공휴일 추가', left: true, onClick: (m) => {
+          HolidayModal.open(null, { date: ym + '-01' }, () => { const el = $('[data-hrlist]', m.body); if (el) el.innerHTML = listHtml(); });
+          return false;
+        } },
+        { text: '확인' },
+        { text: '완료', cls: 'primary', primary: true, onClick: () => {
+          Store.put('meta', { id: this.doneId(ym), kind: 'hol_done', ym, createdAt: new Date().toISOString() });
+          toast(`${M}월 공휴일 확인을 완료했습니다`);
+        } },
+      ],
+    });
   },
 };
 
@@ -108,6 +223,7 @@ const MiniCal = {
     // 일지 미작성 수업이 있는 날 (오늘까지, 보이는 칸만 계산)
     const actCls = Store.all('classes').filter(c => c.active !== false);
     const noLog = (k) => k <= today && actCls.some(c => Lessons.needsLog(c, k));
+    const hol = Holidays.map();                 // 공휴일은 날짜를 빨간색으로
     let h = `<div class="mc-head">
       <button class="mc-nav" data-mc="prev" aria-label="이전 달">‹</button>
       <button type="button" class="mc-title ym-btn" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button>
@@ -123,13 +239,14 @@ const MiniCal = {
       if (d.getDay() === 6) cls.push('sat');
       if (k === today) cls.push('today');
       if (k === App.selDate) cls.push('sel');
+      if (hol[k]) cls.push('hol');
       let dots = '';
       if (o) {
         if (o.late) dots += '<i class="dot-late"></i>';
         if (o.todo) dots += '<i class="dot-todo"></i>';
       }
       if (noLog(k)) dots += '<i class="dot-nolog"></i>';
-      h += `<button class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
+      h += `<button class="${cls.join(' ')}" data-date="${k}"${hol[k] ? ` title="${esc(hol[k])}"` : ''}><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
     }
     h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span><span><i class="dot-nolog"></i>일지 미작성</span></div>`;
     el.innerHTML = h;
@@ -161,7 +278,7 @@ const MiniCal = {
 
 /* ---------- 큰 달력 ---------- */
 const BigCal = {
-  filters: { exam: true, pre: true, weekend: true, etc: true },
+  filters: { exam: true, pre: true, weekend: true, etc: true, holiday: true },
   userH: 0,                        // 끌어서 바꾼 높이 (큰 달력을 떠나면 초기화)
   onLeave() { this.userH = 0; },
   render(main, p) {
@@ -295,8 +412,8 @@ const DayPage = {
     const date = isYmd(p.date) ? p.date : App.selDate;
     const isToday = date === today;
     const idx = CalIndex.build();
-    const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [] };
-    const evs = [...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
+    const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [], holiday: [] };
+    const evs = [...o.holiday, ...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
     const classes = Lessons.classesOn(date);
     // 할일 (todo-ext.js: 반복·상기·체크리스트·중요도 포함)
     const tdList = TodoX.listHtml(date);
@@ -478,6 +595,7 @@ const DatePicker = {
 const EventModal = {
   open(id, preset = {}) {
     const ev = id ? Store.get('events', id) : null;
+    if (ev && evType(ev) === 'holiday') { HolidayModal.open(id); return; }     // 공휴일은 공휴일 창에서 고친다
     const d0 = preset.date || App.selDate;
     const v = ev || Object.assign({ type: '', date: d0, endDate: '', start: '', end: '', school: '', grades: [], title: '', memo: '' }, preset);
     let grades = evGrades(v);          // 고른 학년 (여러 개)
@@ -485,7 +603,7 @@ const EventModal = {
     const tm = evTerm(v.date);         // 시험 일정의 연도·학기 기본값 (날짜 기준)
     const exY = v.year || tm.year, exS = +v.semester || tm.sem, exK = v.kind || '';
     const body = `<div class="form ev-form">
-      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type && evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
+      <label class="req">종류</label><div class="row">${Object.keys(EVENT_TYPES).filter(k => k !== 'holiday').map(k => `<label class="chk"><input type="radio" name="type" value="${k}" ${v.type && evType(v) === k ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}</div>
       <label class="req">날짜</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="date" name="date" value="${esc(v.date)}" style="width:148px">
         <label class="chk" data-rangedwrap><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
@@ -630,39 +748,51 @@ const EventModal = {
 /* ---------- 일정 탭: 모든 일정을 모아 관리 ---------- */
 const EventsPage = {
   type: '', q: '', hidePast: false,
+  view: 'cur',          // 'cur' 올해(+내년 이후) / 'past' 이전 해
+  pastYear: '',
   render(main) {
     const today = todayStr();
     const q = this.q.trim();
-    const all = Store.all('events').filter(ev => isYmd(ev.date));
-    const pastCnt = all.filter(ev => evEnd(ev) < today).length;
+    const thisY = today.slice(0, 4);
+    const every = Store.all('events').filter(ev => isYmd(ev.date));
+    // 일정은 시작일의 연도에 속한다 → 1월 1일이 되면 지난해 일정은 저절로 '이전 해'로 넘어간다
+    const pastYears = [...new Set(every.map(ev => ev.date.slice(0, 4)).filter(y => y < thisY))].sort().reverse();
+    if (!pastYears.includes(this.pastYear)) this.pastYear = pastYears[0] || '';
+    const curAll = every.filter(ev => ev.date.slice(0, 4) >= thisY);
+    const all = this.view === 'past' ? every.filter(ev => ev.date.slice(0, 4) === this.pastYear) : curAll;
+    const pastCnt = this.view === 'past' ? 0 : all.filter(ev => evEnd(ev) < today).length;
     const list = all.filter(ev => (!this.type || evType(ev) === this.type))
-      .filter(ev => !this.hidePast || evEnd(ev) >= today)
+      .filter(ev => this.view === 'past' || !this.hidePast || evEnd(ev) >= today)
       .filter(ev => !q || [ev.school, eventShort(ev), ev.title, ev.memo].some(v => String(v || '').includes(q)))
       .sort((a, b) => {
         const pa = evEnd(a) < today, pb = evEnd(b) < today;
         if (pa !== pb) return pa ? 1 : -1;                 // 다가오는 일정 먼저
         return pa ? ko(b.date, a.date) : ko(a.date, b.date) || ko(a.start, b.start);
       });
-    let h = `<div class="page-head"><h1>일정</h1><button class="btn primary" data-a="add">+ 일정 추가</button><span class="sub">시험 일정 · 직전 보강 · 영어 시험 · 기타</span></div>
-      <div class="toolbar"><select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
+    let h = `<div class="page-head"><h1>일정+공휴일</h1><button class="btn primary" data-a="add">+ 일정 추가</button><button class="btn" data-a="addhol">+ 공휴일 추가</button><span class="sub">시험 일정 · 직전 보강 · 영어 시험 · 기타 · 공휴일</span></div>
+      <div class="tabs"><button data-view="cur" class="${this.view === 'cur' ? 'active' : ''}">${thisY}년<span class="cnt">${curAll.length}</span></button><button data-view="past" class="${this.view === 'past' ? 'active' : ''}">이전 해<span class="cnt">${every.length - curAll.length}</span></button></div>
+      <div class="toolbar">${this.view === 'past' ? (pastYears.length ? `<select data-pyear>${pastYears.map(y => `<option value="${y}" ${y === this.pastYear ? 'selected' : ''}>${y}년</option>`).join('')}</select>` : '') : ''}<select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
       <input type="search" data-q value="${esc(this.q)}" placeholder="학교, 제목, 메모 검색" style="width:240px">
-      <label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label>
+      ${this.view === 'past' ? '' : `<label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label>`}
       <span class="muted small">${list.length}건</span></div>`;
     h += list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>날짜</th><th>시간</th><th>종류</th><th>대상</th><th>제목·메모</th></tr></thead><tbody>${list.map(ev => {
       const past = evEnd(ev) < today;
-      const tcls = { exam: 'red', pre: '', weekend: 'green', etc: 'purple' }[evType(ev)];
+      const tcls = { exam: 'red', pre: '', weekend: 'green', etc: 'purple', holiday: 'orange' }[evType(ev)];
       return `<tr class="click ${past ? 'past' : ''}" data-ev="${ev.id}"><td class="nowrap"><b>${esc(eventRangeLabel(ev))}</b></td><td class="nowrap">${esc(eventTime(ev)) || '<span class="muted">-</span>'}</td>
         <td class="nowrap"><span class="badge ${tcls}">${EVENT_TYPES[evType(ev)].label}</span></td><td class="nowrap">${highlight(eventTarget(ev), q) || '<span class="muted">-</span>'}</td>
         <td>${ev.title ? `<b>${highlight(ev.title, q)}</b> ` : ''}<span class="small soft">${highlight(firstLine(ev.memo), q)}</span></td></tr>`;
-    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 일정이 없습니다.' : '등록된 일정이 없습니다. “일정 추가”로 시험 일정이나 보강을 등록하세요.'}</div></div>`;
+    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 일정이 없습니다.' : this.view === 'past' ? '이전 해 일정이 없습니다.' : '등록된 일정이 없습니다. “일정 추가”로 시험 일정이나 보강을 등록하세요.'}</div></div>`;
     main.innerHTML = h;
     main.onclick = (e) => {
+      const vb = e.target.closest('[data-view]'); if (vb) { this.view = vb.dataset.view; App.render(true); return; }
       if (e.target.closest('[data-a=add]')) { EventModal.open(null, { date: today }); return; }
+      if (e.target.closest('[data-a=addhol]')) { HolidayModal.open(null, { date: today }); return; }
       const tr = e.target.closest('[data-ev]'); if (tr) EventModal.open(tr.dataset.ev);
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-type]')) { this.type = e.target.value; App.render(); }
       if (e.target.matches('[data-past]')) { this.hidePast = e.target.checked; App.render(); }
+      if (e.target.matches('[data-pyear]')) { this.pastYear = e.target.value; App.render(); }
     };
     main.oninput = debounce((e) => {
       if (e.target.matches('[data-q]')) { this.q = e.target.value; App.render(); const i = $('[data-q]', main); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }

@@ -726,3 +726,28 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-sgrid .np-chips { margin: 0; }
 .mk-dist { display: flex; margin: 2px 0; }
 .mk-dist.got { color: var(--ink-mute); text-decoration: line-through; }
+
+/* ---------- 결석 예정 (결석+보강) ---------- */
+.tbl.ab td.ab-c.pre { outline: 1.5px dashed var(--danger); outline-offset: -4px; }
+.tbl.ab td.ab-c.fut { cursor: default; }
+.tbl.ab td.ab-c.fut:hover { background-color: transparent; }
+.tbl.ab td.ab-c.A.fut:hover { background: var(--danger-soft); }
+.ab-form { grid-template-columns: 90px 1fr; }
+.ab-prefix { margin-bottom: 2px; }
+.ab-tplbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ab-tplbar [data-abstpls] { display: contents; }
+.ab-chip { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); overflow: hidden; }
+.ab-chip button { border: 0; background: none; font: inherit; font-size: 13px; padding: 3px 4px 3px 10px; cursor: pointer; color: var(--ink); }
+.ab-chip button:hover { color: var(--accent-ink); }
+.ab-chip button.x { padding: 3px 8px 3px 4px; color: var(--ink-mute); }
+.ab-chip button.x:hover { color: var(--danger); }
+.ab-card .ab-tds { display: flex; flex-direction: column; gap: 2px; }
+.ab-td { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
+.ab-td input { width: 16px; height: 16px; accent-color: var(--accent); }
+.ab-td .when { color: var(--ink-soft); min-width: 88px; }
+.ab-td.done span { color: var(--ink-mute); text-decoration: line-through; }
+.ab-td.late .when { color: var(--danger); font-weight: 700; }
+
+/* ---------- 공휴일 ---------- */
+.mc-day.hol .n { color: var(--danger); font-weight: 700; }
+.bc-item.holiday { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
