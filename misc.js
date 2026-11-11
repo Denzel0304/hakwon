@@ -99,13 +99,21 @@ const Settings = {
         <p class="small">학생 ${n('students')}명 · 반 ${n('classes')}개 · 수업일지 ${n('lessons')}건 · 시험정보 ${n('exams')}건 · 상담 ${n('counsels')}건</p>
       </div><div class="panel"><h2>로그인</h2>
         <p class="small muted">이 기기는 로그아웃하기 전까지 로그인이 유지됩니다. PIN을 바꾸면 모든 기기가 로그아웃됩니다.</p>
-        <button class="btn danger" data-a="logout">이 기기에서 로그아웃</button></div></div>`;
+        <button class="btn danger" data-a="logout">이 기기에서 로그아웃</button></div></div>
+      <div class="panel" style="margin-top:14px"><h2>테마</h2>
+        <p class="small muted">프로그램 색을 고릅니다. 고른 테마는 서버에 저장되어 모바일 화면도 같은 색으로 따라갑니다.</p>
+        <div class="theme-picks">${Theme.LIST.map(t => `<button type="button" class="theme-pick${t.id === Theme.current() ? ' on' : ''}" data-a="theme" data-t="${t.id}" title="${esc(t.label)}"><span class="sw" style="background:${t.bg}"><i style="background:${t.side}"></i><b style="background:${t.dot}"></b></span><span class="nm">${esc(t.label)}</span></button>`).join('')}</div>
+      </div>`;
     main.onclick = async (e) => {
       const a = e.target.closest('[data-a]'); if (!a) return;
       if (a.dataset.a === 'sync') { await Store.syncNow(); toast('동기화했습니다'); App.render(); }
       if (a.dataset.a === 'full') { await Store.syncNow(true); toast('전체 데이터를 다시 받았습니다'); App.render(); }
       if (a.dataset.a === 'school') Promo.openSchoolModal();
       if (a.dataset.a === 'logout') App.logout(false);
+      if (a.dataset.a === 'theme') {
+        Theme.set(a.dataset.t);
+        main.querySelectorAll('.theme-pick').forEach(b => b.classList.toggle('on', b.dataset.t === Theme.current()));
+      }
     };
     main.onchange = null;
   },

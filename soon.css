@@ -1,18 +1,18 @@
 /* =========================================================
-   Soon (근무 진행률) — 사이드바용, 학원 관리 하늘색 테마
+   Soon (근무 진행률) — 사이드바용, 학원 관리 테마 색(style.css 변수)을 따름
    모든 이름은 sn- 로 시작 (학원 관리 스타일과 서로 영향 없음)
    ========================================================= */
 .sn-scope {
-  --sn-panel: #FFFFFF;
-  --sn-ink: #1E3243;
-  --sn-muted: #566D80;
-  --sn-mute2: #8DA2B3;
-  --sn-line: #D6E7F4;
-  --sn-line-strong: #B4D4EC;
-  --sn-accent: #2B7FC1;
-  --sn-accent-ink: #1D5E93;
-  --sn-accent-soft: #E8F3FC;
-  --sn-edge: #5A9BCF;
+  --sn-panel: var(--surface, #FFFFFF);
+  --sn-ink: var(--ink, #1E3243);
+  --sn-muted: var(--ink-soft, #566D80);
+  --sn-mute2: var(--ink-mute, #8DA2B3);
+  --sn-line: var(--line, #D6E7F4);
+  --sn-line-strong: var(--line-strong, #B4D4EC);
+  --sn-accent: var(--accent, #2B7FC1);
+  --sn-accent-ink: var(--accent-ink, #1D5E93);
+  --sn-accent-soft: var(--accent-soft, #E8F3FC);
+  --sn-edge: var(--edge, #5A9BCF);
   --sn-glass: rgba(255, 255, 255, 0.75);
   --sn-danger: #D2484F;
   /* 그림 자체의 색 (맥주·모래·나무) */
@@ -125,7 +125,7 @@
 .sn-vessel.sn-busy .sn-stream { stroke-width: 4; animation-duration: .35s; }
 @keyframes sn-fall { to { stroke-dashoffset: -7; } }
 
-.sn-bill-shadow { fill: #C9DCEB; opacity: .6; }
+.sn-bill-shadow { fill: var(--edge-soft, #C9DCEB); opacity: .6; }
 .sn-drop-bill { opacity: 0; }
 .sn-vessel.sn-earning .sn-drop-bill { animation: sn-billDrop 1.8s ease-in infinite; }
 @keyframes sn-billDrop {

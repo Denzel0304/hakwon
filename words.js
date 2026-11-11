@@ -179,7 +179,7 @@ const WordBook = {
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>단어</h1>
       <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:#B9D7EF;color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
     h += `<div class="toolbar small soft"><span>학생마다 한 줄, 그 학생이 오는 날만 칸으로 나옵니다 (여러 반에 다니면 앞선 반에 한 번만). 칸을 누르면 범위 · 합격/불합격/결시 · 점수 · 메모를 기록하고, 재시험은 같은 칸에 “+ 재시험 추가”, 수업 없는 날 재시험은 이름 아래 “+ 날짜”로 넣습니다. 출석부에서 결석인 날은 회색입니다.</span></div>`;
@@ -428,11 +428,11 @@ const WordBook = {
 .wt-dh { font-size: 11px; color: var(--ink-soft); font-weight: 600; white-space: nowrap; border-bottom: 1px dotted var(--line); padding-bottom: 2px; margin-bottom: 3px; }
 .wt-dh small { margin-left: 2px; font-weight: 400; color: var(--ink-mute); }
 .wt-dh.sun, .wt-dh.sun small { color: var(--danger); }
-.wt-dh.sat, .wt-dh.sat small { color: var(--accent); }
+.wt-dh.sat, .wt-dh.sat small { color: var(--sat); }
 .wt-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 2px; vertical-align: 1px; }
 .tbl.wt td.wt-c.today { box-shadow: inset 0 0 0 2px var(--accent); }
 .tbl.wt td.wt-c.today .wt-dh { color: var(--accent); }
-.tbl.wt td.wt-c.future { background-color: #FBFDFF; }
+.tbl.wt td.wt-c.future { background-color: var(--tint-2); }
 .tbl.wt td.wt-c.future .wt-dh { color: var(--ink-mute); font-weight: 500; }
 .tbl.wt td.wt-c.added { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(43,127,193,.05) 6px 8px); }
 .tbl.wt td.wt-pad { background: #FBFCFD; cursor: default; }

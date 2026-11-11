@@ -143,6 +143,7 @@ const Store = {
       const p = await IDB.get('pending');
       if (p && p.pending) { this.pending = p.pending; this.seq = p.seq || 0; }
     } catch (e) { console.warn('[mg77] 캐시 읽기 실패', e); }
+    if (typeof Theme !== 'undefined') Theme.syncFromStore();   // 저장된 테마 따라가기
   },
 
   /* ── 서버 통신 ── */
@@ -256,6 +257,7 @@ const Store = {
       this.lastSyncAt = Date.now();
       this.schedulePersist();
       App.updateSyncBar();
+      if (changed && typeof Theme !== 'undefined') Theme.syncFromStore();   // 다른 기기에서 바꾼 테마 따라가기
       if (changed) App.onRemoteChange();
       if (!this.firstPullDone) { this.firstPullDone = true; App.afterFirstPull(); }
       return true;

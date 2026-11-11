@@ -688,3 +688,54 @@ body.m-body .bz-chip { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }`
     this._chipEl.innerHTML = `<span class="bz-spin"></span><span>${esc(first.text)}${more} ${this.fmtSec(Math.floor((Date.now() - first.t0) / 1000))}</span>`;
   },
 };
+
+/* ---------- 테마 (설정 > 테마) ----------
+   body 에 theme-이름 클래스를 붙이면 style.css 의 색 변수만 바뀐다. 기본(sky = 연한 하늘색)은 클래스 없음.
+   선택값은 meta 테이블 id 'ui_theme' { kind:'theme', value } 로 서버에 저장 → 모바일 등 모든 기기가 동기화로 따라감 (서버 SQL 변경 없음)
+   기기에는 mg77_theme 에 마지막 값을 기억해 두어, 켤 때 바로 적용 (index.html / index-mobile.html 의 시작 스크립트와 같은 키·이름) */
+const Theme = {
+  DEFAULT: 'sky',
+  REC_ID: 'ui_theme',
+  LS: 'mg77_theme',
+  LIST: [
+    { id: 'sky',      label: '연한 하늘색',  bg: '#F4F9FD', side: '#E4F1FB', dot: '#2B7FC1' },
+    { id: 'light',    label: '라이트',     bg: '#F6F8F4', side: '#EAEEE4', dot: '#3A9E6A' },
+    { id: 'rose',     label: '연한 붉은색',  bg: '#FCF4F4', side: '#F8E3E3', dot: '#C03848' },
+    { id: 'lavender', label: '연한 자주색',  bg: '#F7F4FC', side: '#EBE3F8', dot: '#7040C0' },
+    { id: 'cream',    label: '연한 노란색',  bg: '#FDFBF4', side: '#FAF6E4', dot: '#A87A10' },
+    { id: 'apricot',  label: '연한 주황색',  bg: '#FEF7F3', side: '#FDEDE2', dot: '#D0682A' },
+    { id: 'mint',     label: '연한 청록색',  bg: '#F4FBFA', side: '#E3F7F3', dot: '#13877D' },
+    { id: 'mocha',    label: '연한 갈색',   bg: '#FBF8F4', side: '#F6EEE3', dot: '#8A5A34' },
+    { id: 'gray',     label: '연한 회색',   bg: '#F4F5F7', side: '#E5E8EC', dot: '#4A5568' },
+  ],
+  valid(id) { return this.LIST.some(t => t.id === id); },
+  // 지금 화면에 적용된 테마
+  current() {
+    const b = document.body;
+    const t = b && this.LIST.find(x => b.classList.contains('theme-' + x.id));
+    return t ? t.id : this.DEFAULT;
+  },
+  // 화면에만 적용 (+ 이 기기에 기억)
+  apply(id) {
+    if (!this.valid(id)) id = this.DEFAULT;
+    const b = document.body;
+    if (!b) return;
+    this.LIST.forEach(t => b.classList.remove('theme-' + t.id));
+    if (id !== this.DEFAULT) b.classList.add('theme-' + id);
+    try { localStorage.setItem(this.LS, id); } catch (e) {}
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m) { const c = getComputedStyle(b).getPropertyValue('--side').trim(); if (c) m.setAttribute('content', c); }
+  },
+  // 설정에서 고름 → 적용 + 서버 저장 (다른 기기로 전달)
+  set(id) {
+    if (!this.valid(id)) return;
+    this.apply(id);
+    const r = Store.get('meta', this.REC_ID);
+    if (!r || r.value !== id) Store.put('meta', { id: this.REC_ID, kind: 'theme', value: id, updatedAt: new Date().toISOString() });
+  },
+  // 캐시 읽기·동기화 뒤 서버 값이 이 기기 값과 다르면 따라감
+  syncFromStore() {
+    const r = Store.get('meta', this.REC_ID);
+    if (r && this.valid(r.value) && r.value !== this.current()) this.apply(r.value);
+  },
+};

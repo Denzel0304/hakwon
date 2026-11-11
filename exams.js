@@ -819,7 +819,7 @@ const Exams = {
 .x7-ar { color: var(--ink-mute); font-size: 10px; }
 .x7-nx { color: var(--accent-ink); font-weight: 600; margin-top: 2px; }
 .x7-ok { color: var(--ok); font-weight: 600; margin-top: 2px; }
-.x7-prow > td { background: #F9FCFE; padding: 8px 12px 10px; cursor: default; }
+.x7-prow > td { background: var(--tint-2); padding: 8px 12px 10px; cursor: default; }
 .x7-prow .np-srow:first-child { border-top: 0; padding-top: 0; }
 .np-c.x7-next { outline: 2px dashed var(--accent); outline-offset: 1px; }
 .x7-blk { border-top: 1px dashed var(--line); padding: 8px 0; user-select: text; }

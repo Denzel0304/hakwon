@@ -585,8 +585,8 @@ const Books = {
 .bk-tbl td { vertical-align: top; }
 .bk-tbl .bk-name { cursor: pointer; }
 .bk-tbl .bk-name:hover b { color: var(--accent-ink); text-decoration: underline; }
-.bk-tbl tr:hover td { background: #FAFCFE; }
-.bk-tbl tr.bk-grp td, .bk-tbl tr.bk-grp:hover td { background: #F1F7FC; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
+.bk-tbl tr:hover td { background: var(--tint-2); }
+.bk-tbl tr.bk-grp td, .bk-tbl tr.bk-grp:hover td { background: var(--tint-strong); padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
 .bk-cell { min-width: 120px; max-width: 190px; }
 .bk-item { display: block; padding: 3px 7px; margin-bottom: 3px; border-radius: 6px; background: var(--accent-soft); border: 1px solid transparent; cursor: pointer; line-height: 1.35; }
 .bk-item:hover { border-color: var(--accent); }

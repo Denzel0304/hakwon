@@ -548,7 +548,7 @@ const SmsPage = {
 .sx7-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .sx7-lb { width: 64px; flex: none; }
 .sx7-miss { max-height: 120px; overflow-y: auto; background: var(--danger-soft); border-radius: 6px; padding: 6px 10px; }
-.sx7-sample { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: #F9FCFE; }
+.sx7-sample { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: var(--tint-2); }
 .sx7-g { border-bottom: 1px solid var(--line); }
 .sx7-g:last-child { border-bottom: 0; }
 .sx7-gh { display: flex; align-items: center; gap: 12px; padding: 10px 4px; cursor: pointer; border-radius: 6px; }
@@ -561,7 +561,7 @@ const SmsPage = {
 .sx7-gc { flex: none; display: inline-flex; gap: 4px; align-items: center; font-size: 13.5px; color: var(--ink-soft); }
 .sx7-ar { flex: none; font-size: 10.5px; color: var(--ink-mute); }
 .sx7-gd { padding: 0 4px 14px; }
-.sx7-body { background: #F9FCFE; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.sx7-body { background: var(--tint-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
 `;
   document.head.appendChild(st);
 })();

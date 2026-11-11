@@ -10,11 +10,15 @@
 <title>학원 관리</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="style.css?v=20261112b">
-<link rel="stylesheet" href="soon.css?v=20261105a">
+<link rel="stylesheet" href="style.css?v=20261112t">
+<link rel="stylesheet" href="soon.css?v=20261112t">
 <link rel="stylesheet" href="todo-ext.css?v=20261106a">
 </head>
 <body>
+<script>
+  // 이 기기에 기억된 테마를 화면을 그리기 전에 먼저 적용 (util.js의 Theme와 같은 키·이름. 서버 값은 동기화 뒤 따라감)
+  try { var _t = localStorage.getItem('mg77_theme'); if (/^(light|rose|lavender|cream|apricot|mint|mocha|gray)$/.test(_t || '')) { document.body.classList.add('theme-' + _t); } } catch (e) {}
+</script>
 
 <!-- 로그인 -->
 <div id="mg-login" class="login-overlay active">
@@ -74,18 +78,18 @@
 <div id="toast" class="toast"></div>
 
 <script src="config.js?v=20261105a"></script>
-<script src="util.js?v=20261109a"></script>
-<script src="store.js?v=20261031b"></script>
-<script src="calendar.js?v=20261112b"></script>
+<script src="util.js?v=20261112t"></script>
+<script src="store.js?v=20261112t"></script>
+<script src="calendar.js?v=20261112t"></script>
 <script src="students.js?v=20261111d"></script>
 <script src="classes.js?v=20261111c"></script>
-<script src="lessons.js?v=20261112b"></script>
+<script src="lessons.js?v=20261112t"></script>
 <script src="todo-ext.js?v=20261112a"></script>
-<script src="exams.js?v=20261111d"></script>
-<script src="books.js?v=20261111c"></script>
-<script src="words.js?v=20261111b"></script>
-<script src="misc.js?v=20261105b"></script>
-<script src="sms.js?v=20261110m"></script>
+<script src="exams.js?v=20261112t"></script>
+<script src="books.js?v=20261112t"></script>
+<script src="words.js?v=20261112t"></script>
+<script src="misc.js?v=20261112t"></script>
+<script src="sms.js?v=20261112t"></script>
 <script src="app.js?v=20261112a"></script>
 <script src="soon.js?v=20261107a"></script>
 </body>

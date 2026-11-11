@@ -108,14 +108,14 @@ body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
 }
 .m-dayseg button small { font-size: 10.5px; font-weight: 700; color: var(--accent); }
 .m-dayseg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.m-dayseg button.on small { color: #E4F1FB; }
+.m-dayseg button.on small { color: var(--on-accent-mute); }
 .m-tt-view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 8px 8px 0; touch-action: pan-y; overscroll-behavior: contain; }
 .m-tt1.tt2 { min-width: 0; border: 0; border-radius: 0; overflow: visible; background: transparent; }
 .m-tt1 .tt2-body { grid-template-columns: 42px minmax(0, 1fr); }
 .m-tt1 .tt2-body { height: calc(var(--ppm) * var(--span, 540)); }   /* PC는 540분으로 고정이라 모바일은 보여주는 범위에 맞춤 */
 .m-tt1 .tt2-time span { right: 6px; font-size: 12px; }
 .m-tt1 .tt2-col { background-color: var(--surface); border: 1px solid var(--line); border-radius: 0 0 0 0; }
-.m-tt1 .tt2-col.today { border-color: #7D9DB8; }
+.m-tt1 .tt2-col.today { border-color: var(--frame); }
 .m-tt1 .tt-blk { cursor: default; }
 .m-tt1 .tt-blk .hd.one .nm { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-tt1 .tt-blk .hd.one .tm { font-size: 13px; font-weight: 600; color: #34495A; }
@@ -166,7 +166,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 .m-cal .mc-head { padding: 0 12px 4px; }
 .m-bc-wds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line-strong); }
 .m-bc-wds div { text-align: center; font-size: 12.5px; font-weight: 700; color: var(--ink-mute); padding: 2px 0 5px; }
-.m-bc-wds .sun { color: var(--danger); } .m-bc-wds .sat { color: var(--accent); }
+.m-bc-wds .sun { color: var(--danger); } .m-bc-wds .sat { color: var(--sat); }
 .m-bc-week { --bt: 25px; --bh: 18px; position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
 .m-bc-week:last-child { border-bottom: 0; }
 .m-bc-cell { min-width: 0; min-height: 62px; padding: 2px 1px 4px; border-right: 1px solid var(--line); overflow: hidden; cursor: pointer; }
@@ -174,7 +174,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 .m-bc-cell .n { display: block; width: 24px; margin: 1px auto 0; text-align: center; font-size: 14px; font-weight: 700; line-height: 20px; border-radius: 10px; }
 .m-bc-cell.other { background: #FAFCFD; }
 .m-bc-cell.other .n { opacity: .35; }
-.m-bc-cell.sun .n { color: var(--danger); } .m-bc-cell.sat .n { color: var(--accent); }
+.m-bc-cell.sun .n { color: var(--danger); } .m-bc-cell.sat .n { color: var(--sat); }
 .m-bc-cell.today .n { background: var(--accent); color: #fff !important; }
 .m-bc-cell.sel { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
 .m-bc-items { margin-top: calc(var(--lanes) * var(--bh) + 3px); display: flex; flex-direction: column; gap: 2px; }
@@ -217,7 +217,7 @@ body.m-body #main[data-page="todos"] { padding-bottom: 96px; }
   position: fixed; right: 18px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 50;
   width: 58px; height: 58px; border: 0; border-radius: 50%; background: var(--accent); color: #fff;
   font-size: 34px; font-weight: 300; line-height: 1; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 18px rgba(29, 94, 147, .35);
+  box-shadow: 0 6px 18px var(--accent-shadow);
 }
 .m-fab:active { transform: scale(.94); background: var(--accent-ink); }
 body.m-body .tx-item { padding-right: 0; }
