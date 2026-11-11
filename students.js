@@ -196,7 +196,7 @@ const Students = {
     if (!list.length) return;
     if (act === 'ctsave') { this.bulkContactSave(list); return; }
     if (act === 'delete') {
-      const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
+      const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 교재, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
       if (!ok) return;
       list.forEach(s => this.hardDelete(s.id));
       this.sel.clear();
@@ -446,10 +446,10 @@ const Students = {
       title: s.name, size: 'md', autofocus: false,
       body: `<div class="tabs" data-tabs>
         <button data-t="info">기본정보</button><button data-t="cls">수강반</button><button data-t="status">상태·이력</button>
-        <button data-t="score">성적</button><button data-t="counsel">상담</button></div><div data-pane></div>`,
+        <button data-t="book">교재</button><button data-t="score">성적</button><button data-t="counsel">상담</button></div><div data-pane></div>`,
       buttons: [
         { text: '완전 삭제', cls: 'danger', left: true, onClick: async (mm) => {
-          const ok = await confirmHard(`${s.name} 학생을 완전히 삭제할까요?\n수강 기록, 이력, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
+          const ok = await confirmHard(`${s.name} 학생을 완전히 삭제할까요?\n수강 기록, 이력, 교재, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
           if (!ok) return false;
           const gone = Store.get('students', s.id) || s;
           this.hardDelete(s.id);
@@ -912,6 +912,11 @@ const Students = {
     this.contactAdd([s]);
   },
 
+  pane_book(pane, s, m) {
+    pane.innerHTML = Books.studentHtml(s.id) + '<p class="small muted" style="margin-top:10px">교재 전체 현황은 왼쪽 메뉴의 “교재”에서 봅니다.</p>';
+    pane.onclick = (e) => Books.studentClick(e, () => { this.renderPane(m, s.id); App.render(); });
+  },
+
   pane_score(pane, s) {
     const sc = Store.where('scores', x => x.studentId === s.id).sort((a, b) => b.year - a.year || b.semester - a.semester || (a.kind === 'final' ? -1 : 1));
     const ms = Store.where('mock_scores', x => x.studentId === s.id).map(x => ({ x, mk: Store.get('mocks', x.mockId) })).filter(o => o.mk)
@@ -1150,6 +1155,7 @@ const Students = {
     Store.delWhere('mock_scores', e => e.studentId === sid);
     Store.delWhere('counsels', e => e.studentId === sid);
     Store.delWhere('makeups', e => e.studentId === sid);
+    Store.delWhere('meta', e => e.kind === 'sbook' && e.studentId === sid);   // 학생 교재 기록
     Store.where('lessons', l => l.att && l.att[sid]).forEach(l => {
       const att = Object.assign({}, l.att); delete att[sid];
       Store.put('lessons', Object.assign({}, l, { att }));

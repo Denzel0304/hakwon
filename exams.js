@@ -226,7 +226,8 @@ const Exams = {
   },
   // 교재가 연결된 곳 (시험 교재: 시험 / 일반 교재: 반) → 문장 목록
   matLinks(m) {
-    if (m.type === 'gen') return (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean).map(c => '반: ' + c.name + (c.active === false ? ' (종료)' : ''));
+    if (m.type === 'gen') return (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean).map(c => '반: ' + c.name + (c.active === false ? ' (종료)' : ''))
+      .concat(Books.studentsOfMat(m.id).sort((a, b) => ko(a.name, b.name)).map(s => '학생(진행 중): ' + s.name + (stTag(s) ? ' ' + stTag(s) : '')));
     return Store.where('exams', e => (e.items || []).some(it => it.matId === m.id))
       .sort((a, b) => b.year - a.year || b.semester - a.semester || ko(a.school, b.school) || a.grade - b.grade)
       .map(e => `시험: ${schoolShort(e.school)} ${gradeLabel(e.grade)} · ${e.year}년 ${e.semester}학기 ${EXAM_KIND[e.kind] || ''}${e.done ? ' (완료된 시험)' : ''}`);
@@ -237,7 +238,7 @@ const Exams = {
       title: '삭제할 수 없는 교재', size: 'lg', autofocus: false,
       body: `${deleted ? `<p class="small" style="margin-top:0">${deleted}개는 삭제했습니다.</p>` : ''}
         <p class="small" style="margin-top:0">아래 교재는 연결된 곳이 있어 삭제하지 않았습니다. 연결을 먼저 풀어 주세요.
-        <span class="soft">(시험 교재: 시험 범위에서 빼기 / 일반 교재: 교재 수정에서 반 연결 해제)</span></p>
+        <span class="soft">(시험 교재: 시험 범위에서 빼기 / 일반 교재: 교재 수정에서 반 연결 해제, 학생 › 교재에서 진행 중인 학생 완료·중단 처리)</span></p>
         ${blocked.map(({ m, links }) => `<div class="x7-blk"><div><span class="np-tag ${m.type}">${m.type === 'gen' ? '일반' : MAT_TYPE[m.type]}</span> <b>${esc(NP.matName(m))}</b> <span class="small soft">${links.length}곳</span></div>
           <ul>${links.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('')}`,
       buttons: [{ text: '확인', cls: 'primary', primary: true }],
@@ -249,8 +250,9 @@ const Exams = {
     const blocked = [], ok = [];
     mats.forEach(m => { const links = this.matLinks(m); if (links.length) blocked.push({ m, links }); else ok.push(m); });
     if (!ok.length) { this.showBlocked(blocked, 0); return; }
-    if (!await confirmDlg(`교재 ${ok.length}개를 삭제할까요?${blocked.length ? `\n연결된 교재 ${blocked.length}개는 삭제하지 않습니다.` : ''}\n시험 교재의 수업 준비 표시도 함께 지워집니다.`, '삭제', true)) return;
-    ok.forEach(m => { Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id)); this.sel.delete(m.id); });
+    const hist = ok.reduce((n, m) => n + (m.type === 'gen' ? Books.recsOfMat(m.id).length : 0), 0);
+    if (!await confirmDlg(`교재 ${ok.length}개를 삭제할까요?${blocked.length ? `\n연결된 교재 ${blocked.length}개는 삭제하지 않습니다.` : ''}\n시험 교재의 수업 준비 표시도 함께 지워집니다.${hist ? `\n학생 교재 이력 ${hist}건은 교재 이름으로 남습니다.` : ''}`, '삭제', true)) return;
+    ok.forEach(m => { if (m.type === 'gen') Books.keepName(m); Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id)); this.sel.delete(m.id); });
     toast(`교재 ${ok.length}개를 삭제했습니다`);
     App.render();
     if (blocked.length) this.showBlocked(blocked, ok.length);
@@ -448,8 +450,8 @@ const Exams = {
     if (!list.length) {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 교재가 없습니다.' : gen ? '등록된 일반 교재가 없습니다. “교재 등록”에서 일반 교재를 고르고 사용하는 반을 연결하세요.' : '등록된 시험 교재가 없습니다. “교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하면 시험 범위를 고를 수 있습니다.'}</div></div>`;
     } else if (gen) {
-      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
-      <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><b>${esc(m.name)}</b></td>
+      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>분류</th><th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
+      <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap">${Books.catTag(m.cat)}</td><td class="nowrap"><b>${esc(m.name)}</b></td>
       <td class="small">${esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
       <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || '<span class="muted">연결된 반 없음</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
@@ -482,6 +484,8 @@ const Exams = {
     const body = `<div class="form">
       <label class="req">구분</label><div class="row">${[['exam', '시험 교재'], ['gen', '일반 교재']].map(([k, t]) => `<label class="chk"><input type="radio" name="mcat" value="${k}" ${cat === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${t}</label>`).join('')}
         <span class="hint">${m ? '등록한 뒤에는 바꿀 수 없습니다' : '시험 교재는 시험 범위·내신, 일반 교재는 비내신 수업에 씁니다'}</span></div>
+      <label class="req" data-mc="gen">분류</label><div class="row" data-mc="gen">${BOOK_CATS.map(k => `<label class="chk"><input type="radio" name="bkcat" value="${k}" ${m && m.cat === k ? 'checked' : ''}>${BOOK_CAT[k]}</label>`).join('')}
+        <span class="hint">학생 › 교재에서 이 분류 칸에 나옵니다</span></div>
       <label class="req" data-mc="exam">종류</label><div class="row" data-mc="exam">${Object.keys(MAT_TYPE).map(k => `<label class="chk"><input type="radio" name="mtype" value="${k}" ${type === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${MAT_TYPE[k]}</label>`).join('')}</div>
       <label class="req" data-mk="mock">모의고사</label><div class="row" data-mk="mock"><input type="number" name="year" min="2000" max="2100" value="${esc(m && m.type === 'mock' ? m.year : now.getFullYear())}" style="width:90px">년
         <select name="month">${Array.from({ length: 12 }, (_, i) => i + 1).map(i => `<option value="${i}" ${(m && m.type === 'mock' ? +m.month : 3) === i ? 'selected' : ''}>${i}월</option>`).join('')}</select>
@@ -539,7 +543,9 @@ const Exams = {
         ...(m ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
           const links = this.matLinks(m);
           if (links.length) { this.showBlocked([{ m, links }], 0); return false; }
-          if (!await confirmDlg(`“${NP.matName(m)}” 교재를 삭제할까요?${m.type === 'gen' ? '' : '\n이 교재의 수업 준비 표시도 함께 지워집니다.'}`, '삭제', true)) return false;
+          const hist = m.type === 'gen' ? Books.recsOfMat(m.id).length : 0;
+          if (!await confirmDlg(`“${NP.matName(m)}” 교재를 삭제할까요?${m.type === 'gen' ? '' : '\n이 교재의 수업 준비 표시도 함께 지워집니다.'}${hist ? `\n학생 교재 이력 ${hist}건은 교재 이름으로 남습니다.` : ''}`, '삭제', true)) return false;
+          if (m.type === 'gen') Books.keepName(m);
           Store.del('meta', m.id); Store.del('meta', NP.ppId(m.id)); this.sel.delete(m.id);
           toast('교재를 삭제했습니다'); App.render();
         } }] : []),
@@ -558,7 +564,10 @@ const Exams = {
             if (!rec.name) { toast('교재 이름을 입력하세요'); return false; }
             if (!us.length) { toast('단위(과·강)를 하나 이상 넣으세요'); return false; }
             if (rec.type === 'gen') {
+              const bc = ($('[name=bkcat]:checked', b) || {}).value;
+              if (!bc) { toast('분류(독해·문법·듣기·단어)를 고르세요'); return false; }
               if (!cls.size) { toast('사용하는 반을 하나 이상 고르세요'); return false; }
+              rec.cat = bc;
               rec.classIds = [...cls];
             } else {
               // 지운 단위가 시험 범위에 들어 있으면 확인 후 범위에서도 뺀다
@@ -569,7 +578,7 @@ const Exams = {
                 items: e.items.map(it => it.matId === rec.id ? Object.assign({}, it, { units: it.units.filter(u => !gone.includes(u.id)) }) : it)
                   .filter(it => it.matId !== rec.id || it.units.length),
               })));
-              delete rec.classIds;
+              delete rec.classIds; delete rec.cat;
             }
             rec.units = us;
             delete rec.year; delete rec.month; delete rec.grade;
