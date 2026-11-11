@@ -372,7 +372,7 @@ const Students = {
 
   classPickHtml(selected = []) {
     const cls = Classes.sorted(Store.all('classes').filter(c => c.active !== false));   // 반 관리와 같은 순서
-    if (!cls.length) return '<div class="muted small">만들어진 반이 없습니다. 반 관리에서 먼저 반을 만드세요.</div>';
+    if (!cls.length) return '<div class="muted small">만들어진 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.</div>';
     return '<div class="pick-list">' + cls.map(c => `<label><input type="checkbox" name="cls" value="${c.id}" ${selected.includes(c.id) ? 'checked' : ''}>${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span><span class="pkd" data-ckd="${c.id}">${this.ckdHtml(c, null)}</span></label>`).join('') + '</div>';
   },
   // 수강반 목록의 요일 버튼 (반을 체크하면 보임, 끈 요일은 빼고 수강). sel: 켜진 요일, null = 전부

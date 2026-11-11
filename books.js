@@ -43,6 +43,43 @@ const Books = {
     return this.recsOfMat(mid).filter(r => r.status === 'ing').map(r => Store.get('students', r.studentId)).filter(Boolean);
   },
 
+  /* ---------- 반별 정렬 (반 메뉴와 같은 원칙) ----------
+     반 순서: 반 메뉴 순서(요일 → 시간) / 여러 반이면 가장 앞선 반 / 반 안에서는 학년 → 학교 → 이름 / 반 없는 학생은 맨 아래 */
+  // [{ c: 반 또는 null, list: [학생] }]  — fixedCls가 있으면 그 반으로 묶음 (반 필터)
+  groupByClass(students, fixedCls) {
+    const order = {};
+    Classes.sorted(Store.all('classes')).forEach((c, i) => { order[c.id] = i; });
+    const fixed = fixedCls ? Store.get('classes', fixedCls) : null;
+    const mainOf = (sid) => {
+      if (fixed) return fixed;
+      let cs = Students.activeClassesOf(sid);
+      if (!cs.length) cs = Students.upcomingClassesOf(sid).map(o => o.c);
+      return cs.length ? cs.reduce((a, b) => (order[b.id] < order[a.id] ? b : a)) : null;
+    };
+    const groups = new Map();
+    students.forEach(st => {
+      const c = mainOf(st.id), k = c ? c.id : '';
+      if (!groups.has(k)) groups.set(k, { c, list: [] });
+      groups.get(k).list.push(st);
+    });
+    const out = [...groups.values()].sort((a, b) => (a.c ? order[a.c.id] : 1e9) - (b.c ? order[b.c.id] : 1e9));
+    out.forEach(g => g.list.sort((a, b) => Students.sortFn(a, b)));
+    return out;
+  },
+  // 학생 입력칸 목록 (label → id) 을 반별 순서로
+  stuChoicesByClass(filter) {
+    const map = studentChoices(filter), inv = {};
+    Object.keys(map).forEach(k => { inv[map[k]] = k; });
+    const list = Object.values(map).map(id => Store.get('students', id)).filter(Boolean);
+    const out = {};
+    this.groupByClass(list).forEach(g => g.list.forEach(st => { out[inv[st.id]] = st.id; }));
+    return out;
+  },
+  clsLabel(m) {
+    const cls = ((m && m.classIds) || []).map(id => Store.get('classes', id)).filter(Boolean);
+    return cls.length ? cls.map(c => esc(c.name)).join(', ') : (m && m.noCls ? '반 미지정' : '없음');
+  },
+
   /* ---------- 표시 ---------- */
   catTag(cat) { return `<span class="bk-cat ${BOOK_CAT[cat] ? cat : 'none'}">${BOOK_CAT[cat] || '미분류'}</span>`; },
   // 올해면 11/3, 다른 해면 25.11.3
@@ -97,8 +134,7 @@ const Books = {
         if (!this.flt) return true;
         const ing = this.ingOf(s.id);
         return this.flt === 'none' ? !ing.length : ing.some(r => this.over(r));
-      })
-      .sort((a, b) => ko(a.name, b.name) || ko(stTag(a), stTag(b)));
+      });
     const clsList = Classes.sorted(Store.all('classes').filter(c => c.active !== false));
     let h = `<div class="page-narrow">${this.headHtml()}
       <div class="toolbar">
@@ -114,7 +150,9 @@ const Books = {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 학생이 없습니다.' : '등록된 학생이 없습니다.'}</div></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact bk-tbl"><thead><tr><th>이름</th><th>수강반</th>${BOOK_CATS.map(c => `<th>${this.catTag(c)}</th>`).join('')}<th class="num">끝낸 교재</th></tr></thead><tbody>`;
-      list.forEach(s => {
+      this.groupByClass(list, this.cls).forEach(g => {
+      h += `<tr class="bk-grp"><td colspan="7">${g.c ? `${Classes.dot(g.c)}<b>${esc(g.c.name)}</b>${g.c.active === false ? ' <span class="badge gray">종료</span>' : ''}` : '<b>수강 중인 반 없음</b>'} <span class="small muted">${g.list.length}명</span></td></tr>`;
+      g.list.forEach(s => {
         const cls = Students.activeClassesOf(s.id).map(c => c.name).join(', ');
         const doneN = this.doneOf(s.id).length;
         h += `<tr data-sid="${s.id}"><td class="nowrap bk-name" data-open="${s.id}"><b>${highlight(s.name, this.q)}</b>${stTag(s) ? `<div class="small soft">${highlight(stTag(s), this.q)}</div>` : ''}${s.status === 'pause' ? '<span class="badge orange">휴원</span>' : s.status === 'left' ? '<span class="badge gray">퇴원</span>' : ''}</td>
@@ -126,6 +164,7 @@ const Books = {
             <button type="button" class="bk-add" data-add="${s.id}|${cat}" title="${BOOK_CAT[cat]} 교재 등록">+</button></td>`;
         });
         h += `<td class="num"><button type="button" class="bk-cnt" data-open="${s.id}">${doneN || '-'}</button></td></tr>`;
+      });
       });
       h += '</tbody></table></div>';
       h += '<p class="small muted" style="margin-top:8px">칸의 교재를 누르면 수정·완료 처리, 학생 이름을 누르면 그 학생의 교재 이력을 봅니다.</p>';
@@ -176,7 +215,7 @@ const Books = {
         const done = this.recsOfMat(m.id).filter(r => r.status !== 'ing').length;
         const cls = (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean);
         return `<tr class="click" data-mat="${m.id}"><td class="nowrap">${this.catTag(m.cat)}</td><td class="nowrap"><b>${highlight(m.name, this.bq)}</b></td>
-          <td class="small">${cls.map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}</span>`).join(', ') || '<span class="muted">-</span>'}</td>
+          <td class="small">${cls.map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">-</span>')}</td>
           <td class="small">${ing.map(s => esc(s.name)).join(', ') || '<span class="muted">없음</span>'}${ing.length ? ` <span class="muted">(${ing.length}명)</span>` : ''}</td>
           <td class="num">${done || '<span class="muted">-</span>'}</td></tr>`;
       }).join('')}</tbody></table></div>`;
@@ -279,8 +318,7 @@ const Books = {
       $('.mg-modal-head h3', m.el).textContent = mt.name;
       const recs = this.recsOfMat(mid);
       const ing = this.sortIng(recs.filter(r => r.status === 'ing')), done = this.sortDone(recs.filter(r => r.status !== 'ing'));
-      const cls = (mt.classIds || []).map(id => Store.get('classes', id)).filter(Boolean);
-      let h = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">${this.catTag(mt.cat)}<span class="small soft">사용하는 반: ${cls.map(c => esc(c.name)).join(', ') || '없음'}</span>
+      let h = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">${this.catTag(mt.cat)}<span class="small soft">사용하는 반: ${this.clsLabel(mt)}</span>
         <span style="flex:1"></span><button type="button" class="btn sm primary" data-assign>+ 학생 추가</button></div>`;
       h += `<h2 class="bk-h2">진행 중 <span class="muted">${ing.length}명</span></h2>`;
       h += ing.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>학생</th><th>시작일</th><th>끝낼 예정</th><th>메모</th><th></th></tr></thead><tbody>${ing.map(r => `
@@ -316,10 +354,11 @@ const Books = {
     const ingSet = new Set(this.recsOfMat(mid).filter(r => r.status === 'ing').map(r => r.studentId));
     const doneSet = new Set(this.recsOfMat(mid).filter(r => r.status === 'done').map(r => r.studentId));
     const matCls = new Set(mt.classIds || []);
-    const stu = Store.where('students', s => (s.status || 'active') === 'active').map(s => {
+    const stu = [];
+    this.groupByClass(Store.where('students', s => (s.status || 'active') === 'active')).forEach(g => g.list.forEach(s => {
       const cls = Students.activeClassesOf(s.id);
-      return { s, cls, mine: cls.some(c => matCls.has(c.id)) };
-    }).sort((a, b) => (b.mine - a.mine) || ko(a.s.name, b.s.name));
+      stu.push({ s, cls, g: g.c ? g.c.name : '수강 중인 반 없음', mine: cls.some(c => matCls.has(c.id)) });
+    }));
     const hasCat = !!BOOK_CAT[mt.cat];
     const body = `<div class="form">
       <label>교재</label><div>${this.catTag(mt.cat)} <b>${esc(mt.name)}</b></div>
@@ -327,7 +366,7 @@ const Books = {
       <label class="req">시작일</label><input type="date" name="start" value="${todayStr()}" style="width:170px">
       <label>끝낼 예정</label><input type="date" name="plan" style="width:170px">
       <label class="top req">학생</label><div>
-        <div class="row" style="margin-bottom:6px"><input type="search" data-sq placeholder="이름·학교 검색" style="flex:1"><button type="button" class="btn sm ghost" data-mineall>이 교재 반 학생 모두</button><button type="button" class="btn sm ghost" data-clr>선택 해제</button></div>
+        <div class="row" style="margin-bottom:6px"><input type="search" data-sq placeholder="이름·학교 검색" style="flex:1">${matCls.size ? '<button type="button" class="btn sm ghost" data-mineall>이 교재 반 학생 모두</button>' : ''}<button type="button" class="btn sm ghost" data-clr>선택 해제</button></div>
         <div class="pick-list bk-pick" data-list></div><div class="small soft" style="margin-top:4px" data-cnt>0명 선택</div></div>
     </div>`;
     Modal.open({
@@ -339,11 +378,11 @@ const Books = {
           const rows = stu.filter(o => !qq || [o.s.name, o.s.school, stTag(o.s)].some(v => String(v || '').toLowerCase().includes(qq)));
           let h = '', grp = null;
           rows.forEach(o => {
-            const g = o.mine ? '이 교재를 쓰는 반 학생' : '다른 학생';
+            const g = o.g;
             if (g !== grp) { h += `<div class="grp">${g}</div>`; grp = g; }
             const busy = ingSet.has(o.s.id);
             h += `<label class="${busy ? 'bk-dis' : ''}"><input type="checkbox" data-pk="${o.s.id}" ${sel.has(o.s.id) ? 'checked' : ''} ${busy ? 'disabled' : ''}>
-              <span>${esc(o.s.name)} <span class="tag">${esc(stTag(o.s))}</span></span><span class="small muted" style="margin-left:auto">${busy ? '이미 진행 중' : doneSet.has(o.s.id) ? '완료한 적 있음 · ' : ''}${busy ? '' : esc(o.cls.map(c => c.name).join(', '))}</span></label>`;
+              <span>${esc(o.s.name)} <span class="tag">${esc(stTag(o.s))}</span>${o.mine ? ' <span class="badge">이 교재 반</span>' : ''}</span><span class="small muted" style="margin-left:auto">${busy ? '이미 진행 중' : doneSet.has(o.s.id) ? '완료한 적 있음 · ' : ''}${busy ? '' : esc(o.cls.map(c => c.name).join(', '))}</span></label>`;
           });
           box.innerHTML = h || '<div class="small muted" style="padding:8px">학생이 없습니다.</div>';
           $('[data-cnt]', b).textContent = sel.size + '명 선택';
@@ -398,7 +437,7 @@ const Books = {
     let status = r ? r.status : 'ing';
     let mq = '';
     const fixedStu = !!sid;
-    const stMap = fixedStu ? null : studentChoices(s => (s.status || 'active') === 'active');
+    const stMap = fixedStu ? null : this.stuChoicesByClass(s => (s.status || 'active') === 'active');
     const s0 = sid ? Store.get('students', sid) : null;
     const body = `<div class="form">
       <label class="req">학생</label>${fixedStu ? `<div>${this.stuLabel(s0)}</div>` : `<div>${studentInputHtml('dl-bk-stu', '')}</div>`}
@@ -547,6 +586,7 @@ const Books = {
 .bk-tbl .bk-name { cursor: pointer; }
 .bk-tbl .bk-name:hover b { color: var(--accent-ink); text-decoration: underline; }
 .bk-tbl tr:hover td { background: #FAFCFE; }
+.bk-tbl tr.bk-grp td, .bk-tbl tr.bk-grp:hover td { background: #F1F7FC; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
 .bk-cell { min-width: 120px; max-width: 190px; }
 .bk-item { display: block; padding: 3px 7px; margin-bottom: 3px; border-radius: 6px; background: var(--accent-soft); border: 1px solid transparent; cursor: pointer; line-height: 1.35; }
 .bk-item:hover { border-color: var(--accent); }

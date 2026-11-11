@@ -453,7 +453,7 @@ const Exams = {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>분류</th><th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap">${Books.catTag(m.cat)}</td><td class="nowrap"><b>${esc(m.name)}</b></td>
       <td class="small">${esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
-      <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || '<span class="muted">연결된 반 없음</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+      <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
@@ -480,6 +480,7 @@ const Exams = {
     let type = m && m.type !== 'gen' ? m.type : 'mock';
     const units = JSON.parse(JSON.stringify((m && m.units) || []));
     const cls = new Set(((m && m.classIds) || []).filter(cid => Store.get('classes', cid)));
+    let noCls = !!(m && m.noCls) && !cls.size;   // 반 미지정: 수업일지에 나오지 않고 학생 교재 관리에만 쓰는 교재
     const clsList = Classes.sorted(Store.all('classes')).filter(c => c.active !== false || cls.has(c.id));
     const body = `<div class="form">
       <label class="req">구분</label><div class="row">${[['exam', '시험 교재'], ['gen', '일반 교재']].map(([k, t]) => `<label class="chk"><input type="radio" name="mcat" value="${k}" ${cat === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${t}</label>`).join('')}
@@ -497,8 +498,8 @@ const Exams = {
         <span class="small soft">한 번에 만들기</span><input type="number" data-qn min="1" max="60" value="8" style="width:70px"><span class="small soft">개</span>
         <input type="text" data-qs value="${cat === 'gen' || type === 'sub' ? '강' : '과'}" style="width:60px"><button type="button" class="btn sm ghost" data-qmake>만들기</button></div>
         <div class="hint" style="margin-top:4px">예: 1과, 2과 … / Special Lesson / 1강 … 단위 이름은 나중에 바꿔도 기록이 유지됩니다.</div></div>
-      <label class="top req" data-mc="gen">사용하는 반</label><div data-mc="gen"><div class="np-chips" data-cls>${clsList.map(c => `<button type="button" class="np-c ${cls.has(c.id) ? 'on' : ''}" data-mcls="${c.id}">${esc(c.name)}${c.active === false ? ' (종료)' : ''}</button>`).join('') || '<span class="small muted">반이 없습니다.</span>'}</div>
-        <div class="hint" style="margin-top:4px">고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다.</div></div>
+      <label class="top req" data-mc="gen">사용하는 반</label><div data-mc="gen"><div class="np-chips" data-cls>${clsList.map(c => `<button type="button" class="np-c ${cls.has(c.id) ? 'on' : ''}" data-mcls="${c.id}">${esc(c.name)}${c.active === false ? ' (종료)' : ''}</button>`).join('')}<button type="button" class="np-c ${noCls ? 'on' : ''}" data-mnocls>반 미지정</button></div>
+        <div class="hint" style="margin-top:4px">고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.</div></div>
     </div>`;
     Modal.open({
       title: m ? '교재 수정' : '교재 등록', size: 'lg', body,
@@ -527,7 +528,13 @@ const Exams = {
         b.addEventListener('click', (e) => {
           const t = e.target;
           const cb = t.closest('[data-mcls]');
-          if (cb) { const cid = cb.dataset.mcls; if (cls.has(cid)) cls.delete(cid); else cls.add(cid); cb.classList.toggle('on', cls.has(cid)); return; }
+          if (cb) { const cid = cb.dataset.mcls; if (cls.has(cid)) cls.delete(cid); else cls.add(cid); cb.classList.toggle('on', cls.has(cid));
+            if (cls.size && noCls) { noCls = false; $('[data-mnocls]', b).classList.remove('on'); } return; }
+          if (t.closest('[data-mnocls]')) {   // 반 미지정 ↔ 반 선택은 둘 중 하나만
+            noCls = !noCls; t.closest('[data-mnocls]').classList.toggle('on', noCls);
+            if (noCls) { cls.clear(); $$('[data-mcls]', b).forEach(x => x.classList.remove('on')); }
+            return;
+          }
           if (t.closest('[data-uadd]')) { units.push({ id: uid('U'), name: '' }); drawU(); const ins = $$('[data-uname]', ub); ins[ins.length - 1].focus(); return; }
           const d = t.closest('[data-udel]'); if (d) { units.splice(+d.dataset.udel, 1); drawU(); return; }
           const up = t.closest('[data-uup]'); if (up) { const i = +up.dataset.uup; if (i) { [units[i - 1], units[i]] = [units[i], units[i - 1]]; drawU(); } return; }
@@ -566,9 +573,10 @@ const Exams = {
             if (rec.type === 'gen') {
               const bc = ($('[name=bkcat]:checked', b) || {}).value;
               if (!bc) { toast('분류(독해·문법·듣기·단어)를 고르세요'); return false; }
-              if (!cls.size) { toast('사용하는 반을 하나 이상 고르세요'); return false; }
+              if (!cls.size && !noCls) { toast('사용하는 반을 고르거나 “반 미지정”을 고르세요'); return false; }
               rec.cat = bc;
               rec.classIds = [...cls];
+              if (noCls) rec.noCls = true; else delete rec.noCls;
             } else {
               // 지운 단위가 시험 범위에 들어 있으면 확인 후 범위에서도 뺀다
               const gone = ((m && m.units) || []).filter(u => !us.some(x => x.id === u.id)).map(u => u.id);
@@ -578,7 +586,7 @@ const Exams = {
                 items: e.items.map(it => it.matId === rec.id ? Object.assign({}, it, { units: it.units.filter(u => !gone.includes(u.id)) }) : it)
                   .filter(it => it.matId !== rec.id || it.units.length),
               })));
-              delete rec.classIds; delete rec.cat;
+              delete rec.classIds; delete rec.cat; delete rec.noCls;
             }
             rec.units = us;
             delete rec.year; delete rec.month; delete rec.grade;

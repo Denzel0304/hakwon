@@ -280,7 +280,7 @@ const Classes = {
         <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
         <td class="num">${r.length}${byDay}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
     };
-    let h = `<div class="page-narrow"><div class="page-head"><h1>반 관리</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
+    let h = `<div class="page-narrow"><div class="page-head"><h1>반</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;

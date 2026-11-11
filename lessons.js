@@ -899,7 +899,7 @@ const Lessons = {
       const a = f.att[s.id] || '';
       return `<div class="att-row"><div class="nm"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span></div>
         <div class="att-seg">${Object.keys(ATT).map(k => `<button class="${k} ${a === k ? 'on' : ''}" data-att="${k}" data-sid="${s.id}">${ATT[k]}</button>`).join('')}</div></div>`;
-    }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 관리에서 학생을 배정하세요.</div>';
+    }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 메뉴에서 학생을 배정하세요.</div>';
     // 내신 진도 입력 (학교별 숙제는 그 학교 교재 바로 아래에 들어감 · 못 넣은 학교 숙제는 진도 칸 아래에 따로)
     const npCtx0 = { classId, date, lessonId: f.editId || null, hw: f.hw || null };
     const npHtml = NP.editorHtml(f.np, npCtx0);
@@ -1289,7 +1289,7 @@ const AttBook = {
       <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:#B9D7EF;color:var(--accent-ink);font-weight:700" title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     this._mv = {};
     const all = Classes.sorted(Store.all('classes'));
-    if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 관리에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
+    if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
     h += `<div class="toolbar small soft"><span>칸을 누를 때마다 출 → 지 → 결 → 조 → 빈칸 순으로 바뀌고 바로 저장됩니다. 보강 등 다른 날은 반마다 “+ 날짜 추가”로 넣고 해당 학생만 체크하세요.</span></div>`;
     this.shownClasses(Y, M).forEach(c => {
       const { dates, studs, srcs } = this.monthData(c, Y, M);
