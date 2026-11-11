@@ -1,6 +1,7 @@
 /* =========================================================
    words.js — 단어 시험 기록부 (학생 › 단어)
-   출석부와 같은 반별·월별 표. 칸을 누르면 그 날의 단어 시험(범위·결과·점수·메모, 재시험 포함)을 기록한다.
+   반별·월별 표. 학생마다 한 줄, 그 학생이 오는 날만 칸으로 나온다 (여러 반에 다니면 반 순서상 앞선 반에 한 번만).
+   칸을 누르면 그 날의 단어 시험(범위·결과·점수·메모, 재시험 포함)을 기록한다.
    단어장은 학생 › 교재에서 분류 '단어'로 진행 중인 교재(sbook)를 그대로 쓴다.
    기록은 meta 테이블에 저장 (서버 SQL 변경 없음):
    wtest: { id 'WT_학생ID_날짜', kind:'wtest', studentId, date, classId(기록한 반), matId, matName(교재 이름 사본),
@@ -11,7 +12,7 @@ const WT_MARK = { pass: '○', fail: '✕', abs: '결시' };
 
 const WordBook = {
   month: '',
-  extra: {},           // 직접 추가한 날짜 { '반ID|날짜': 1 } (페이지를 떠나면 사라짐, 기록하면 남음)
+  extra: {},           // 직접 추가한 날짜 { '학생ID|날짜': 1 } (페이지를 떠나면 사라짐, 기록하면 남음)
   onLeave() { this.extra = {}; },
 
   /* ---------- 데이터 ---------- */
@@ -70,11 +71,57 @@ const WordBook = {
 
   shownClasses(Y, M) {
     const all = Classes.sorted(Store.all('classes'));
-    const pre = this.month + '-';
     const act = all.filter(c => c.active !== false);
-    const ended = all.filter(c => c.active === false).filter(c =>
-      this.monthData(c, Y, M).studs.length || Object.keys(this.extra).some(k => k.startsWith(c.id + '|' + pre)));
+    const ended = all.filter(c => c.active === false).filter(c => this.monthData(c, Y, M).studs.length);
     return [...act, ...ended];
+  },
+
+  /* ---------- 학생 한 줄 = 그 학생이 오는 날만 ----------
+     여러 반에 다니는 학생은 반 순서상 가장 앞선 반 아래에 한 번만 나온다.
+     날짜: 그 학생이 다니는 모든 반의 수업일(그 요일에 오는 날) + 출결 기록이 있는 날 + 단어 기록이 있는 날 + 직접 추가한 날
+     반환: { groups: [{ c, rows: [{ s, items: [{ d, ents:[{ c, att, reg }], absent }] , cls:Set }] }] } */
+  build(Y, M) {
+    AttBook._mv = {};
+    const pre = Y + '-' + pad(M) + '-';
+    const classes = this.shownClasses(Y, M);
+    const per = new Map();
+    const groups = classes.map(c => ({ c, rows: [], had: 0 }));
+    classes.forEach((c, gi) => {
+      const { dates, studs, srcs } = this.monthData(c, Y, M);
+      groups[gi].had = studs.length;
+      studs.forEach(s => {
+        let o = per.get(s.id);
+        if (!o) { o = { s, gi, items: new Map(), cls: new Set() }; per.set(s.id, o); }
+        dates.forEach(d => {
+          const src = AttBook.cellSrc(c, srcs, s.id, d);
+          const sc = Store.get('classes', src) || c;
+          const reg = (sc.days || []).includes(dowOf(d)) && !(Classes.startOf(sc) > d);
+          const l = Store.get('lessons', Lessons.lessonId(src, d));
+          const att = l && l.att ? l.att[s.id] || '' : '';
+          if (!att && !(reg && AttBook.enrolledOn(s.id, src, d))) return;   // 그 날 오지 않는 학생
+          let it = o.items.get(d);
+          if (!it) { it = { d, ents: [] }; o.items.set(d, it); }
+          if (!it.ents.some(e => e.c.id === sc.id)) it.ents.push({ c: sc, att, reg });
+          o.cls.add(sc.id);
+        });
+      });
+    });
+    // 단어 기록이 있는 날 · 직접 추가한 날
+    per.forEach(o => {
+      this.recs().filter(r => r.studentId === o.s.id && String(r.date).startsWith(pre)).forEach(r => { if (!o.items.has(r.date)) o.items.set(r.date, { d: r.date, ents: [] }); });
+      Object.keys(this.extra).forEach(k => {
+        const [sid, d] = k.split('|');
+        if (sid === o.s.id && String(d).startsWith(pre) && !o.items.has(d)) o.items.set(d, { d, ents: [] });
+      });
+    });
+    per.forEach(o => {
+      o.list = [...o.items.values()].sort((a, b) => ko(a.d, b.d));
+      // 그 날 결석: 결석 기록이 있고, 출석·지각·조퇴 기록은 없음
+      o.list.forEach(it => { it.absent = it.ents.some(e => e.att === 'A') && !it.ents.some(e => e.att && e.att !== 'A'); });
+      groups[o.gi].rows.push(o);
+    });
+    groups.forEach(g => g.rows.sort((a, b) => Students.sortFn(a.s, b.s)));
+    return groups;
   },
 
   // 학생 한 줄의 이 달 합격·불합격 횟수
@@ -94,27 +141,34 @@ const WordBook = {
     return (r.tries || []).map((t, i) => `${i + 1}차 ${t.res === 'abs' ? '' : this.rangeLabel(t) + ' '}${WT_RES[t.res] || ''}${this.scoreLabel(t) ? ' ' + this.scoreLabel(t) : ''}${t.memo ? ' · ' + t.memo : ''}`).join('\n')
       + (r.matName ? '\n단어장: ' + r.matName : '');
   },
+  // 칸 위의 날짜 (여러 반에 다니면 그 날 반의 색 점)
+  dateHead(it, multi) {
+    const dots = multi ? it.ents.map(e => `<span class="wt-dot" style="background:${Classes.colorOf(e.c)}" title="${esc(e.c.name)}"></span>`).join('') : '';
+    return `<div class="wt-dh ${dowOf(it.d) === 0 ? 'sun' : dowOf(it.d) === 6 ? 'sat' : ''}">${dots}${+it.d.slice(5, 7)}/${+it.d.slice(8)}<small>${DOW[dowOf(it.d)]}</small></div>`;
+  },
 
-  tableHtml(c, dates, studs, srcs) {
+  tableHtml(g) {
     const today = todayStr();
-    let h = `<div class="tbl-wrap"><table class="tbl compact ab wt"><thead><tr><th class="ab-name">이름</th>${dates.map(d => {
-      const reg = (c.days || []).includes(dowOf(d));
-      return `<th class="ab-d ${d === today ? 'today' : ''} ${reg ? 'reg' : 'offday'} ${dowOf(d) === 0 ? 'sun' : ''}" title="${reg ? '정규 수업일' : '정규 수업일 아님'}">${+d.slice(8)}<small>${DOW[dowOf(d)]}</small></th>`;
-    }).join('')}<th class="num">합격</th><th class="num">불합격</th></tr></thead><tbody>`;
-    studs.forEach(s => {
+    const maxN = Math.max(1, ...g.rows.map(o => o.list.length));
+    let h = `<div class="tbl-wrap"><table class="tbl compact ab wt"><thead><tr><th class="ab-name">이름</th><th colspan="${maxN}" class="wt-dcol">날짜별 단어 시험 <span class="small muted">(학생이 오는 날만)</span></th><th class="num">합격</th><th class="num">불합격</th></tr></thead><tbody>`;
+    g.rows.forEach(o => {
+      const s = o.s;
       const bk = this.curBook(s.id);
-      const n = this.countOf(s.id, dates);
-      h += `<tr><td class="nowrap ab-name"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span>
-        <div class="wt-bk">${bk ? `<button type="button" class="wt-bkname" data-bk="${bk.id}" title="단어장 수정">${esc(Books.nameOf(bk))}</button>` : `<button type="button" class="wt-bkadd" data-bkadd="${s.id}">+ 단어장 연결</button>`}</div></td>`;
-      dates.forEach(d => {
-        const r = this.rec(s.id, d);
-        const src = AttBook.cellSrc(c, srcs, s.id, d);
-        const out = !AttBook.enrolledOn(s.id, src, d);
-        const reg = (c.days || []).includes(dowOf(d));
-        const abs = this.absentOn(c, srcs, s.id, d);
-        if (abs && !r) { h += `<td class="ab-c wt-c wt-absent" title="출석부에 결석으로 기록된 날">결석</td>`; return; }
-        h += `<td class="ab-c wt-c ${out ? 'out' : ''} ${reg ? 'reg' : ''}" data-wcid="${c.id}" data-d="${d}" data-sid="${s.id}" title="${esc(this.cellTip(r))}">${this.cellInner(r)}</td>`;
+      const n = this.countOf(s.id, o.list.map(it => it.d));
+      const multi = o.cls.size > 1;
+      const others = multi ? [...o.cls].filter(id => id !== g.c.id).map(id => Store.get('classes', id)).filter(Boolean) : [];
+      h += `<tr data-row="${s.id}"><td class="nowrap ab-name"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span>
+        ${others.length ? `<div class="wt-oc">${others.map(c => `${Classes.dot(c)}${esc(c.name)}`).join(' ')}</div>` : ''}
+        <div class="wt-bk">${bk ? `<button type="button" class="wt-bkname" data-bk="${bk.id}" title="단어장 수정">${esc(Books.nameOf(bk))}</button>` : `<button type="button" class="wt-bkadd" data-bkadd="${s.id}">+ 단어장 연결</button>`}
+        <button type="button" class="wt-addd" data-addday="${s.id}" title="이 학생의 재시험 날짜 추가">+ 날짜</button></div></td>`;
+      o.list.forEach(it => {
+        const r = this.rec(s.id, it.d);
+        const reg = it.ents.some(e => e.reg);
+        const cls = `${it.d === today ? 'today' : ''} ${it.d > today ? 'future' : ''} ${reg ? '' : 'added'}`;
+        if (it.absent && !r) { h += `<td class="ab-c wt-c wt-absent ${cls}" title="출석부에 결석으로 기록된 날">${this.dateHead(it, multi)}<div class="wt-ab">결석</div></td>`; return; }
+        h += `<td class="ab-c wt-c ${cls}" data-wcid="${g.c.id}" data-d="${it.d}" data-sid="${s.id}" title="${esc((reg ? '' : '수업일 아님 (추가한 날)\n') + this.cellTip(r))}">${this.dateHead(it, multi)}${this.cellInner(r)}</td>`;
       });
+      for (let i = o.list.length; i < maxN; i++) h += '<td class="wt-pad"></td>';
       h += `<td class="num wt-n pass">${n.pass}</td><td class="num wt-n fail">${n.fail}</td></tr>`;
     });
     return h + '</tbody></table></div>';
@@ -126,17 +180,16 @@ const WordBook = {
     let h = `<div class="page-narrow"><div class="page-head"><h1>단어</h1>
       <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
       <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:#B9D7EF;color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
-    AttBook._mv = {};
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
-    h += `<div class="toolbar small soft"><span>칸을 누르면 그 날의 단어 시험(범위 · 합격/불합격/결시 · 점수 · 메모)을 기록합니다. 재시험은 같은 칸에 “+ 재시험 추가”로 넣고, 수업 없는 날 재시험은 반마다 “+ 날짜 추가”로 넣으세요. 출석부에서 결석인 날은 비워 둡니다.</span></div>`;
-    this.shownClasses(Y, M).forEach(c => {
-      const { dates, studs, srcs } = this.monthData(c, Y, M);
+    h += `<div class="toolbar small soft"><span>학생마다 한 줄, 그 학생이 오는 날만 칸으로 나옵니다 (여러 반에 다니면 앞선 반에 한 번만). 칸을 누르면 범위 · 합격/불합격/결시 · 점수 · 메모를 기록하고, 재시험은 같은 칸에 “+ 재시험 추가”, 수업 없는 날 재시험은 이름 아래 “+ 날짜”로 넣습니다. 출석부에서 결석인 날은 회색입니다.</span></div>`;
+    this.build(Y, M).forEach(g => {
+      const c = g.c;
+      if (c.active === false && !g.rows.length) return;
       h += `<div class="panel ab-sec" data-sec="${c.id}"><div class="ab-sec-head"><h2>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
-        <span class="sub">${esc(Classes.timeLabel(c))}</span></h2><span class="grow"></span>
-        <button class="btn sm" data-addday="${c.id}" title="수업 없는 날 재시험 등을 기록할 때">+ 날짜 추가</button></div>`;
-      if (!dates.length || !studs.length) h += `<div class="empty">${!dates.length ? '이 달에 수업 날짜가 없습니다.' : '이 달에 이 반 수강생이 없습니다.'}</div>`;
-      else h += this.tableHtml(c, dates, studs, srcs);
+        <span class="sub">${esc(Classes.timeLabel(c))}</span></h2><span class="grow"></span>${g.rows.length ? `<span class="small muted">${g.rows.length}명</span>` : ''}</div>`;
+      if (!g.rows.length) h += `<div class="empty">${g.had ? '이 반 학생은 모두 앞선 반에 함께 표시됩니다.' : '이 달에 이 반 수강생이 없습니다.'}</div>`;
+      else h += this.tableHtml(g);
       h += '</div>';
     });
     h += '</div>';
@@ -161,13 +214,13 @@ const WordBook = {
       if (cell) { this.openCell(cell.dataset.wcid, cell.dataset.sid, cell.dataset.d); return; }
       const ad = e.target.closest('[data-addday]');
       if (ad) {
-        const cid = ad.dataset.addday;
+        const sid = ad.dataset.addday;
         DatePicker.open(todayStr().startsWith(this.month) ? todayStr() : this.month + '-01', '단어 시험 날짜 추가').then(d => {
-          if (!isYmd(d) || !Store.get('classes', cid)) return;
-          this.extra[cid + '|' + d] = 1;
+          if (!isYmd(d) || !Store.get('students', sid)) return;
+          this.extra[sid + '|' + d] = 1;
           this.month = d.slice(0, 7);
           App.render();
-          const sec = $(`[data-sec="${cid}"]`, $('#main')); if (sec) sec.scrollIntoView({ block: 'start' });
+          const row = $(`[data-row="${sid}"]`, $('#main')); if (row) row.scrollIntoView({ block: 'center' });
         });
       }
     };
@@ -290,28 +343,32 @@ const WordBook = {
     return md;
   },
 
-  /* ---------- PDF: A4 가로, 반마다 표 (이 달 기록 날짜만) ---------- */
+  /* ---------- PDF: A4 가로, 반마다 표 (학생 한 줄 = 그 학생이 오는 날만) ---------- */
   pdf() {
-    AttBook._mv = {};
     const [Y, M] = this.month.split('-').map(Number);
     let body = '';
-    this.shownClasses(Y, M).forEach(c => {
-      const { dates, studs, srcs } = this.monthData(c, Y, M);
-      if (!studs.length || !dates.length) return;
-      const head = `<tr><th class="ttl" colspan="${dates.length + 3}"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}${c.active === false ? ' (종료)' : ''}<span class="sub">${esc(Classes.timeLabel(c))} · ${studs.length}명</span></th></tr>
-        <tr><th class="nm">이름</th>${dates.map(d => `<th class="${dowOf(d) === 0 ? 'sun' : dowOf(d) === 6 ? 'sat' : ''}">${+d.slice(8)}<small>${DOW[dowOf(d)]}</small></th>`).join('')}<th class="sm">합격</th><th class="sm">불합격</th></tr>`;
-      const rows = studs.map(s => {
+    this.build(Y, M).forEach(g => {
+      const c = g.c;
+      if (!g.rows.length) return;
+      const maxN = Math.max(1, ...g.rows.map(o => o.list.length));
+      const head = `<tr><th class="ttl" colspan="${maxN + 3}"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}${c.active === false ? ' (종료)' : ''}<span class="sub">${esc(Classes.timeLabel(c))} · ${g.rows.length}명</span></th></tr>
+        <tr><th class="nm">이름</th><th colspan="${maxN}">날짜별 단어 시험</th><th class="sm">합격</th><th class="sm">불합격</th></tr>`;
+      const rows = g.rows.map(o => {
+        const s = o.s;
         const bk = this.curBook(s.id);
-        const n = this.countOf(s.id, dates);
-        const cells = dates.map(d => {
-          const r = this.rec(s.id, d);
-          if (!r && this.absentOn(c, srcs, s.id, d)) return '<td class="absent">결석</td>';
-          if (!r) return '<td></td>';
-          return `<td>${(r.tries || []).map(t => `<div class="${t.res}">${t.res === 'abs' ? '결시' : esc(this.rangeLabel(t)) + ' ' + (WT_MARK[t.res] || '')}${this.scoreLabel(t) ? ' <small>' + esc(this.scoreLabel(t)) + '</small>' : ''}</div>`).join('')}</td>`;
+        const n = this.countOf(s.id, o.list.map(it => it.d));
+        const cells = o.list.map(it => {
+          const r = this.rec(s.id, it.d);
+          const dh = `<div class="dh ${dowOf(it.d) === 0 ? 'sun' : dowOf(it.d) === 6 ? 'sat' : ''}">${+it.d.slice(5, 7)}/${+it.d.slice(8)} ${DOW[dowOf(it.d)]}</div>`;
+          if (it.absent && !r) return `<td class="absent">${dh}결석</td>`;
+          if (!r) return `<td>${dh}</td>`;
+          return `<td>${dh}${(r.tries || []).map(t => `<div class="${t.res}">${t.res === 'abs' ? '결시' : esc(this.rangeLabel(t)) + ' ' + (WT_MARK[t.res] || '')}${this.scoreLabel(t) ? ' <small>' + esc(this.scoreLabel(t)) + '</small>' : ''}</div>`).join('')}</td>`;
         }).join('');
-        return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span>${bk ? `<div class="bk">${esc(Books.nameOf(bk))}</div>` : ''}</td>${cells}<td>${n.pass}</td><td>${n.fail}</td></tr>`;
+        let fill = ''; for (let i = o.list.length; i < maxN; i++) fill += '<td class="pad"></td>';
+        return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span>${bk ? `<div class="bk">${esc(Books.nameOf(bk))}</div>` : ''}</td>${cells}${fill}<td>${n.pass}</td><td>${n.fail}</td></tr>`;
       }).join('');
-      const cols = `<colgroup><col class="c-nm">${dates.map(() => '<col>').join('')}<col class="c-sm"><col class="c-sm"></colgroup>`;
+      let cg = ''; for (let i = 0; i < maxN; i++) cg += '<col>';
+      const cols = `<colgroup><col class="c-nm">${cg}<col class="c-sm"><col class="c-sm"></colgroup>`;
       body += `<table>${cols}<thead>${head}</thead><tbody>${rows}</tbody></table>`;
     });
     if (!body) { toast('이 달에 넣을 학생이 없습니다'); return; }
@@ -341,6 +398,10 @@ const WordBook = {
       td small { color: #555; font-size: 6.5pt; }
       .pass { color: #1b7a52; } .fail { color: #c62828; font-weight: bold; } .abs { color: #777; }
       td.absent { background: #f0f1f3; color: #999; font-size: 6.5pt; }
+      td.pad { background: #fafafa; border-color: #e3e6ea; }
+      td .dh { font-size: 6pt; color: #555; border-bottom: 0.3pt dotted #bbb; margin-bottom: 0.4mm; }
+      td .dh.sun { color: #c62828; } td .dh.sat { color: #1f5fbf; }
+      td { vertical-align: top; }
     </style></head><body><h1>${Y}년 ${M}월 단어 시험<small>출력일 ${todayStr()}</small></h1>${body}</body></html>`;
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
@@ -362,7 +423,23 @@ const WordBook = {
 (function () {
   const st = document.createElement('style');
   st.textContent = `
-.tbl.wt th.ab-d { min-width: 52px; }
+.tbl.wt th.wt-dcol { text-align: left; }
+.tbl.wt td.wt-c { min-width: 58px; vertical-align: top; }
+.wt-dh { font-size: 11px; color: var(--ink-soft); font-weight: 600; white-space: nowrap; border-bottom: 1px dotted var(--line); padding-bottom: 2px; margin-bottom: 3px; }
+.wt-dh small { margin-left: 2px; font-weight: 400; color: var(--ink-mute); }
+.wt-dh.sun, .wt-dh.sun small { color: var(--danger); }
+.wt-dh.sat, .wt-dh.sat small { color: var(--accent); }
+.wt-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 2px; vertical-align: 1px; }
+.tbl.wt td.wt-c.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.tbl.wt td.wt-c.today .wt-dh { color: var(--accent); }
+.tbl.wt td.wt-c.future { background-color: #FBFDFF; }
+.tbl.wt td.wt-c.future .wt-dh { color: var(--ink-mute); font-weight: 500; }
+.tbl.wt td.wt-c.added { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(43,127,193,.05) 6px 8px); }
+.tbl.wt td.wt-pad { background: #FBFCFD; cursor: default; }
+.wt-ab { padding-top: 2px; }
+.wt-oc { font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
+.wt-addd { border: 0; background: none; padding: 0 0 0 6px; font: inherit; font-size: 11.5px; color: var(--accent); cursor: pointer; vertical-align: bottom; }
+.wt-addd:hover, .wt-bkadd:hover { text-decoration: underline; }
 .tbl.wt td.wt-c { font-weight: 500; padding: 4px 3px; vertical-align: middle; line-height: 1.25; }
 .wt-t { white-space: nowrap; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .wt-t + .wt-t { border-top: 1px dashed var(--line); margin-top: 2px; padding-top: 2px; }
