@@ -66,13 +66,13 @@ const Books = {
     out.forEach(g => g.list.sort((a, b) => Students.sortFn(a, b)));
     return out;
   },
-  // 학생 입력칸 목록 (label → id) 을 반별 순서로
-  stuChoicesByClass(filter) {
+  // 학생 입력칸 목록 (label → id) 을 학생 화면과 같은 정렬 순서로 (학생 화면에서 고른 머리글 정렬도 그대로 따름)
+  stuChoicesSorted(filter) {
     const map = studentChoices(filter), inv = {};
     Object.keys(map).forEach(k => { inv[map[k]] = k; });
     const list = Object.values(map).map(id => Store.get('students', id)).filter(Boolean);
     const out = {};
-    this.groupByClass(list).forEach(g => g.list.forEach(st => { out[inv[st.id]] = st.id; }));
+    Students.sortList(list).forEach(st => { out[inv[st.id]] = st.id; });
     return out;
   },
   clsLabel(m) {
@@ -437,7 +437,7 @@ const Books = {
     let status = r ? r.status : 'ing';
     let mq = '';
     const fixedStu = !!sid;
-    const stMap = fixedStu ? null : this.stuChoicesByClass(s => (s.status || 'active') === 'active');
+    const stMap = fixedStu ? null : this.stuChoicesSorted(s => (s.status || 'active') === 'active');
     const s0 = sid ? Store.get('students', sid) : null;
     const body = `<div class="form">
       <label class="req">학생</label>${fixedStu ? `<div>${this.stuLabel(s0)}</div>` : `<div>${studentInputHtml('dl-bk-stu', '')}</div>`}
