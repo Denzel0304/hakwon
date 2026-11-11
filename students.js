@@ -2,7 +2,11 @@
    students.js — 학생 관리 (등록 / 수정 / 휴원 / 복귀 / 퇴원 / 완전 삭제)
    student: { name, phone, parentPhone, school, grade, status:'active'|'pause'|'left',
               leftKind:'leave'|'graduate', statusDate, statusReason, schoolPending, memo, createdAt }
+   레벨테스트(meta 테이블, 학생당 하나): id = LT_학생ID, { kind:'ltest', studentId, date, school, grade(시험 본 날의 학교·학년),
+              word, read, gram, listen(영역별 자유 메모 · 본 영역만), memo(전체 메모), createdAt, updatedAt }
    ========================================================= */
+// 레벨테스트 영역 (입력·표시 순서)
+const LT_AREAS = [['word', '단어', '예: 중3 단어장 70개 맞음'], ['read', '독해', '예: 고1 10월 모고 75점'], ['gram', '문법', '예: 중2 문법 테스트 80점'], ['listen', '듣기', '예: 중3 것으로 19/20']];
 const STATUS_LABEL = { active: '재원', pause: '휴원', left: '퇴원' };
 const LOG_LABEL = {
   join: '등록', pause: '휴원', resume: '복귀', leave: '퇴원', rejoin: '재등록',
@@ -196,7 +200,7 @@ const Students = {
     if (!list.length) return;
     if (act === 'ctsave') { this.bulkContactSave(list); return; }
     if (act === 'delete') {
-      const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 교재, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
+      const ok = await confirmHard(`선택한 ${list.length}명을 완전히 삭제할까요?\n${list.map(s => s.name).join(', ')}\n\n수강 기록, 이력, 교재, 성적, 상담, 보강, 단어 시험, 레벨테스트 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
       if (!ok) return;
       list.forEach(s => this.hardDelete(s.id));
       this.sel.clear();
@@ -444,12 +448,12 @@ const Students = {
     if (!s) return;
     const m = Modal.open({
       title: s.name, size: 'md', autofocus: false,
-      body: `<div class="tabs" data-tabs>
+      body: `<div class="tabs st-dtabs" data-tabs>
         <button data-t="info">기본정보</button><button data-t="cls">수강반</button><button data-t="status">상태·이력</button>
-        <button data-t="book">교재</button><button data-t="score">성적</button><button data-t="counsel">상담</button></div><div data-pane></div>`,
+        <button data-t="book">교재</button><button data-t="score">성적</button><button data-t="ltest">레벨테스트</button><button data-t="counsel">상담</button></div><div data-pane></div>`,
       buttons: [
         { text: '완전 삭제', cls: 'danger', left: true, onClick: async (mm) => {
-          const ok = await confirmHard(`${s.name} 학생을 완전히 삭제할까요?\n수강 기록, 이력, 교재, 성적, 상담, 보강 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
+          const ok = await confirmHard(`${s.name} 학생을 완전히 삭제할까요?\n수강 기록, 이력, 교재, 성적, 상담, 보강, 단어 시험, 레벨테스트 기록이 모두 함께 삭제됩니다.\n(그만둔 학생은 삭제 대신 “퇴원 처리”를 쓰세요)`);
           if (!ok) return false;
           const gone = Store.get('students', s.id) || s;
           this.hardDelete(s.id);
@@ -931,6 +935,59 @@ const Students = {
     pane.innerHTML = h;
   },
 
+  /* ---------- 레벨테스트 (학생당 기록 하나 · 영역은 모두 선택) ---------- */
+  ltId(sid) { return 'LT_' + sid; },
+  ltOf(sid) { const r = Store.get('meta', this.ltId(sid)); return r && r.kind === 'ltest' ? r : null; },
+  pane_ltest(pane, s, m) {
+    const r = this.ltOf(s.id);
+    let h = `<div style="text-align:right;margin-bottom:8px"><button class="btn primary sm" data-lted>${r ? '수정' : '+ 레벨테스트 기록'}</button></div>`;
+    if (!r) h += '<div class="empty">레벨테스트 기록이 없습니다.</div>';
+    else {
+      const sg = schoolGradeLabel(r.school, r.grade);
+      h += `<div class="tbl-wrap"><table class="tbl"><tbody>
+        <tr><th style="width:90px">시험 날짜</th><td>${isYmd(r.date) ? fmtDate(r.date) : '<span class="muted">-</span>'}${sg ? ` <span class="small soft">(당시 ${esc(sg)})</span>` : ''}</td></tr>
+        ${LT_AREAS.map(([k, t]) => `<tr><th>${t}</th><td class="pre">${(r[k] || '').trim() ? esc(r[k]) : '<span class="muted">-</span>'}</td></tr>`).join('')}
+        <tr><th>메모</th><td class="pre">${(r.memo || '').trim() ? esc(r.memo) : '<span class="muted">-</span>'}</td></tr></tbody></table></div>`;
+    }
+    pane.innerHTML = h;
+    pane.onclick = (e) => { if (e.target.closest('[data-lted]')) this.openLtest(s.id, () => { this.renderPane(m, s.id); App.render(); }); };
+  },
+  openLtest(sid, after) {
+    const s = Store.get('students', sid); if (!s) return;
+    const r = this.ltOf(sid);
+    const v = r || { date: todayStr(), word: '', read: '', gram: '', listen: '', memo: '' };
+    Modal.open({
+      title: `${s.name} 레벨테스트`, size: 'lg',
+      body: `<div class="form">
+        <label class="req">시험 날짜</label><div class="row"><input type="date" name="date" value="${esc(v.date || todayStr())}" style="width:170px"><span class="hint">본 영역만 적으면 됩니다</span></div>
+        ${LT_AREAS.map(([k, t, ph]) => `<label class="top">${t}</label><textarea name="${k}" rows="2" placeholder="${esc(ph)} (안 봤으면 비워 두기)">${esc(v[k] || '')}</textarea>`).join('')}
+        <label class="top">메모</label><textarea name="memo" rows="3">${esc(v.memo || '')}</textarea></div>`,
+      onMount: (b) => { enhanceAll(b); },
+      buttons: [
+        ...(r ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
+          if (!await confirmDlg('이 학생의 레벨테스트 기록을 삭제할까요?', '삭제', true)) return false;
+          Store.del('meta', r.id); toast('레벨테스트 기록을 삭제했습니다'); if (after) after();
+        } }] : []),
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: (md) => {
+          const g = (n) => stripZws($(`[name=${n}]`, md.body).value).trim();
+          const date = $('[name=date]', md.body).value;
+          if (!isYmd(date)) { toast('시험 날짜를 선택하세요'); return false; }
+          const vals = {}; LT_AREAS.forEach(([k]) => { vals[k] = g(k); });
+          const memo = g('memo');
+          if (!LT_AREAS.some(([k]) => vals[k]) && !memo) { toast('본 영역의 결과나 메모를 하나 이상 적으세요'); return false; }
+          // 시험 본 날의 학교·학년: 날짜를 바꾸지 않았으면 처음 저장한 값을 유지
+          const keep = r && r.date === date;
+          const now = new Date().toISOString();
+          Store.put('meta', Object.assign({ id: this.ltId(sid), kind: 'ltest', studentId: sid, createdAt: r ? r.createdAt : now }, vals, {
+            date, memo, school: keep ? (r.school || '') : (s.school || ''), grade: keep ? (r.grade || '') : (s.grade || ''), updatedAt: now,
+          }));
+          toast('레벨테스트 기록을 저장했습니다'); if (after) after();
+        } },
+      ],
+    });
+  },
+
   pane_counsel(pane, s, m) {
     const list = Store.where('counsels', c => c.studentId === s.id).sort((a, b) => ko(b.date, a.date));
     let h = `<div style="text-align:right;margin-bottom:8px"><button class="btn primary sm" data-addc>+ 상담 기록</button></div>`;
@@ -1156,6 +1213,8 @@ const Students = {
     Store.delWhere('counsels', e => e.studentId === sid);
     Store.delWhere('makeups', e => e.studentId === sid);
     Store.delWhere('meta', e => e.kind === 'sbook' && e.studentId === sid);   // 학생 교재 기록
+    Store.delWhere('meta', e => e.kind === 'wtest' && e.studentId === sid);   // 단어 시험 기록
+    Store.delWhere('meta', e => e.kind === 'ltest' && e.studentId === sid);   // 레벨테스트 기록
     Store.where('lessons', l => l.att && l.att[sid]).forEach(l => {
       const att = Object.assign({}, l.att); delete att[sid];
       Store.put('lessons', Object.assign({}, l, { att }));
@@ -1163,3 +1222,14 @@ const Students = {
     Store.del('students', sid);
   },
 };
+
+/* 학생 상세 창 탭: 레벨테스트 탭이 늘어 한 줄에 들어가도록 간격만 줄인다 (좁은 화면은 옆으로 밀어 보기) */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+.st-dtabs { overflow-x: auto; scrollbar-width: none; }
+.st-dtabs::-webkit-scrollbar { display: none; }
+.st-dtabs button { padding: 9px 11px; white-space: nowrap; flex-shrink: 0; }
+`;
+  document.head.appendChild(st);
+})();
