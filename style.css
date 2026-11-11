@@ -28,6 +28,7 @@
   --weekend: #2A9468;
   --etc: #8A6CCB;
   --sat: #2B7FC1;
+  --todo: #2B7FC1;
   /* 테마에 따라 바뀌는 보조 색 (기본값 = 연한 하늘색) */
   --tint: #F7FBFE;
   --tint-2: #F9FCFF;
@@ -139,7 +140,7 @@ body.app-on #mg-app { display: flex; }
 .dot-pre { background: var(--pre); }
 .dot-weekend { background: var(--weekend); }
 .dot-etc { background: var(--etc); }
-.dot-todo { background: var(--accent); }
+.dot-todo { background: var(--todo); }
 .dot-late { background: var(--danger); }
 .dot-nolog { background: var(--warn); }            /* 일지 미작성 수업 */
 .mc-day.sel .mc-dots i { box-shadow: 0 0 0 1.5px #fff; }
