@@ -7,7 +7,8 @@
    ※ 영어 시험의 저장 키는 예전 이름 'weekend'를 그대로 쓴다 (하루짜리 일정)
    ※ 시험+교재 탭의 시험 기간은 학교·학년·연도·학기·중간/기말이 같은 '시험 일정'에서 자동으로 가져온다 (Exams.syncDates)
    ※ 공휴일: type 'holiday', { date, endDate, title(이름) } — '공휴일 추가' 창(HolidayModal)으로만 입력.
-      결석 예정의 '이전 수업일' 계산에서 이 날은 건너뛴다 (Holidays.has). 출석부·시간표·수업일지에는 영향 없음
+      공휴일에는 수업이 없다고 본다: 출석부는 '휴'(누를 수 없음, 기록이 있으면 그대로) · 수업일지는 작성 대상에서 뺀다
+      (미니 달력 '일지 미작성' 없음 · 수업일지/날짜 요약에 안내, '그래도 일지 쓰기' 가능) · 결석 예정 등록 불가. 시간표에는 영향 없음
    ※ 일정+공휴일 탭: 시작일의 연도로 '올해(+내년 이후)' / '이전 해'를 나눠 보여준다 (1월 1일이 되면 저절로 넘어감)
    ※ 월초 공휴일 확인 창(HolidayRemind): 달마다 처음 열 때 띄움. 확인 = 다음에 또 뜸 / 완료 = 그 달은 다시 안 뜸
       (완료 기록 meta: id HR_YYYYMM, { kind:'hol_done', ym, createdAt })
@@ -105,6 +106,7 @@ const Holidays = {
     return m;
   },
   has(d, map) { return !!(map || this.map())[d]; },
+  name(d) { return this.map()[d] || ''; },
   // 그 달(YYYY-MM)에 걸친 공휴일 일정
   ofMonth(ym) {
     return Store.all('events').filter(ev => evType(ev) === 'holiday' && isYmd(ev.date) && ev.date.slice(0, 7) <= ym && evEnd(ev).slice(0, 7) >= ym)
@@ -124,7 +126,7 @@ const HolidayModal = {
         <label class="chk"><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
       <label class="req">이름</label><input type="text" name="title" value="${esc(v.title || '')}" placeholder="예: 추석, 개천절, 학원 휴무" maxlength="30">
-      <div></div><div class="hint">결석 예정의 '이전 수업일'을 정할 때 이 날은 건너뜁니다.</div>
+      <div></div><div class="hint">이 날은 출석부에 '휴'로 표시되고, 수업일지를 쓰지 않아도 됩니다. (시간표는 그대로)</div>
     </div>`;
     Modal.open({
       title: ev ? '공휴일 수정' : '공휴일 추가', size: 'md', body,
@@ -442,9 +444,11 @@ const DayPage = {
         <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) ? ` <span class="small muted">~${fmtMD(evEnd(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`;
 
     const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
+    const hol = Holidays.name(date);           // 공휴일: 수업 목록을 흐리게 + 안내 (일지는 눌러서 쓸 수 있음)
     h += `<div class="grid-2 day-cols"><div class="day-col">
-      <div class="panel" style="--o:4"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span>${unwritten.length > 1 ? '<button class="btn sm ghost" data-skipall style="float:right;margin-top:-3px" title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</h2>`;
-    h += classes.length ? '<div class="list">' + classes.map(c => {
+      <div class="panel" style="--o:4"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span>${!hol && unwritten.length > 1 ? '<button class="btn sm ghost" data-skipall style="float:right;margin-top:-3px" title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</h2>`;
+    if (hol && classes.length) h += `<div class="hol-note">공휴일(${esc(hol)})입니다. 수업이 없어 일지를 쓰지 않아도 됩니다.</div>`;
+    h += classes.length ? `<div class="list${hol ? ' hol-dim' : ''}">` + classes.map(c => {
       const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
       const sk = !les && Lessons.isSkipped(c.id, date);
       const roster = Classes.rosterOn(c.id, date);
@@ -454,9 +458,9 @@ const DayPage = {
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
         <div class="what">${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
-        ${les ? '<span class="badge green">작성 완료</span>' : sk ? Lessons.skipBadge(c.id, date) : '<span class="badge gray">일지 작성 전</span>'}
+        ${les ? '<span class="badge green">작성 완료</span>' : sk ? Lessons.skipBadge(c.id, date) : hol ? '<span class="badge gray">공휴일</span>' : '<span class="badge gray">일지 작성 전</span>'}
         ${les && checked ? `<span class="badge">출석 ${came}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div>
-        ${les ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
+        ${les || (hol && !sk) ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
     h += `</div>${upHtml}${tops.join('')}</div><div class="day-col">
       <div class="panel todo-panel" style="--o:5"><h2>할일 <span class="sub">${tdList.left}개 남음</span></h2>

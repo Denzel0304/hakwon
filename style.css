@@ -751,3 +751,9 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 /* ---------- 공휴일 ---------- */
 .mc-day.hol .n { color: var(--danger); font-weight: 700; }
 .bc-item.holiday { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+.tbl.ab th.ab-d.hol { background: #FDECEC; color: var(--danger); }
+.tbl.ab td.ab-c.hol { background: #EEF0F3; color: var(--ink-mute); font-weight: 500; font-size: 12px; cursor: default; }
+.tbl.ab td.ab-c.hol:hover { background: #EEF0F3; }
+.hol-note { background: var(--danger-soft); color: var(--danger); font-weight: 600; font-size: 14px; border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
+.list.hol-dim { opacity: .5; }
+.list.hol-dim:hover { opacity: .8; }
