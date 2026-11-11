@@ -5,6 +5,8 @@
             done(완료된 시험), doneAt, dateEv(true: 시험 기간을 일정 탭의 시험 일정에서 가져옴) }
    시험 기간(start·end)은 일정 탭의 '시험 일정'(학교·학년·연도·학기·중간/기말이 같은 것)에서만 정한다 → syncDates
    교재는 meta 테이블에 저장 (NP.mats): 시험 교재(모의고사·교과서·부교재) / 일반 교재(type 'gen', 사용하는 반 classIds)
+   교과서 ↔ 학교 연결(선택 사항): 교과서(type 'text')의 schools:[{ school(짧은 이름), grade, sem }]
+     중학교 sem 0(1년 내내) / 고등학교 sem 1·2(그 학기만) 또는 0(1·2학기 모두) → 시험 등록 창의 교과서 추천에 쓴다
    score: id = S_학생_연도_학기_시험, { studentId, year, semester, kind, score, level:'9-2'|'5-1'|'', school, grade }
    mock:  { year, month, grade, memo }
    mock_score: id = MS_회차_학생, { mockId, studentId, raw, wrong:[번호] }
@@ -15,6 +17,7 @@ const Exams = {
   q: '',
   tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재
   matType: '',
+  matSchool: '',        // 시험 교재 목록의 학교 필터 ('' 전체 / 학교 / '__none' 학교 연결 없는 교과서)
   sel: new Set(),       // 체크한 항목 (탭을 바꾸거나 조건을 바꾸면 비움)
   prepOpen: new Set(),  // 수업 준비 칸을 펼친 시험
 
@@ -258,6 +261,130 @@ const Exams = {
     if (blocked.length) this.showBlocked(blocked, ok.length);
   },
 
+  /* ---------- 교과서 ↔ 학교 연결 (교과서에만 · 선택 사항) ----------
+     연결이 없어도 모든 기능은 지금처럼 쓰고, 연결해 둔 교과서만 시험 등록 때 추천된다 */
+  lkSem(grade, sem) { return isHigh(grade) && (+sem === 1 || +sem === 2) ? +sem : 0; },
+  lkNorm(lk) { return { school: schoolShort(lk.school), grade: +lk.grade, sem: this.lkSem(lk.grade, lk.sem) }; },
+  lkSort(list) { return list.sort((a, b) => ko(a.school, b.school) || a.grade - b.grade || (a.sem || 3) - (b.sem || 3)); },
+  linksOf(m) {
+    if (!m || m.type !== 'text') return [];
+    return this.lkSort((m.schools || []).map(lk => this.lkNorm(lk)).filter(lk => lk.school && (isMiddle(lk.grade) || isHigh(lk.grade))));
+  },
+  // 금천중 중2 / 금천고 고2 1학기 / 금천고 고2 1·2학기
+  lkLabel(lk) { return `${schoolShort(lk.school)} ${gradeLabel(lk.grade)}` + (isHigh(lk.grade) ? ' ' + (+lk.sem ? lk.sem + '학기' : '1·2학기') : ''); },
+  // 이 연결이 그 학교·학년·학기에 해당하는지 (중학교는 학기 무관, 고등학교 sem 0은 두 학기 모두)
+  lkHit(lk, school, grade, sem) { return lk.school === schoolShort(school) && lk.grade === +grade && (!isHigh(grade) || !lk.sem || lk.sem === +sem); },
+  // 그 학교·학년·학기에 연결된 교과서
+  textsFor(school, grade, sem) {
+    if (!schoolShort(school) || !(isMiddle(grade) || isHigh(grade))) return [];
+    return NP.sortMats(NP.examMats().filter(m => m.type === 'text' && this.linksOf(m).some(lk => this.lkHit(lk, school, grade, sem))));
+  },
+  // 이미 들어 있는 연결인지 (c.sem 0 = 두 학기 모두가 들어 있어야 함)
+  lkCovered(links, c) {
+    c = this.lkNorm(c);
+    const same = links.filter(lk => lk.school === c.school && lk.grade === c.grade);
+    if (!isHigh(c.grade)) return same.length > 0;
+    if (same.some(lk => !lk.sem)) return true;
+    return c.sem ? same.some(lk => lk.sem === c.sem) : (same.some(lk => lk.sem === 1) && same.some(lk => lk.sem === 2));
+  },
+  // 연결 추가 → 새 목록 (이미 있으면 null). 고등학교는 1·2학기 모두(또는 1학기+2학기)가 되면 하나로 합친다
+  lkAdd(links, c) {
+    c = this.lkNorm(c);
+    if (!c.school || !(isMiddle(c.grade) || isHigh(c.grade)) || this.lkCovered(links, c)) return null;
+    let out = links.slice();
+    if (isHigh(c.grade)) {
+      const other = c.sem && out.some(lk => lk.school === c.school && lk.grade === c.grade && lk.sem === 3 - c.sem);
+      if (!c.sem || other) { out = out.filter(lk => !(lk.school === c.school && lk.grade === c.grade)); c = Object.assign({}, c, { sem: 0 }); }
+    }
+    out.push(c);
+    return this.lkSort(out);
+  },
+  // [{ mat, school, grade, sem }] → 교과서별로 모아 저장. 추가한 연결 수
+  lkApply(list) {
+    const by = new Map(); let n = 0;
+    list.forEach(c => {
+      const m = NP.mat(c.mat.id); if (!m || m.type !== 'text') return;
+      const cur = by.get(m.id) || { m, links: this.linksOf(m), ch: false };
+      const nx = this.lkAdd(cur.links, c);
+      if (nx) { cur.links = nx; cur.ch = true; n++; }
+      by.set(m.id, cur);
+    });
+    by.forEach(({ m, links, ch }) => { if (ch) Store.put('meta', Object.assign({}, m, { schools: links })); });
+    return n;
+  },
+  // 학교 고르기 목록: 프로그램에 있는 학교(학생·시험·일정) + 교과서에 연결된 학교 (같은 학교는 하나로)
+  schoolPick() {
+    const seen = new Set(), out = [];
+    const links = NP.examMats().reduce((a, m) => a.concat(this.linksOf(m).map(lk => lk.school)), []);
+    schoolOptions().concat(links).forEach(s => { const k = schoolShort(s); if (k && !seen.has(k)) { seen.add(k); out.push(s.trim()); } });
+    return out.sort(ko);
+  },
+  // 기존 시험 범위에서 찾은, 아직 연결되지 않은 교과서·학교 (matId를 주면 그 교과서만)
+  // 고등학교: 한 학기 시험에만 쓰였으면 그 학기, 두 학기 시험에 다 쓰였으면 1·2학기 모두
+  lkCands(matId) {
+    const map = new Map();
+    Store.all('exams').forEach(ex => {
+      const sch = schoolShort(ex.school), g = +ex.grade;
+      if (!sch || !(isMiddle(g) || isHigh(g))) return;
+      (ex.items || []).forEach(it => {
+        if (matId && it.matId !== matId) return;
+        const m = NP.mat(it.matId); if (!m || m.type !== 'text') return;
+        const k = m.id + '|' + sch + '|' + g;
+        let o = map.get(k);
+        if (!o) { o = { mat: m, school: sch, grade: g, sems: new Set(), exams: [] }; map.set(k, o); }
+        o.sems.add(+ex.semester); o.exams.push(ex);
+      });
+    });
+    const out = [];
+    map.forEach(o => {
+      const c = { mat: o.mat, school: o.school, grade: o.grade, sem: isHigh(o.grade) && o.sems.size === 1 ? [...o.sems][0] : 0,
+        exams: o.exams.sort((a, b) => NP.examKey(b) - NP.examKey(a)) };
+      if (!this.lkCovered(this.linksOf(o.mat), c)) out.push(c);
+    });
+    return out.sort((a, b) => ko(NP.matName(a.mat), NP.matName(b.mat)) || ko(a.school, b.school) || a.grade - b.grade || a.sem - b.sem);
+  },
+  // 시험 교재 목록의 “기존 시험에서 학교 연결 찾기”
+  openLkFind() {
+    const cands = this.lkCands();
+    if (!cands.length) { toast('새로 연결할 교과서가 없습니다 (기존 시험 범위 기준)'); return; }
+    const exText = (c) => { const e = c.exams[0]; return `${schoolShort(e.school)} ${e.year}년 ${e.semester}학기 ${EXAM_KIND[e.kind] || ''}` + (c.exams.length > 1 ? ` 외 ${c.exams.length - 1}개` : ''); };
+    Modal.open({
+      title: '기존 시험에서 학교 연결 찾기', size: 'lg', autofocus: false,
+      body: `<p class="small soft" style="margin-top:0">시험 범위에 들어간 교과서를 보고 찾은 연결입니다. 맞는 것만 체크한 채로 “연결”을 누르세요.<br>
+        고등학교는 그 시험의 학기로 연결하고, 1학기·2학기 시험에 모두 쓰였으면 1·2학기 모두로 연결합니다.</p>
+        <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="chk-th"><label class="chk-hit" title="전체 선택"><input type="checkbox" data-lkall checked></label></th><th>교과서</th><th>연결할 학교·학년</th><th>쓰인 시험</th></tr></thead><tbody>
+        ${cands.map((c, i) => `<tr><td class="chk-td"><label class="chk-hit"><input type="checkbox" data-lkc="${i}" checked></label></td><td class="nowrap"><b>${esc(NP.matName(c.mat))}</b></td>
+          <td class="nowrap">${esc(this.lkLabel(c))}</td><td class="small soft">${esc(exText(c))}</td></tr>`).join('')}</tbody></table></div>`,
+      onMount: (b) => {
+        b.addEventListener('change', (e) => {
+          if (e.target.matches('[data-lkall]')) $$('[data-lkc]', b).forEach(x => { x.checked = e.target.checked; });
+          else if (e.target.matches('[data-lkc]')) { const boxes = $$('[data-lkc]', b), all = $('[data-lkall]', b); all.checked = boxes.every(x => x.checked); all.indeterminate = !all.checked && boxes.some(x => x.checked); }
+        });
+      },
+      buttons: [
+        { text: '취소' },
+        { text: '연결', cls: 'primary', primary: true, onClick: (md) => {
+          const pick = $$('[data-lkc]:checked', md.body).map(x => cands[+x.dataset.lkc]);
+          if (!pick.length) { toast('연결할 항목을 체크하세요'); return false; }
+          const n = this.lkApply(pick);
+          toast(`교과서 학교 연결 ${n}개를 추가했습니다`); App.render();
+        } },
+      ],
+    });
+  },
+  // 두 갈래 확인 창 → true(예) / false(아니요) / null(창을 닫음)
+  askDlg(msg, yesText, noText) {
+    return new Promise(res => {
+      let done = false; const r = (v) => { if (!done) { done = true; res(v); } };
+      Modal.open({
+        title: '확인', size: 'sm', autofocus: false,
+        body: `<p class="confirm-msg">${esc(msg)}</p>`,
+        buttons: [{ text: noText, onClick() { r(false); } }, { text: yesText, cls: 'primary', primary: true, onClick() { r(true); } }],
+        onClose() { r(null); },
+      });
+    });
+  },
+
   /* ---------- 시험 등록 / 수정 ---------- */
   openModal(id) {
     this.syncDates();
@@ -282,6 +409,7 @@ const Exams = {
       title: ex ? '시험 수정' : '시험 등록', body, size: 'lg',
       onMount: (b) => {
         enhanceAll(b);
+        bindCombo($('[name=school]', b), () => this.schoolPick());   // 학교 칸: 누르면 학교 목록
         // 시험 기간: 일정 탭의 시험 일정에서만 가져온다 (여기서는 보기만)
         const ds = $('[data-dshow]', b), dh = $('[data-dhint]', b);
         const drawDates = () => {
@@ -296,9 +424,13 @@ const Exams = {
         const noEdit = (e) => { if (e.type === 'keydown' && (e.key === 'Tab' || e.key === 'Escape')) return; e.preventDefault(); toast('시험 일정변경은 일정 탭에서 해주세요.'); };
         ds.addEventListener('mousedown', noEdit); ds.addEventListener('keydown', noEdit);
         const rb = $('[data-rbox]', b), gSel = $('[name=grade]', b);
-        const draw = () => { rb.innerHTML = this.rangeHtml(items, +gSel.value); };
+        // 학교·학년·학기에 연결된 교과서를 추천하려고 함께 넘긴다
+        const draw = () => { rb.innerHTML = this.rangeHtml(items, +gSel.value, { school: $('[name=school]', b).value, sem: +$('[name=semester]', b).value }); };
         draw();
         gSel.addEventListener('change', draw);
+        $('[name=school]', b).addEventListener('input', draw);
+        $('[name=school]', b).addEventListener('change', draw);
+        $('[name=semester]', b).addEventListener('change', draw);
         rb.addEventListener('change', (e) => {
           const t = e.target;
           if (t.matches('[data-addmat]') && t.value) {
@@ -328,6 +460,8 @@ const Exams = {
         rb.addEventListener('click', (e) => {
           const t = e.target;
           const d = t.closest('[data-rdel]'); if (d) { items.splice(+d.dataset.rdel, 1); draw(); return; }
+          const sg = t.closest('[data-rsug]');      // 이 학교 교과서 추천 → 범위에 넣기
+          if (sg) { const m = NP.mat(sg.dataset.rsug); if (m && !items.some(it => it.matId === m.id)) items.push({ matId: m.id, units: [] }); draw(); return; }
           const u = t.closest('[data-runit]');
           if (u) {
             const [i, uid] = u.dataset.runit.split('|'), it = items[+i];
@@ -350,7 +484,7 @@ const Exams = {
           toast('삭제했습니다'); App.render();
         } }] : []),
         { text: '취소' },
-        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
+        { text: '저장', cls: 'primary', primary: true, onClick: async (m) => {
           const b = m.body, g = (n) => $(`[name=${n}]`, b).value;
           const fv = ($('[name=fmt]:checked', b) || {}).value || '';
           const rec = Object.assign({}, ex || { id: uid('EX'), createdAt: new Date().toISOString() }, {
@@ -391,6 +525,17 @@ const Exams = {
             }
           }
           rec.items = out;
+          // 범위의 교과서 중 이 학교·학년(·학기)에 연결 안 된 것 → 연결할지 묻는다 (고등학교는 이 시험의 학기로)
+          if (isMiddle(rec.grade) || isHigh(rec.grade)) {
+            const lk = { school: schoolShort(rec.school), grade: rec.grade, sem: this.lkSem(rec.grade, rec.semester) };
+            const miss = out.map(it => NP.mat(it.matId)).filter(x => x && x.type === 'text' && !this.lkCovered(this.linksOf(x), lk));
+            if (miss.length) {
+              const a = await this.askDlg(`아래 교과서가 ${this.lkLabel(lk)}에 연결되어 있지 않습니다.\n연결해 두면 다음에 이 학교 시험을 등록할 때 바로 추천됩니다.\n\n${miss.map(x => '· ' + x.name).join('\n')}`
+                + (isHigh(rec.grade) ? '\n\n1년 내내 쓰는 책이면 교재 수정에서 “1·2학기 모두”로 바꿀 수 있습니다.' : ''), '연결하고 저장', '연결 없이 저장');
+              if (a === null) return false;            // 창을 닫으면 저장하지 않고 시험 창으로 돌아간다
+              if (a) this.lkApply(miss.map(x => Object.assign({ mat: x }, lk)));
+            }
+          }
           Store.put('exams', rec);
           toast('시험 정보를 저장했습니다');
           const tab = rec.done ? 'done' : 'exam';          // 저장된 곳의 탭을 보여준다
@@ -402,11 +547,16 @@ const Exams = {
   },
 
   /* ---------- 시험 범위 입력 (시험 모달 안) — 시험 교재만 ---------- */
-  rangeHtml(items, grade) {
+  rangeHtml(items, grade, ctx) {
     const middle = isMiddle(grade);
     const used = new Set(items.map(it => it.matId));
-    const avail = NP.sortMats(NP.examMats().filter(m => !used.has(m.id) && (!middle || m.type === 'text')));
-    let h = items.map((it, i) => {
+    // 이 학교·학년·학기에 연결된 교과서 (아직 범위에 넣지 않은 것) → 위에 추천, 교재 추가 목록에서는 맨 위 묶음
+    const sug = ctx ? this.textsFor(ctx.school, grade, ctx.sem).filter(m => !used.has(m.id)) : [];
+    const sugIds = new Set(sug.map(m => m.id));
+    const where = sug.length ? this.lkLabel({ school: ctx.school, grade, sem: this.lkSem(grade, ctx.sem) }).replace(/ 1·2학기$/, '') : '';
+    const avail = NP.sortMats(NP.examMats().filter(m => !used.has(m.id) && !sugIds.has(m.id) && (!middle || m.type === 'text')));
+    let h = sug.length ? `<div class="x7-sug"><span class="small soft">${esc(where)} 교과서</span>${sug.map(m => `<button type="button" class="btn sm" data-rsug="${m.id}" title="범위에 넣기">+ ${esc(m.name)}</button>`).join('')}</div>` : '';
+    h += items.map((it, i) => {
       const m = NP.mat(it.matId);
       let r = `<div class="np-ritem"><div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(NP.matName(m))}</b>
         <span class="grow" style="flex:1"></span><button type="button" class="icon-btn" data-rdel="${i}" title="범위에서 빼기">✕</button></div>`;
@@ -426,7 +576,7 @@ const Exams = {
       }
       return r + '</div>';
     }).join('');
-    h += `<div class="row"><select data-addmat><option value="">+ 교재 추가…</option>${['mock', 'text', 'sub'].filter(t => !middle || t === 'text').map(t => {
+    h += `<div class="row"><select data-addmat><option value="">+ 교재 추가…</option>${sug.length ? `<optgroup label="${esc(where)} 교과서">${sug.map(m => `<option value="${m.id}">${esc(NP.matName(m))}</option>`).join('')}</optgroup>` : ''}${['mock', 'text', 'sub'].filter(t => !middle || t === 'text').map(t => {
       const list = avail.filter(m => m.type === t);
       return list.length ? `<optgroup label="${MAT_TYPE[t]}">${list.map(m => `<option value="${m.id}">${esc(NP.matName(m))}</option>`).join('')}</optgroup>` : '';
     }).join('')}</select><button type="button" class="btn sm ghost" data-gomat>교재 관리</button>
@@ -438,14 +588,21 @@ const Exams = {
   renderMats(main) {
     const gen = this.tab === 'gen';
     const all = NP.sortMats(gen ? NP.genMats() : NP.examMats());
-    const list = gen ? all : all.filter(m => !this.matType || m.type === this.matType);
+    // 학교 필터: 교과서에 연결된 학교 목록 (없어진 학교를 골라 두었으면 전체로)
+    const schs = gen ? [] : [...new Set(all.reduce((a, m) => a.concat(this.linksOf(m).map(lk => lk.school)), []))].sort(ko);
+    if (this.matSchool && this.matSchool !== '__none' && !schs.includes(this.matSchool)) this.matSchool = '';
+    const schOk = (m) => !this.matSchool || (this.matSchool === '__none' ? m.type === 'text' && !this.linksOf(m).length : this.linksOf(m).some(lk => lk.school === this.matSchool));
+    const list = gen ? all : all.filter(m => (!this.matType || m.type === this.matType) && schOk(m));
     const ids = list.map(m => m.id);
     [...this.sel].forEach(id => { if (!ids.includes(id)) this.sel.delete(id); });
     const usedBy = (m) => Store.where('exams', e => (e.items || []).some(it => it.matId === m.id)).length;
     const clsOf = (m) => (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean);
     let h = this.headHtml() + this.tabsHtml();
     h += gen ? `<div class="toolbar"><span class="muted small">${list.length}개 · 비내신 수업에 쓰는 교재 (시험 범위에는 쓰지 않음)</span></div>`
-      : `<div class="toolbar"><select data-mtype><option value="">전체 종류</option>${Object.keys(MAT_TYPE).map(k => `<option value="${k}" ${this.matType === k ? 'selected' : ''}>${MAT_TYPE[k]}</option>`).join('')}</select><span class="muted small">${list.length}개 · 시험 범위·내신 진도에 쓰는 교재</span></div>`;
+      : `<div class="toolbar"><select data-mtype><option value="">전체 종류</option>${Object.keys(MAT_TYPE).map(k => `<option value="${k}" ${this.matType === k ? 'selected' : ''}>${MAT_TYPE[k]}</option>`).join('')}</select>
+        <select data-msch><option value="">전체 학교</option>${schs.map(s => `<option value="${esc(s)}" ${this.matSchool === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}<option value="__none" ${this.matSchool === '__none' ? 'selected' : ''}>학교 연결 없는 교과서</option></select>
+        <span class="muted small">${list.length}개 · 시험 범위·내신 진도에 쓰는 교재</span><span style="flex:1"></span>
+        <button class="btn sm" data-a="lkfind" title="시험 범위에 들어간 교과서로 학교 연결을 찾아 채웁니다">기존 시험에서 학교 연결 찾기</button></div>`;
     h += this.bulkHtml([['delmat', '선택 삭제', 'danger']]);
     if (!list.length) {
       h += `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 교재가 없습니다.' : gen ? '등록된 일반 교재가 없습니다. “교재 등록”에서 일반 교재를 고르고 사용하는 반을 연결하세요.' : '등록된 시험 교재가 없습니다. “교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하면 시험 범위를 고를 수 있습니다.'}</div></div>`;
@@ -455,19 +612,22 @@ const Exams = {
       <td class="small">${esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
       <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
-      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
+      h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th>쓰는 학교</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
-      <td class="small">${m.type === 'mock' ? `${NP.MOCK_MIN}~${NP.MOCK_MAX}번` : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td><td class="num">${usedBy(m) || '<span class="muted">-</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+      <td class="small">${m.type === 'mock' ? `${NP.MOCK_MIN}~${NP.MOCK_MAX}번` : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
+      <td class="small">${m.type !== 'text' ? '<span class="muted">-</span>' : this.linksOf(m).map(lk => `<span class="nowrap">${esc(this.lkLabel(lk))}</span>`).join(', ') || '<span class="muted">연결 없음</span>'}</td><td class="num">${usedBy(m) || '<span class="muted">-</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     }
     main.innerHTML = h;
     this.updBulk(main);
     main.onclick = (e) => {
       if (this.commonClick(e, main)) return;
+      if (e.target.closest('[data-a=lkfind]')) { this.openLkFind(); return; }
       const tr = e.target.closest('tr[data-mat]'); if (tr) this.openMatModal(tr.dataset.mat);
     };
     main.onchange = (e) => {
       if (this.commonChange(e, main)) return;
       if (e.target.matches('[data-mtype]')) { this.matType = e.target.value; this.sel.clear(); App.render(); }
+      if (e.target.matches('[data-msch]')) { this.matSchool = e.target.value; this.sel.clear(); App.render(); }
     };
     main.oninput = null;
   },
@@ -480,7 +640,8 @@ const Exams = {
     let type = m && m.type !== 'gen' ? m.type : 'mock';
     const units = JSON.parse(JSON.stringify((m && m.units) || []));
     const cls = new Set(((m && m.classIds) || []).filter(cid => Store.get('classes', cid)));
-    let noCls = !!(m && m.noCls) && !cls.size;   // 반 미지정: 수업일지에 나오지 않고 학생 교재 관리에만 쓰는 교재
+    let noCls = !!(m && m.noCls) && !cls.size;
+    let links = this.linksOf(m);                 // 교과서 ↔ 학교 연결 (편집용 사본)   // 반 미지정: 수업일지에 나오지 않고 학생 교재 관리에만 쓰는 교재
     const clsList = Classes.sorted(Store.all('classes')).filter(c => c.active !== false || cls.has(c.id));
     const body = `<div class="form">
       <label class="req">구분</label><div class="row">${[['exam', '시험 교재'], ['gen', '일반 교재']].map(([k, t]) => `<label class="chk"><input type="radio" name="mcat" value="${k}" ${cat === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${t}</label>`).join('')}
@@ -498,6 +659,12 @@ const Exams = {
         <span class="small soft">한 번에 만들기</span><input type="number" data-qn min="1" max="60" value="8" style="width:70px"><span class="small soft">개</span>
         <input type="text" data-qs value="${cat === 'gen' || type === 'sub' ? '강' : '과'}" style="width:60px"><button type="button" class="btn sm ghost" data-qmake>만들기</button></div>
         <div class="hint" style="margin-top:4px">예: 1과, 2과 … / Special Lesson / 1강 … 단위 이름은 나중에 바꿔도 기록이 유지됩니다.</div></div>
+      <label class="top" data-mt="text">쓰는 학교</label><div data-mt="text"><div class="np-chips" data-links></div>
+        <div class="row" style="margin-top:6px"><input type="text" data-lksch placeholder="학교 (예: 금천고)" autocomplete="off" style="width:150px">
+        <select data-lkgr><option value="">학년</option>${GRADES.filter(g => isMiddle(g) || isHigh(g)).map(g => `<option value="${g}">${gradeLabel(g)}</option>`).join('')}</select>
+        <select data-lksem style="display:none"><option value="1">1학기</option><option value="2">2학기</option><option value="0">1·2학기 모두</option></select>
+        <button type="button" class="btn sm" data-lkadd>+ 연결</button>${m ? '<button type="button" class="btn sm ghost" data-lkfind title="이 교과서가 들어간 시험 범위로 학교 연결을 채웁니다">기존 시험에서 찾기</button>' : ''}</div>
+        <div class="hint" style="margin-top:4px">선택 사항입니다. 연결해 두면 시험 등록 때 그 학교·학년의 교과서로 추천됩니다. 중학교는 학년에 1년 내내, 고등학교는 학기별(1년 쓰는 책은 1·2학기 모두)로 연결합니다.</div></div>
       <label class="top req" data-mc="gen">사용하는 반</label><div data-mc="gen"><div class="np-chips" data-cls>${clsList.map(c => `<button type="button" class="np-c ${cls.has(c.id) ? 'on' : ''}" data-mcls="${c.id}">${esc(c.name)}${c.active === false ? ' (종료)' : ''}</button>`).join('')}<button type="button" class="np-c ${noCls ? 'on' : ''}" data-mnocls>반 미지정</button></div>
         <div class="hint" style="margin-top:4px">고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.</div></div>
     </div>`;
@@ -520,13 +687,43 @@ const Exams = {
           $$('[data-mk=book]', b).forEach(x => { x.style.display = mock ? 'none' : ''; });
           $('[name=mname]', b).placeholder = cat === 'gen' ? '예: 리딩튜터 2, 문법 기본편' : '예: 능률(오) 고2, 수능특강 영어독해';
         };
-        drawU(); sync();
+        // 쓰는 학교 (교과서만)
+        const lb = $('[data-links]', b);
+        const drawL = () => {
+          lb.innerHTML = links.length ? links.map((lk, i) => `<span class="np-c x7-lk">${esc(this.lkLabel(lk))}<button type="button" data-lkdel="${i}" title="연결 빼기">✕</button></span>`).join('')
+            : '<span class="small muted">연결된 학교가 없습니다.</span>';
+        };
+        const syncT = () => { $$('[data-mt=text]', b).forEach(x => { x.style.display = cat === 'exam' && type === 'text' ? '' : 'none'; }); };
+        const lkSch = $('[data-lksch]', b), lkGr = $('[data-lkgr]', b), lkSem = $('[data-lksem]', b);
+        bindCombo(lkSch, () => this.schoolPick());
+        // 입력칸의 학교·학년(·학기)을 연결에 넣는다 → 'ok' / 'dup' / 'empty'(입력 없음) / 'bad'(빠진 칸)
+        const addLk = (quiet) => {
+          const sch = schoolShort(lkSch.value), gr = +lkGr.value;
+          if (!sch && !gr) { if (!quiet) toast('학교와 학년을 고르세요'); return 'empty'; }
+          if (!sch) { if (!quiet) toast('학교를 입력하세요'); return 'bad'; }
+          if (!gr) { if (!quiet) toast('학년을 고르세요'); return 'bad'; }
+          const nx = this.lkAdd(links, { school: sch, grade: gr, sem: isHigh(gr) ? +lkSem.value : 0 });
+          if (!nx) { if (!quiet) toast('이미 연결되어 있습니다'); return 'dup'; }
+          links = nx; drawL(); return 'ok';
+        };
+        b._addLk = addLk;
+        drawU(); sync(); drawL(); syncT();
         b.addEventListener('change', (e) => {
-          if (e.target.name === 'mtype' || e.target.name === 'mcat') { sync(); $('[data-qs]', b).value = cat === 'gen' || type === 'sub' ? '강' : '과'; }
+          if (e.target.name === 'mtype' || e.target.name === 'mcat') { sync(); syncT(); $('[data-qs]', b).value = cat === 'gen' || type === 'sub' ? '강' : '과'; }
+          if (e.target === lkGr) lkSem.style.display = isHigh(lkGr.value) ? '' : 'none';
         });
+        lkSch.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && !e.defaultPrevented) { e.preventDefault(); addLk(); } });
         b.addEventListener('input', (e) => { if (e.target.matches('[data-uname]')) units[+e.target.dataset.uname].name = e.target.value; });
         b.addEventListener('click', (e) => {
           const t = e.target;
+          if (t.closest('[data-lkadd]')) { addLk(); return; }
+          const ld = t.closest('[data-lkdel]'); if (ld) { links.splice(+ld.dataset.lkdel, 1); drawL(); return; }
+          if (t.closest('[data-lkfind]')) {
+            let n = 0;
+            this.lkCands(m.id).forEach(c => { const nx = this.lkAdd(links, c); if (nx) { links = nx; n++; } });
+            drawL(); toast(n ? `기존 시험에서 학교 연결 ${n}개를 채웠습니다 (저장해야 반영됩니다)` : '기존 시험에서 새로 찾은 학교 연결이 없습니다');
+            return;
+          }
           const cb = t.closest('[data-mcls]');
           if (cb) { const cid = cb.dataset.mcls; if (cls.has(cid)) cls.delete(cid); else cls.add(cid); cb.classList.toggle('on', cls.has(cid));
             if (cls.size && noCls) { noCls = false; $('[data-mnocls]', b).classList.remove('on'); } return; }
@@ -564,7 +761,7 @@ const Exams = {
             rec.year = +$('[name=year]', b).value; rec.month = +$('[name=month]', b).value; rec.grade = +$('[name=mgrade]', b).value;
             if (!rec.year || rec.year < 2000) { toast('연도를 확인하세요'); return false; }
             if (NP.mats().some(x => x.id !== rec.id && x.type === 'mock' && +x.year === rec.year && +x.month === rec.month && +x.grade === rec.grade)) { toast('같은 모의고사가 이미 있습니다'); return false; }
-            delete rec.name; delete rec.units;
+            delete rec.name; delete rec.units; delete rec.schools;
           } else {
             rec.name = $('[name=mname]', b).value.trim();
             const us = units.map(u => ({ id: u.id, name: stripZws(u.name || '').trim() })).filter(u => u.name);
@@ -575,6 +772,7 @@ const Exams = {
               if (!bc) { toast('분류(독해·문법·듣기·단어)를 고르세요'); return false; }
               if (!cls.size && !noCls) { toast('사용하는 반을 고르거나 “반 미지정”을 고르세요'); return false; }
               rec.cat = bc;
+              delete rec.schools;
               rec.classIds = [...cls];
               if (noCls) rec.noCls = true; else delete rec.noCls;
             } else {
@@ -587,6 +785,12 @@ const Exams = {
                   .filter(it => it.matId !== rec.id || it.units.length),
               })));
               delete rec.classIds; delete rec.cat; delete rec.noCls;
+              // 쓰는 학교: 교과서만 (입력칸에 넣고 “+ 연결”을 누르지 않은 것도 함께 넣는다)
+              if (rec.type === 'text') {
+                const pend = b._addLk ? b._addLk(true) : 'empty';
+                if (pend === 'bad') { toast('쓰는 학교: 학교와 학년을 모두 고르거나 입력칸을 비우세요'); return false; }
+                rec.schools = links.map(lk => ({ school: lk.school, grade: lk.grade, sem: lk.sem }));
+              } else delete rec.schools;
             }
             rec.units = us;
             delete rec.year; delete rec.month; delete rec.grade;
@@ -620,6 +824,11 @@ const Exams = {
 .np-c.x7-next { outline: 2px dashed var(--accent); outline-offset: 1px; }
 .x7-blk { border-top: 1px dashed var(--line); padding: 8px 0; user-select: text; }
 .x7-blk ul { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; }
+.x7-lk { display: inline-flex; align-items: center; gap: 4px; cursor: default; }
+.x7-lk:hover { border-color: var(--line-strong); }
+.x7-lk button { border: 0; background: none; padding: 0 2px; color: var(--ink-mute); cursor: pointer; font-size: 12px; line-height: 1; }
+.x7-lk button:hover { color: var(--danger); }
+.x7-sug { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 8px; background: var(--accent-soft); border-radius: 6px; }
 `;
   document.head.appendChild(st);
 })();
