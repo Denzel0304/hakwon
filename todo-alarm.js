@@ -182,6 +182,17 @@ const TodoAlarm = {
 #todo-alarm .ta-foot input { width: 64px; }
 #todo-alarm .ta-perm { margin-top: 8px; color: var(--ink-mute); }
 #todo-alarm .ta-link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+/* 깜빡임: 흰색 ↔ 테마 기본색 (화면 일부처럼 보여 놓치지 않도록) · 마우스를 올리면 멈춤 (읽고 누르기 쉽게) */
+#todo-alarm { animation: ta-blink 1.2s steps(1, end) infinite; }
+#todo-alarm:hover { animation: none; }
+@keyframes ta-blink {
+  0%   { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+  50%  { background: var(--accent); color: #fff; border-color: var(--accent); }
+}
+#todo-alarm .ta-time, #todo-alarm .ta-text, #todo-alarm .ta-x, #todo-alarm .ta-foot .soft, #todo-alarm .ta-perm, #todo-alarm .ta-link { color: inherit; }
+#todo-alarm .ta-time { opacity: .95; }
+#todo-alarm .ta-row { border-bottom-color: currentColor; border-bottom-color: color-mix(in srgb, currentColor 30%, transparent); }
+#todo-alarm .ta-foot { border-top-color: color-mix(in srgb, currentColor 30%, transparent); }
 `;
     document.head.appendChild(st);
     // 처음 클릭할 때 윈도우 알림 허용을 한 번 물어봄 (로그인한 뒤)
