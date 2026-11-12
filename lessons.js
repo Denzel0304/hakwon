@@ -39,10 +39,12 @@ const NP = {
   mat(id) { const m = Store.get('meta', id); return m && m.kind === 'mat' ? m : null; },
   examMats() { return this.mats().filter(m => m.type !== 'gen'); },       // 시험 교재 (시험 범위에 쓰는 것)
   genMats() { return this.mats().filter(m => m.type === 'gen'); },        // 일반 교재 (비내신)
-  // 이 반에 연결된 일반 교재 (+ 이미 기록에 쓴 교재는 연결을 풀었어도 보이게)
+  // 수업 진도용 일반 교재인지 (듣기·단어는 진도를 나가지 않으므로 수업일지·비내신 요약에서 뺀다)
+  isLessonMat(m) { return !!m && m.cat !== 'listen' && m.cat !== 'word'; },
+  // 이 반에 연결된 일반 교재 (+ 이미 기록에 쓴 교재는 연결을 풀었어도 보이게) — 독해·문법만
   genMatsFor(classId, extraIds) {
     const ex = new Set(extraIds || []);
-    return this.genMats().filter(m => (m.classIds || []).includes(classId) || ex.has(m.id)).sort((a, b) => ko(a.name, b.name));
+    return this.genMats().filter(m => this.isLessonMat(m) && ((m.classIds || []).includes(classId) || ex.has(m.id))).sort((a, b) => ko(a.name, b.name));
   },
   matName(m) {
     if (!m) return '(삭제된 교재)';
@@ -474,7 +476,7 @@ const NP = {
   // 비내신 입력: 이 반에 연결된 일반 교재의 과·강을 고르고 메모·완결
   genEditorHtml(st, ctx) {
     const mats = this.genMatsFor(ctx.classId, Object.values(st.gitems).map(en => en.matId));
-    if (!mats.length) return '<div class="np-box"><div class="small muted">이 반에 연결된 일반 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
+    if (!mats.length) return '<div class="np-box"><div class="small muted">이 반에 연결된 독해·문법 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
     const gpr = this.genProgress(ctx.classId, ctx.lessonId);
     let h = '<div class="np-box">';
     mats.forEach(m => {
@@ -605,7 +607,7 @@ const NP = {
     const used = [];
     Store.where('lessons', l => l.classId === classId).forEach(l => (l.gp || []).forEach(en => used.push(en.matId)));
     const mats = this.genMatsFor(classId, used);
-    if (!mats.length) return '<div class="panel np-sum"><div class="empty">이 반에 연결된 일반 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
+    if (!mats.length) return '<div class="panel np-sum"><div class="empty">이 반에 연결된 독해·문법 교재가 없습니다. 시험+교재 탭의 일반 교재에서 이 반을 연결하세요.</div></div>';
     const gpr = this.genProgress(classId, null);
     return '<div class="panel np-sum"><h2>비내신 진도</h2>' + mats.map(m => {
       const units = m.units || [];
@@ -1404,16 +1406,21 @@ const ProgressBook = {
     if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
     const q = this.q.trim();
     const todosOf = (lid) => Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
-    const list = Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l))
+    // 검색어가 있으면 진행 중인 모든 반에서 찾는다 (종료된 반 제외) · 없으면 선택한 반만
+    const allCls = !!q;
+    const actIds = act.filter(c => c.active !== false).map(c => c.id);
+    const clsOrd = (cid) => { const i = actIds.indexOf(cid); return i < 0 ? 999 : i; };
+    const list = Store.where('lessons', l => (allCls ? actIds.includes(l.classId) : l.classId === this.classId) && !Lessons.isEmpty(l))
       .filter(l => (!this.from || l.date >= this.from) && (!this.to || l.date <= this.to))
       .filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), NP.genText(l), ...(l.dist || []).map(d => NP.distText(d)), ...todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
-      .sort((a, b) => ko(b.date, a.date));
-    h += `<div class="toolbar">${clsSel}<input type="search" data-q value="${esc(this.q)}" placeholder="진도·숙제·메모·할일 검색" style="width:240px">
+      .sort((a, b) => ko(b.date, a.date) || clsOrd(a.classId) - clsOrd(b.classId));
+    h += `<div class="toolbar">${clsSel}<input type="search" data-q value="${esc(this.q)}" placeholder="전체 반에서 진도·숙제·메모·할일 검색" style="width:260px">
       <input type="date" data-from value="${esc(this.from)}"> ~ <input type="date" data-to value="${esc(this.to)}">
-      ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}<span class="muted small">${list.length}회</span>
+      ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}<span class="muted small">${allCls ? '전체 반 ' : ''}${list.length}회</span>
       <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     // 내신 요약: 시험 범위 · 진도 · 수업 준비 · 배부 자료
-    if (this.npOn) {
+    if (allCls && (this.npOn || this.gpOn)) h += '<p class="small muted" style="margin:0 0 10px">전체 반 검색 중에는 내신·비내신 요약을 숨깁니다 (검색어를 지우면 다시 보입니다).</p>';
+    if (this.npOn && !allCls) {
       const today = todayStr();
       const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
       const cands = NP.candExams(this.classId, today, sel);
@@ -1422,16 +1429,17 @@ const ProgressBook = {
       h += NP.summaryHtml(this.classId, sel);
       h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 날짜 없이 끝낸 것으로 표시하거나 취소합니다 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
     }
-    if (this.gpOn) h += NP.genSummaryHtml(this.classId) + '<div style="height:14px"></div>';
-    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:760px"><colgroup><col style="width:100px"><col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th><th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
+    if (this.gpOn && !allCls) h += NP.genSummaryHtml(this.classId) + '<div style="height:14px"></div>';
+    h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:${allCls ? 880 : 760}px"><colgroup><col style="width:100px">${allCls ? '<col style="width:120px">' : ''}<col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th>${allCls ? '<th>반</th>' : ''}<th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '<span class="muted">-</span>';
       const tds = todosOf(l.id);
-      return `<tr class="click ${p.date === l.date ? 'hl' : ''}" data-id="${l.id}"><td class="nowrap"><b>${fmtMD(l.date)}</b></td><td class="nowrap small">${att}</td>
+      const lc = allCls ? Store.get('classes', l.classId) : null;
+      return `<tr class="click ${p.date === l.date && l.classId === this.classId ? 'hl' : ''}" data-id="${l.id}"><td class="nowrap"><b>${fmtMD(l.date)}</b></td>${allCls ? `<td class="nowrap small">${lc ? Classes.dot(lc) + esc(lc.name) : '<span class="muted">-</span>'}</td>` : ''}<td class="nowrap small">${att}</td>
         <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(l.homework || '', q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
         <td class="small">${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted">${fmtMD(t.date)}</span></div>`).join('')}</td></tr>`;
-    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
+    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${allCls || Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
     h += '</div>';
     main.innerHTML = h;
     this.bind(main);

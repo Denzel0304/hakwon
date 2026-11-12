@@ -253,10 +253,13 @@ const WordBook = {
     const matId = r ? r.matId : bk.matId;
     const matName = r ? (NP.mat(r.matId) ? NP.mat(r.matId).name : r.matName) : Books.nameOf(bk);
     const mat = NP.mat(matId);
-    const units = (mat && mat.units) || [];
+    // 단어장은 교재에 넣은 전체 범위(wtotal)로 1~N을 만든다 (전체 범위가 없는 예전 교재는 단위 개수로)
+    const useT = !!(mat && mat.cat === 'word' && +mat.wtotal > 0);
+    const units = useT ? [] : (mat && mat.units) || [];
+    const nTot = useT ? +mat.wtotal : units.length;
     const tries = JSON.parse(JSON.stringify((r && r.tries) || []));
     if (!tries.length) { const dr = this.defRange(sid, d, []); tries.push({ from: dr.from, to: dr.to, res: '', score: '', total: '', memo: '' }); }
-    const maxN = Math.max(units.length, ...tries.map(t => +t.to || 0), ...tries.map(t => +t.from || 0), 1);
+    const maxN = Math.max(nTot, ...tries.map(t => +t.to || 0), ...tries.map(t => +t.from || 0), 1);
     const opt = (v) => {
       let o = '';
       for (let i = 1; i <= maxN; i++) {
@@ -267,7 +270,7 @@ const WordBook = {
       return o;
     };
     const body = `<div class="wt-modal">
-      <div class="wt-mhead small"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? ` <span class="muted">(${units.length}개 단위)</span>` : ' <span class="muted">(삭제된 교재)</span>'}</span></div>
+      <div class="wt-mhead small"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? ` <span class="muted">(${useT ? '전체 ' + nTot + '강' : units.length + '개 단위'})</span>` : ' <span class="muted">(삭제된 교재)</span>'}</span></div>
       <div data-tries></div>
       <button type="button" class="btn sm" data-tadd style="margin-top:8px">+ 재시험 추가</button>
     </div>`;

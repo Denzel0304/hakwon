@@ -197,7 +197,9 @@ const MProgress = {
     if (!this.classId) { main.innerHTML = '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
     const opt = (c) => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`;
     let h = `<div class="m-bar">${Classes.selDot(Store.get('classes', this.classId))}<select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
-    h += `<div class="m-bar" style="flex-wrap:wrap">${mSearchHtml(this.q, '진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk m-tg"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
+    h += `<div class="m-bar" style="flex-wrap:wrap">${mSearchHtml(this.q, '전체 반에서 진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk m-tg"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
+    // 요약은 한 반 기준이라 전체 반 검색 중에는 숨김 (검색어 입력 때 #m-sum 표시를 바꿈)
+    h += `<div id="m-sum" ${this.q.trim() ? 'style="display:none"' : ''}>`;
     if (this.npOn) {
       const today = todayStr();
       const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
@@ -207,6 +209,7 @@ const MProgress = {
         <div class="m-ro">${NP.summaryHtml(this.classId, sel)}</div>`;
     }
     if (this.gpOn) h += `<div class="m-ro">${NP.genSummaryHtml(this.classId)}</div>`;
+    h += '</div>';
     h += `<div id="m-list">${this.listHtml(p.date)}</div>`;
     main.innerHTML = h;
     this.bind(main);
@@ -219,11 +222,15 @@ const MProgress = {
 
   listHtml(hlDate) {
     const q = this.q.trim();
-    const all = Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l));
+    // 검색어가 있으면 진행 중인 모든 반에서 찾는다 (종료된 반 제외) · 없으면 선택한 반만
+    const allCls = !!q;
+    const actIds = this.classes().filter(c => c.active !== false).map(c => c.id);
+    const clsOrd = (cid) => { const i = actIds.indexOf(cid); return i < 0 ? 999 : i; };
+    const all = Store.where('lessons', l => (allCls ? actIds.includes(l.classId) : l.classId === this.classId) && !Lessons.isEmpty(l));
     const list = all.filter(l => !q || [l.progress, l.homework, l.memo, NP.text(l), NP.genText(l), ...(l.dist || []).map(d => NP.distText(d)), ...this.todosOf(l.id).map(t => t.text)].some(v => String(v || '').includes(q)))
-      .sort((a, b) => ko(b.date, a.date));
-    if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
-    return `<div class="m-cnt">${list.length}회</div>` + list.map(l => {
+      .sort((a, b) => ko(b.date, a.date) || clsOrd(a.classId) - clsOrd(b.classId));
+    if (!list.length) return `<div class="panel"><div class="empty">${allCls || all.length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
+    return `<div class="m-cnt">${allCls ? '전체 반 ' : ''}${list.length}회</div>` + list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '';
@@ -233,8 +240,9 @@ const MProgress = {
       f += `<span class="k">숙제</span><div class="pre">${hw ? highlight(hw, q) : '<span class="muted">-</span>'}</div>`;
       if (mm) f += `<span class="k">메모</span><div class="pre soft">${highlight(mm, q)}</div>`;
       if (tds.length) f += `<span class="k">할일</span><div>${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted small">${fmtMD(t.date)}</span></div>`).join('')}</div>`;
-      return `<div class="m-card ${hlDate === l.date ? 'hl' : ''}" data-date="${l.date}">
-        <div class="m-card-hd"><b class="m-date">${fmtMD(l.date)}</b>${att ? `<span class="small soft">${att}</span>` : ''}</div>
+      const lc = allCls ? Store.get('classes', l.classId) : null;
+      return `<div class="m-card ${hlDate === l.date && l.classId === this.classId ? 'hl' : ''}" data-date="${l.date}">
+        <div class="m-card-hd"><b class="m-date">${fmtMD(l.date)}</b>${lc ? `<span class="small">${Classes.dot(lc)}${esc(lc.name)}</span>` : ''}${att ? `<span class="small soft">${att}</span>` : ''}</div>
         <div class="m-f">${f}</div></div>`;
     }).join('');
   },
@@ -258,6 +266,7 @@ const MProgress = {
       if (!e.target.matches('[data-q]')) return;
       this.q = e.target.value;
       const box = $('#m-list', main); if (box) box.innerHTML = this.listHtml(App.params.date);
+      const sm = $('#m-sum', main); if (sm) sm.style.display = this.q.trim() ? 'none' : '';
     }, 250);
   },
 };
