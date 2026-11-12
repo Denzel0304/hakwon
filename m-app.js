@@ -713,6 +713,7 @@ const App = {
   afterFirstPull() {
     const n = this.applySchedules();
     if (n) { this.render(); this.refreshModals(); }
+    Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리 (PC와 같은 id라 중복 없음)
   },
 
   /* ---------- 로그인 ---------- */
@@ -859,5 +860,6 @@ const App = {
     App.applySchedules();
     App.render();
     App.refreshModals();
+    Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
   }, 60000);
 })();

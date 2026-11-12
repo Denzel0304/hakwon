@@ -90,6 +90,7 @@ const App = {
     if (n) { this.render(); this.refreshModals(); }
     Promo.check();
     HolidayRemind.check();            // 달마다 처음 열 때 공휴일 입력 확인
+    Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
   },
 
   /* ---------- 로그인 ---------- */
@@ -227,5 +228,6 @@ const App = {
     App.refreshModals();
     Promo.check();
     HolidayRemind.check();            // 달이 바뀌면 공휴일 입력 확인
+    Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
   }, 60000);
 })();

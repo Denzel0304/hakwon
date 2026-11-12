@@ -9,6 +9,7 @@
    결석 예정 할일 템플릿(meta): id ABT_…, { kind:'abs_tpl', text, off(결석일 기준 며칠 뒤), importance, memo, remind, checklist, time, createdAt }
    결석 예정 할일의 날짜는 결석일 기준 (숙제 안내 = 결석일 당일, 그 날 수업이 끝나는 시각)
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
+   결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, createdAt }
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴' };
 const ATT_SHORT = { P: '출', L: '지', A: '결', E: '조' };
@@ -1905,6 +1906,77 @@ const Makeups = {
     }).join('');
   },
 
+  /* ---------- 결석 후 첫 등원 할일 ----------
+     학생·결석일마다 하나. 그 날 결석 중 보강 '미지정'이 있으면, 결석 뒤 처음 오는 날의 가장 빠른 수업 시작 시각으로
+     "홍길동 결석(11/12 수) 후 첫 등원 - 결석부분 처리 요망"(중요도 높음)을 한 번만 만든다.
+     · 만든 기록(meta RT_…)이 있으면 다시 만들지 않음 (직접 삭제·날짜 변경해도 그대로) · id가 정해져 있어 PC·모바일 중복 없음
+     · 그 날 결석이 모두 보강 완료 → 할일 완료 / 결석이 없어짐(결석 예정 취소·출석으로 바꿈·보강 안 함) → 미완료 할일 삭제 + 기록 삭제
+     · 첫 등원일: 결석 다음 날부터. 공휴일, 그 날 모든 수업이 결석(출석부 결석·결석 예정)인 날은 건너뜀 */
+  RET_DAYS: 120,                  // 첫 등원일을 찾는 범위 (결석 뒤 며칠까지)
+  _rtT: null,
+  retKey(sid, date) { return sid + '_' + compactDate(date); },
+  retText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) 후 첫 등원 - 결석부분 처리 요망`; },
+  // 첫 등원일 { date, time(그 날 가장 빠른 수업 시작) } (찾지 못하면 null)
+  retDay(sid, date, hol, today) {
+    for (let i = 1; i <= this.RET_DAYS; i++) {
+      const d = addDaysStr(date, i);
+      if (Holidays.has(d, hol)) continue;
+      const come = this.classesFor(sid, d, d >= today).filter(c => {
+        const l = Store.get('lessons', Lessons.lessonId(c.id, d));
+        const a = l && l.att ? l.att[sid] || '' : '';
+        return a ? a !== 'A' : !this.preRec(c.id, d, sid);
+      });
+      if (!come.length) continue;
+      const dw = dowOf(d);
+      return { date: d, time: come.map(c => Classes.timeOn(c, dw).start || '').filter(Boolean).sort()[0] || '' };
+    }
+    return null;
+  },
+  // 결석 기록을 보고 할일을 만들기 · 완료 · 삭제 (서버 내용을 처음 받은 뒤에만). 바뀐 개수를 돌려준다
+  retSync() {
+    if (!Store.firstPullDone || !Auth.key()) return 0;
+    const today = todayStr(), hol = Holidays.map(), iso = new Date().toISOString();
+    const groups = {};
+    this.collect().forEach(o => {
+      const k = this.retKey(o.s.id, o.l.date);
+      (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
+    });
+    let add = 0, chg = 0;
+    Object.keys(groups).forEach(k => {
+      const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
+      if (Store.get('meta', mid)) {
+        if (t && !t.done && g.st.every(x => x === 'done')) { Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso })); chg++; }
+        return;
+      }
+      if (!g.st.includes('none')) return;
+      const r = this.retDay(g.s.id, g.date, hol, today);
+      if (!r) return;
+      Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, createdAt: iso });
+      if (!t) {
+        Store.put('todos', Object.assign({ id: 'TDR_' + k, lessonId: '', classId: '', date: r.date, text: this.retText(g.s, g.date), done: false, createdAt: iso,
+          order: TodoX.maxOrder(r.date) + 1, doneAt: '', remindDone: false, retKey: k }, TodoX.detailVals({ importance: 3, time: r.time })));
+        add++;
+      }
+    });
+    // 결석이 없어진 것: 미완료 할일 삭제 + 만든 기록 삭제 (완료한 할일은 남김)
+    Store.where('meta', m => m.kind === 'ret_todo' && !groups[m.id.slice(3)]).forEach(m => {
+      const t = Store.get('todos', 'TDR_' + m.id.slice(3));
+      if (t && !t.done) { Store.del('todos', t.id); chg++; }
+      Store.del('meta', m.id);
+    });
+    if (add) toast(`결석 후 첫 등원 할일 ${add}개를 추가했습니다`);
+    if (add || chg) {
+      if (App.isEditingMain && App.isEditingMain()) App._needRender = true; else App.render();
+      if (App.refreshModals) App.refreshModals();
+    }
+    return add + chg;
+  },
+  // 출결·결석 예정·보강 상태가 바뀌면 잠시 뒤 한 번 (출석부 칸을 연달아 누르는 동안은 기다림)
+  retSoon() {
+    clearTimeout(this._rtT);
+    this._rtT = setTimeout(() => { try { this.retSync(); } catch (e) { console.warn('[mg77] 첫 등원 할일 처리 실패', e); } }, 1500);
+  },
+
   render(main) {
     const all = this.collect();
     const groups = this.preGroups(all);
@@ -2020,6 +2092,12 @@ const Makeups = {
     }, 250);
   },
 };
+
+// 이 기기에서 수업일지(출결)·보강 기록을 고치면 결석 후 첫 등원 할일을 맞춘다 (서버에서 받아온 변경은 그 기기가 이미 맞춤)
+['put', 'del'].forEach(fn => {
+  const f0 = Store[fn];
+  Store[fn] = function (t, ...a) { const r = f0.call(this, t, ...a); if (t === 'lessons' || t === 'makeups') Makeups.retSoon(); return r; };
+});
 
 /* =========================================================
    할일 공용 표시 (날짜 상세 · 오늘)
