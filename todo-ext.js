@@ -302,6 +302,7 @@ const TodoX = {
     }
     const prog = this.clProg(it.checklist);
     if (!it.done && prog && prog.done < prog.total) { toast('상세에서 체크리스트를 모두 완료하세요'); return; }
+    if (it.done && prog && prog.done === prog.total) { toast('상세에서 체크리스트를 해제하세요'); return; }   // 체크리스트를 다 한 할일은 바깥 체크만 끌 수 없음
     this.setDone(it, !it.done);
     App.render();
   },

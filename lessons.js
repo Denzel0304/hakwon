@@ -1839,7 +1839,13 @@ const Makeups = {
             rows.forEach((r, i) => {
               const text = pre + r.text.trim();
               const cur = r.id ? Store.get('todos', r.id) : null;
-              if (cur) { Store.put('todos', Object.assign(Lessons.editTodo(cur, r, text, !!cur.done), { absKey: k })); return; }
+              if (cur) {
+                const rec = Object.assign(Lessons.editTodo(cur, r, text, !!cur.done), { absKey: k });
+                // 체크리스트를 고치지 않았으면 완료 상태는 그대로 (카드·할일 탭에서 체크박스로 완료한 경우 풀리지 않게)
+                const norm = (cl) => JSON.stringify((Array.isArray(cl) ? cl : []).map(x => ({ t: String(x.t || '').trim(), d: !!x.d })).filter(x => x.t));
+                if (norm(rec.checklist) === norm(cur.checklist)) { rec.done = !!cur.done; rec.doneAt = cur.doneAt || ''; }
+                Store.put('todos', rec); return;
+              }
               const rec = Object.assign(Lessons.newTodo(Object.assign({}, r, { text }), i, now, '', '', r.date), { order: TodoX.maxOrder(r.date) + 1, doneAt: '', remindDone: false, absKey: k });
               Store.put('todos', rec);
               n++;
@@ -1964,7 +1970,13 @@ const Makeups = {
       const at = e.target.closest('[data-abstd]');
       if (at) {
         const t = Store.get('todos', at.dataset.abstd);
-        if (t) { Store.put('todos', Object.assign({}, t, { done: at.checked, doneAt: at.checked ? new Date().toISOString() : '' })); App.render(); }
+        if (t) {
+          // 할일 탭과 같은 규칙: 체크리스트가 남아 있으면 완료할 수 없음 (수정 창에서 저장할 때 완료가 풀리는 것 방지)
+          const prog = TodoX.clProg(t.checklist);
+          if (at.checked && prog && prog.done < prog.total) { at.checked = false; toast('상세에서 체크리스트를 모두 완료하세요'); return; }
+          if (!at.checked && prog && prog.done === prog.total) { at.checked = true; toast('상세에서 체크리스트를 해제하세요'); return; }   // 할일 탭과 같은 규칙
+          Store.put('todos', Object.assign({}, t, { done: at.checked, doneAt: at.checked ? new Date().toISOString() : '' })); App.render();
+        }
         return;
       }
       const md = e.target.closest('[data-mdist]');
