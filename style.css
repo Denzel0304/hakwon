@@ -300,6 +300,10 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .pick-list .pkd button { border: 1px solid var(--line-strong); background: #fff; color: var(--ink-mute); font-size: 12px; line-height: 1.5; padding: 0 7px; border-radius: 10px; cursor: pointer; }
 .pick-list .pkd button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .pick-list .pkd em { font-style: normal; font-size: 11.5px; font-weight: 700; color: #A9650B; margin-right: 3px; }
+/* 금요일 개인 시간: 반 목록 표시 · 반 수정 창 버튼 */
+.pft { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; background: #EDE7F8; color: #5B3A9E; font-size: 11.5px; font-weight: 700; line-height: 1.6; vertical-align: 1px; }
+.pick-list .pkd button.ft { margin-left: 6px; border-style: dashed; }
+.pick-list .pkd button.ft.on { background: #EDE7F8; border: 1px solid #8A6CC9; color: #5B3A9E; font-weight: 700; }
 .tbl th.sortable:hover { color: var(--accent-ink); }
 .tbl th.sortable .ar { margin-left: 3px; font-size: 10.5px; color: var(--ink-mute); }
 .tbl th.sortable.on { color: var(--accent-ink); }
@@ -496,6 +500,12 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tt2-wd.today { background: var(--frame-soft); box-shadow: inset 0 -3px 0 var(--frame); }
 .tt2-today { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: var(--frame); color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
 /* 오늘 끝난 수업: 회색으로 흐리게 (마우스를 올리면 원래 색으로) */
+/* 금요일 개인 시간: 개별 블록(점선·빗금) · 다른 반 블록 안의 타반 학생(자기 반 색 점 + 점선 칩) */
+.tt2 .tt-blk.indiv { border-style: dashed; border-width: 1.5px; }
+.tt2 .tt-blk .ind-tag { display: inline-block; margin-left: 3px; padding: 0 5px; border-radius: 6px; background: #fff; border: 1px dashed var(--c); color: var(--ink-soft); font-size: 10.5px; font-weight: 700; line-height: 1.45; vertical-align: 2px; }
+.tt2 .tt-blk .sts-g .gst { display: inline-block; padding: 0 5px 0 4px; border: 1px dashed var(--gc); border-radius: 7px; background: #fff; line-height: 1.4; }
+.tt2 .tt-blk .sts-g .gst > b { display: inline-block; width: .62em; height: .62em; border-radius: 50%; background: var(--gc); margin-right: 3px; vertical-align: .08em; }
+.tt2 .tt-blk .sts-g .gst .sc { margin-left: 3px; }
 .tt2 .tt-blk.done { filter: grayscale(1); opacity: .5; }
 .tt2 .tt-blk.done:hover { filter: none; opacity: 1; }
 .tt2 .tt-blk.done::after { content: '종료'; position: absolute; top: 4px; right: 6px; font-size: 10.5px; font-weight: 700; color: #fff; background: #7A8794; border-radius: 6px; padding: 0 5px; line-height: 1.5; }

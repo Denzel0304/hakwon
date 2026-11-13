@@ -223,6 +223,17 @@ const Classes = {
     return { start: c.start, duration: +c.duration || 90 };
   },
   endTime(c, dow) { const t = this.timeOn(c, dow); return fromMin(toMin(t.start) + t.duration); },
+  /* ---------- 금요일 개인 시간 ----------
+     class.ftimes: { 학생ID: { start, duration } } — 금요일만 반 시간과 다르게 오는 학생 (반 소속·일지·진도는 그대로) */
+  FT_DOW: 5,
+  // 이 학생의 금요일 개인 시간 (반에 금요일이 없거나 지정이 없으면 null)
+  ftimeOf(c, sid) {
+    const t = c && (c.days || []).includes(this.FT_DOW) && c.ftimes && c.ftimes[sid];
+    return t && t.start ? { start: t.start, duration: +t.duration || 90 } : null;
+  },
+  // 이 학생이 그 요일에 실제로 오는 시간 (금요일 개인 시간 반영)
+  stuTimeOn(c, sid, dow) { return (dow === this.FT_DOW && this.ftimeOf(c, sid)) || this.timeOn(c, dow); },
+  ftLabel(t) { return t ? t.start + '~' + fromMin(toMin(t.start) + (+t.duration || 90)) : ''; },
   // 같은 시간인 요일끼리 묶기: [{ days:[1,3], start, duration }, { days:[5], ... }]
   groups(c) {
     const out = [];
@@ -270,7 +281,8 @@ const Classes = {
       const r = this.rosterAt(c.id, today);
       const up = this.upcomingAt(c.id, today, r.map(s => s.id));
       const pday = (sid, date) => { const d = this.partDays(c.id, sid, date); return d ? `<span class="pday" title="${esc(daysLabel(d))}요일만 수강">${esc(daysLabel(d))}만</span>` : ''; };
-      const names = r.map(s => `<span class="nw">${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${pday(s.id, today)}</span>`)
+      const pft = (sid) => { const t = this.ftimeOf(c, sid); return t ? `<span class="pft" title="${esc('금요일 개인 시간 ' + this.ftLabel(t))}">금 ${esc(t.start)}</span>` : ''; };
+      const names = r.map(s => `<span class="nw">${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${pday(s.id, today)}${pft(s.id)}</span>`)
         .concat(up.map(o => `<span class="nw" style="opacity:.55" title="${esc(fmtDate(o.from))}부터 수강 예정">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span>${pday(o.s.id, o.from)}</span>`));
       // 일부 요일 수강생이 있으면 요일별 인원도 보여 준다
       const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
@@ -315,14 +327,24 @@ const Classes = {
     // 학생별 수강 요일 { 학생: [요일] | null(전체) } — 체크 목록을 그릴 때 그 날짜 기준으로 채운다
     let pd = {};
     let modalDays = (v.days || []).slice();
+    // 학생별 금요일 개인 시간 { 학생: { start, duration } } — 저장할 때 정리한다
+    const ft = JSON.parse(JSON.stringify(v.ftimes || {}));
     const pkdHtml = (sid) => {
       const cd = DAY_ORDER.filter(d => modalDays.includes(d));
-      if (cd.length < 2) return '';
-      const sel = pd[sid] ? cd.filter(d => pd[sid].includes(d)) : cd;
-      const part = sel.length && sel.length < cd.length;
-      // '월만' 표시는 버튼 왼쪽에 둔다 (오른쪽 정렬이라 버튼 위치가 바뀌지 않음)
-      return (part ? `<em>${esc(daysLabel(sel))}만</em>` : '')
-        + cd.map(d => `<button type="button" data-pkday="${d}" class="${(part ? sel.includes(d) : true) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('');
+      let h = '';
+      if (cd.length >= 2) {
+        const sel = pd[sid] ? cd.filter(d => pd[sid].includes(d)) : cd;
+        const part = sel.length && sel.length < cd.length;
+        // '월만' 표시는 버튼 왼쪽에 둔다 (오른쪽 정렬이라 버튼 위치가 바뀌지 않음)
+        h = (part ? `<em>${esc(daysLabel(sel))}만</em>` : '')
+          + cd.map(d => `<button type="button" data-pkday="${d}" class="${(part ? sel.includes(d) : true) ? 'on' : ''}" title="${DOW[d]}요일 수강 켜기/끄기">${DOW[d]}</button>`).join('');
+      }
+      // 금요일 개인 시간 버튼 (반에 금요일이 있고, 이 학생이 금요일에 올 때)
+      if (cd.includes(this.FT_DOW) && (!pd[sid] || pd[sid].includes(this.FT_DOW))) {
+        const t = ft[sid] && ft[sid].start ? ft[sid] : null;
+        h += `<button type="button" data-pkft="${sid}" class="ft${t ? ' on' : ''}" title="${t ? esc('금요일 개인 시간 ' + this.ftLabel(t) + ' — 눌러서 바꾸기') : '금요일만 반 시간과 다르게 올 때 지정'}">${t ? '금 ' + esc(t.start) : '금 시간'}</button>`;
+      }
+      return h;
     };
     // 학생 체크 목록: 적용일 기준 명단으로 체크하고, 그 날 수강 중이거나 예정인 학생은 상태와 관계없이 보여 준다
     const picksHtml = (date) => {
@@ -428,8 +450,37 @@ const Classes = {
           }
         });
         $('[data-autoname]', b).onclick = () => { nameEdited = false; upd(); };
+        // 금요일 개인 시간 지정 창 (반의 금요일 시간이 기본값)
+        const friT = () => (pdChk.checked && times[this.FT_DOW] && times[this.FT_DOW].start ? times[this.FT_DOW] : common());
+        const openFt = (sid, box) => {
+          const s = Store.get('students', sid), base = friT();
+          const cur = ft[sid] && ft[sid].start ? ft[sid] : null, t0 = cur || base;
+          Modal.open({
+            title: '금요일 개인 시간', size: 'sm',
+            body: `<div class="form">
+              <label>학생</label><div><b>${esc(s ? s.name : '')}</b> <span class="small soft">${esc(stTag(s))}</span></div>
+              <label>반 금요일</label><div class="soft">${esc(base.start ? this.ftLabel(base) : '-')}</div>
+              <label class="req">시작 시간</label><div class="row"><input type="time" step="300" name="fts" value="${esc(t0.start || '')}">
+                <input type="number" name="ftd" min="10" max="600" step="5" value="${+t0.duration || 90}"><span>분</span></div>
+              <label></label><div class="hint">반 소속·수업일지·진도는 그대로이고, 시간표에서만 이 시간에 표시됩니다.</div></div>`,
+            buttons: [
+              ...(cur ? [{ text: '반 시간으로', left: true, onClick: () => { delete ft[sid]; box.innerHTML = pkdHtml(sid); } }] : []),
+              { text: '취소' },
+              { text: '확인', cls: 'primary', primary: true, onClick: (mm) => {
+                const st = $('[name=fts]', mm.body).value;
+                const du = Math.max(10, Math.min(600, +$('[name=ftd]', mm.body).value || 90));
+                if (!st) { toast('시작 시간을 입력하세요'); return false; }
+                if (st === base.start && du === (+base.duration || 90)) delete ft[sid];   // 반 시간과 같으면 지정 없음
+                else ft[sid] = { start: st, duration: du };
+                box.innerHTML = pkdHtml(sid);
+              } },
+            ],
+          });
+        };
         // 학생별 요일 버튼 (마지막 하루는 끌 수 없음)
         b.addEventListener('click', (e) => {
+          const fb = e.target.closest('[data-pkft]');
+          if (fb) { e.preventDefault(); openFt(fb.dataset.pkft, fb.closest('[data-pkd]')); return; }
           const k = e.target.closest('[data-pkday]');
           if (!k) return;
           e.preventDefault();
@@ -509,10 +560,24 @@ const Classes = {
           });
           // 빠지는 요일에 이미 출석 기록이 있으면 확인 (요일은 그 반에 들어온 날부터 적용)
           if (c && !await this.confirmAttConflicts(checked0.filter(sid => pd[sid]).map(sid => ({ sid, cid: c.id, from: fromOf[sid], days: pd[sid], classDays: days })))) return false;
+          // 금요일 개인 시간 정리: 반에 금요일이 있을 때만, 금요일에 오는 학생만, 반 금요일 시간과 다른 것만 남긴다
+          //   체크를 푼 학생(이번에 빠지는 학생)은 지우고, 목록에서 체크하지 않은 수강 예정 학생 것은 그대로 둔다
+          const friOf = days.includes(this.FT_DOW) ? (perDay ? times[this.FT_DOW] : { start, duration }) : null;
+          const ftimes = {};
+          if (friOf) Object.keys(ft).forEach(sid => {
+            const t = ft[sid];
+            if (!t || !t.start) return;
+            if (checked0.includes(sid)) { if (pd[sid] && !pd[sid].includes(this.FT_DOW)) return; }
+            else if (inNow.includes(sid) || !(c && Store.where('enrollments', e => e.studentId === sid && e.classId === c.id && (!e.to || e.to > apply)).length)) return;
+            const du = +t.duration || 90;
+            if (t.start === friOf.start && du === (+friOf.duration || 90)) return;
+            ftimes[sid] = { start: t.start, duration: du };
+          });
           const rec = Object.assign({}, c || { id: uid('CL'), createdAt: new Date().toISOString() }, {
             name, nameEdited: name !== auto, days, start: st0, duration: du0, perDay, times,
             memo: stripZws($('[name=memo]', b).value), active, color: pickedColor || '', startDate,
           });
+          if (Object.keys(ftimes).length) rec.ftimes = ftimes; else delete rec.ftimes;
           Store.put('classes', rec);
           const shown = $$('[name=st]', b).map(i => i.value);
           const checked = $$('[name=st]:checked', b).map(i => i.value);
@@ -563,15 +628,7 @@ const Timetable = {
     // 토·일은 수업이 없으므로 시간표에서 제외 (혹시 지정된 데이터가 있어도 그리지 않음)
     const ttDays = DAY_ORDER.filter(d => d !== 0 && d !== 6);
     const cols = ttDays.map(dow => {
-      const items = classes.filter(c => (c.days || []).includes(dow)).map(c => {
-        const t = Classes.timeOn(c, dow);
-        const s = toMin(t.start), e = s + t.duration;
-        // 이 요일에 오는 학생만 (일부 요일 수강생은 그 요일 블록에만 나온다)
-        const roster = Classes.rosterOnDow(c.id, dow, today);
-        const up = Classes.upcomingAt(c.id, today, Classes.rosterAt(c.id, today).map(x => x.id))
-          .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
-        return { c, s, e, roster, up };
-      });
+      const items = this.dayItems(classes, dow, today);
       return { dow, items: dow === 5 ? this.layoutFri(items) : this.layout(items) };
     });
     // 금요일 폭 = 슬롯 수(평소 2칸, 3개가 동시에 겹칠 때만 3칸) × 다른 요일 한 칸
@@ -596,11 +653,11 @@ const Timetable = {
         const w = 100 / it.cols;
         const c = it.c;
         const cc = Classes.colorOf(c);
-        h += `<div class="tt-blk" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)}${viewOnly ? '' : ' — 눌러서 반 수정'}"
-          style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
-          <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
-          <div class="tm">${esc(Classes.dayTimeLabel(c, col.dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>
-          <div class="sts-g">${this.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
+        h += `<div class="tt-blk${it.indiv ? ' indiv' : ''}" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)}${it.indiv ? ' · 금요일 개인 시간' : ''}${viewOnly ? '' : ' — 눌러서 반 수정'}"
+          style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${this.blkBg(it, cc, isToday)};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
+          <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}${this.indivTag(it)}</b></div>
+          <div class="tm">${esc(this.timeText(it, col.dow))} · ${this.cntText(it)}</div></div>
+          <div class="sts-g">${this.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}${this.guestsHtml(it, today)}</div></div>`;
       });
       h += '</div>';
     });
@@ -901,6 +958,63 @@ const Timetable = {
     });
     if (group.length) flush();
     return items;
+  },
+
+  /* ---------- 그 요일 블록 만들기 (PC·팝업·모바일 시간표 공용) ----------
+     금요일 개인 시간 학생(class.ftimes)은 반 정규 블록에서 빼고,
+       - 개인 시간이 다른 반 정규 블록과 시작·끝이 완전히 같으면 그 반 블록 안에 '타반' 학생으로 (guests)
+       - 아니면(혼자이거나 일부만 겹침) 자기 반 색의 개별 블록 (indiv)
+     반 정규 블록은 금요일에 제시간에 오는 학생·예정 학생이 없고 개인 시간 학생만 있으면 그리지 않는다. */
+  dayItems(classes, dow, today) {
+    const regs = [], pers = [];
+    classes.filter(c => (c.days || []).includes(dow)).forEach(c => {
+      const t = Classes.timeOn(c, dow);
+      const s = toMin(t.start), e = s + t.duration;
+      // 이 요일에 오는 학생만 (일부 요일 수강생은 그 요일 블록에만 나온다)
+      const all = Classes.rosterOnDow(c.id, dow, today);
+      const upAll = Classes.upcomingAt(c.id, today, Classes.rosterAt(c.id, today).map(x => x.id))
+        .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
+      const ftOf = (sid) => (dow === Classes.FT_DOW ? Classes.ftimeOf(c, sid) : null);
+      const groups = {};
+      const grp = (ft) => { const k = ft.start + '|' + ft.duration; return groups[k] || (groups[k] = { c, s: toMin(ft.start), e: toMin(ft.start) + ft.duration, roster: [], up: [] }); };
+      const roster = [], up = [];
+      all.forEach(st => { const ft = ftOf(st.id); if (ft) grp(ft).roster.push(st); else roster.push(st); });
+      upAll.forEach(o => { const ft = ftOf(o.s.id); if (ft) grp(ft).up.push(o); else up.push(o); });
+      const gl = Object.values(groups);
+      if (roster.length || up.length || !gl.length) regs.push({ c, s, e, roster, up, guests: [] });
+      gl.forEach(g => pers.push(g));
+    });
+    const ord = (c) => { const d = Classes.firstDay(c); return d == null ? 99 : DAY_ORDER.indexOf(d); };
+    const items = regs.slice();
+    pers.forEach(p => {
+      const host = regs.filter(r => r.c.id !== p.c.id && r.s === p.s && r.e === p.e).sort((a, b) => ord(a.c) - ord(b.c) || ko(a.c.name, b.c.name))[0];
+      if (host) {
+        p.roster.forEach(st => host.guests.push({ c: p.c, s: st }));
+        p.up.forEach(o => host.guests.push({ c: p.c, s: o.s, from: o.from }));
+      } else items.push({ c: p.c, s: p.s, e: p.e, roster: p.roster, up: p.up, guests: [], indiv: true });
+    });
+    return items;
+  },
+  // 블록 배경: 개별 블록은 반 색 빗금
+  blkBg(it, cc, isToday) {
+    const base = isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F';
+    return it.indiv ? `repeating-linear-gradient(135deg,${cc}26 0 5px,transparent 5px 11px),${isToday ? '#fff' : cc + '12'}` : base;
+  },
+  indivTag(it) { return it.indiv ? ' <span class="ind-tag">개인</span>' : ''; },
+  timeText(it, dow) { return it.indiv ? Classes.ftLabel({ start: fromMin(it.s), duration: it.e - it.s }) : Classes.dayTimeLabel(it.c, dow); },
+  cntText(it, short) {
+    const g = (it.guests || []).filter(x => !x.from).length, gu = (it.guests || []).filter(x => x.from).length;
+    if (short) return `${it.roster.length}명${g ? `+타${g}` : ''}${it.up.length + gu ? `+${it.up.length + gu}` : ''}`;
+    return `${it.roster.length}명${g ? ` + 타반 ${g}명` : ''}${it.up.length + gu ? ` +${it.up.length + gu} 예정` : ''}`;
+  },
+  // 다른 반 학생(금요일 개인 시간)이 이 블록에 함께 있을 때: 자기 반 색 점 + 점선 칩
+  guestsHtml(it, today) {
+    const gs = it.guests || [];
+    if (!gs.length) return '';
+    return ' ' + gs.map(o => {
+      const cc = Classes.colorOf(o.c), tg = stTag(o.s);
+      return `<span class="n gl gst${o.from ? ' up' : ''}" data-cls="${o.c.id}" style="--gc:${cc}" title="${esc(o.s.name + ' ' + tg + ' · ' + o.c.name + ' 반 (금요일 개인 시간)' + (o.from ? ' · ' + fmtDate(o.from) + '부터 수강 예정' : ''))}"><b></b>${esc(o.s.name)}${tg ? `<i class="sc">${esc(tg)}</i>` : ''}${o.from ? `<em>${Classes.md(o.from)}~</em>` : ''}</span>`;
+    }).join(' ');
   },
 
   // 금요일 전용 배치: 다른 요일 한 칸 폭의 슬롯을 나란히 둔다

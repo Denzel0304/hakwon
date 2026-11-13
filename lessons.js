@@ -1646,16 +1646,17 @@ const Makeups = {
     return Store.where('enrollments', e => e.studentId === sid).map(e => ({ e, c: Store.get('classes', e.classId) }))
       .filter(({ e, c }) => c && (!future || c.active !== false) && (c.days || []).includes(dw) && !(Classes.startOf(c) > date) && Classes.attendsOn(e, date, c))
       .map(x => x.c).filter(c => !seen[c.id] && (seen[c.id] = 1))
-      .sort((a, b) => ko(Classes.timeOn(a, dw).start, Classes.timeOn(b, dw).start));
+      .sort((a, b) => ko(Classes.stuTimeOn(a, sid, dw).start, Classes.stuTimeOn(b, sid, dw).start));   // 금요일 개인 시간 반영
   },
   // 그 날 마지막 수업이 끝나는 시각 (그 날 수업이 없으면 '')
   endOn(sid, d) {
     if (!isYmd(d)) return '';
     const cs = this.classesFor(sid, d, true);
     if (!cs.length) return '';
-    return cs.map(c => Classes.endTime(c, dowOf(d))).sort().pop();
+    return cs.map(c => { const t = Classes.stuTimeOn(c, sid, dowOf(d)); return fromMin(toMin(t.start) + t.duration); }).sort().pop();   // 금요일 개인 시간 반영
   },
-  clsLabel(cs, d) { return cs.map(c => `${c.name} ${Classes.dayTimeLabel(c, dowOf(d))}`).join(', '); },
+  // sid: 그 학생의 금요일 개인 시간으로 표시 (없으면 반 시간)
+  clsLabel(cs, d, sid) { return cs.map(c => `${c.name} ${sid ? Classes.ftLabel(Classes.stuTimeOn(c, sid, dowOf(d))) : Classes.dayTimeLabel(c, dowOf(d))}`).join(', '); },
 
   tpls() { return Store.where('meta', m => m.kind === 'abs_tpl').sort((a, b) => (+a.off || 0) - (+b.off || 0) || ko(a.text, b.text)); },
 
@@ -1736,7 +1737,7 @@ const Makeups = {
               const cs = this.classesFor(st.sid, st.date, true);
               const dk = this.absKey(st.sid, st.date);
               const dup = dk !== key && Store.where('makeups', m => m.pre && m.absKey === dk && m.status !== 'skip').length;
-              info.innerHTML = (cs.length ? esc(this.clsLabel(cs, st.date)) : '<span style="color:var(--danger)">이 날 수강하는 수업이 없습니다</span>')
+              info.innerHTML = (cs.length ? esc(this.clsLabel(cs, st.date, st.sid)) : '<span style="color:var(--danger)">이 날 수강하는 수업이 없습니다</span>')
                 + (Holidays.has(st.date) ? ' · <span style="color:var(--danger)">공휴일 (등록 불가)</span>' : '') + (dup ? ' · <span style="color:var(--danger)">이미 등록된 결석 예정</span>' : '');
               applyBase();
             } else {
@@ -1897,7 +1898,7 @@ const Makeups = {
         <div class="mk-top"><span class="who">${esc(g.s.name)}</span><span class="tag">${esc(stTag(g.s))}</span>
           ${g.s.status !== 'active' ? Students.statusBadge(g.s) : ''}
           <span class="badge red">결석 예정 ${fmtMD(g.date)}</span><span class="badge gray">D-${dd}</span>
-          <span class="soft small">${esc(this.clsLabel(g.items.map(o => o.c).filter(Boolean), g.date) || '(삭제된 반)')}</span>
+          <span class="soft small">${esc(this.clsLabel(g.items.map(o => o.c).filter(Boolean), g.date, g.s.id) || '(삭제된 반)')}</span>
           <span style="flex:1"></span><button class="btn sm" data-absedit="${g.key}">수정</button>
           <button class="btn sm danger" data-abscancel="${g.key}">결석 예정 취소</button></div>
         ${tds.length ? `<div class="ab-tds">${tds.map(t => `<label class="ab-td ${t.done ? 'done' : ''} ${!t.done && t.date < today ? 'late' : ''}"><input type="checkbox" data-abstd="${t.id}" ${t.done ? 'checked' : ''}>
@@ -1928,7 +1929,7 @@ const Makeups = {
       });
       if (!come.length) continue;
       const dw = dowOf(d);
-      return { date: d, time: come.map(c => Classes.timeOn(c, dw).start || '').filter(Boolean).sort()[0] || '' };
+      return { date: d, time: come.map(c => Classes.stuTimeOn(c, sid, dw).start || '').filter(Boolean).sort()[0] || '' };   // 금요일 개인 시간 반영
     }
     return null;
   },

@@ -83,14 +83,8 @@ const MTimetable = {
       return;
     }
     const dow = this.dow, isToday = dow === tdow;
-    const list = Store.all('classes').filter(c => c.active !== false && (c.days || []).includes(dow)).map(c => {
-      const t = Classes.timeOn(c, dow);
-      const s = toMin(t.start), e = s + t.duration;
-      const roster = Classes.rosterOnDow(c.id, dow, today);
-      const up = Classes.upcomingAt(c.id, today, Classes.rosterAt(c.id, today).map(x => x.id))
-        .filter(o => { const d = Classes.partDays(c.id, o.s.id, o.from); return !d || d.includes(dow); });
-      return { c, s, e, roster, up };
-    });
+    // 금요일 개인 시간 학생은 같은 시간 다른 반 블록 안 또는 개별 블록으로 (PC 시간표와 같은 규칙)
+    const list = Timetable.dayItems(Store.all('classes').filter(c => c.active !== false), dow, today);
     const items = dow === 5 ? Timetable.layoutFri(list) : Timetable.layout(list);
     // 모바일은 폭이 좁으므로: 같은 시간에 겹치는 반이 없는 오른쪽 칸은 모두 써서 가로로 넓힌다
     // (PC 시간표의 배치는 그대로 두고, 여기서만 span을 계산)
@@ -123,17 +117,18 @@ const MTimetable = {
       const s = Math.max(it.s, S), e = Math.min(it.e, E);
       if (e <= s) return;
       const w = 100 / it.cols, c = it.c, cc = Classes.colorOf(c);
-      const two = `<div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b></div>
-        <div class="tm">${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''}</div></div>`;
+      const nmH = esc(c.name) + Timetable.indivTag(it);
+      const two = `<div class="hd"><div class="nm" style="color:var(--ink)"><b>${nmH}</b></div>
+        <div class="tm">${esc(Timetable.timeText(it, dow))} · ${Timetable.cntText(it)}</div></div>`;
       twoLine.push(two);
-      h += `<div class="tt-blk" data-hi="${twoLine.length - 1}"${isToday ? ` data-end="${it.e}"` : ''}
-        style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${it.span * w}% - 6px);background:${isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F'};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
+      h += `<div class="tt-blk${it.indiv ? ' indiv' : ''}" data-hi="${twoLine.length - 1}"${isToday ? ` data-end="${it.e}"` : ''}
+        style="--c:${cc};top:calc(var(--ppm) * ${s - S} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${it.span * w}% - 6px);background:${Timetable.blkBg(it, cc, isToday)};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
         ${it.span === it.cols   // 한 줄을 다 쓰는 블록: 반 이름 뒤에 (시간 · 인원)을 붙여 한 줄로
-          ? `<div class="hd one"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="tm">(${esc(Classes.dayTimeLabel(c, dow))} · ${it.roster.length}명${it.up.length ? ` +${it.up.length} 예정` : ''})</span></div></div>`
+          ? `<div class="hd one"><div class="nm" style="color:var(--ink)"><b>${nmH}</b> <span class="tm">(${esc(Timetable.timeText(it, dow))} · ${Timetable.cntText(it)})</span></div></div>`
           : it.span / it.cols < 0.5   // 폭이 절반보다 좁은 블록: 이름 + 인원만 작게 (시간은 반 이름에 들어 있음)
-            ? `<div class="hd nar"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}</b> <span class="cnt">${it.roster.length}명${it.up.length ? `+${it.up.length}` : ''}</span></div></div>`
+            ? `<div class="hd nar"><div class="nm" style="color:var(--ink)"><b>${nmH}</b> <span class="cnt">${Timetable.cntText(it, true)}</span></div></div>`
             : two}
-        <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}</div></div>`;
+        <div class="sts-g">${Timetable.groupedHtml(it.roster, it.up, (sid, date) => Classes.partDays(c.id, sid, date || today))}${Timetable.guestsHtml(it, today)}</div></div>`;
     });
     if (!items.length) h += '<div class="m-tt-empty">수업 없음</div>';
     h += '</div></div></div></div></div>';
