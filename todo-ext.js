@@ -438,6 +438,8 @@ const TodoX = {
         const drawCl = () => { clList.innerHTML = clHtml(); };
         drawCl();
         title.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('[data-primary]', b.parentElement).click(); } });
+        // 모바일 새 할일: 입력칸에 바로 포커스 (누른 순간 안에서 해야 휴대폰 키보드가 올라옴 — 지연 포커스는 키보드가 안 뜸)
+        if (isNew && opts.mobile) title.focus();
         b.addEventListener('input', (e) => {
           const t = e.target;
           if (t.matches('[data-f=text]')) st.text = t.value;
