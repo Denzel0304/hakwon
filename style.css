@@ -506,6 +506,8 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tt2 .tt-blk .sts-g .gst { display: inline-block; padding: 0 5px 0 4px; border: 1px dashed var(--gc); border-radius: 7px; background: #fff; line-height: 1.4; }
 .tt2 .tt-blk .sts-g .gst > b { display: inline-block; width: .62em; height: .62em; border-radius: 50%; background: var(--gc); margin-right: 3px; vertical-align: .08em; }
 .tt2 .tt-blk .sts-g .gst .sc { margin-left: 3px; }
+.tt2 .tt-blk.mixed { cursor: default; }
+.tt2 .tt-blk.mixed .gst { cursor: pointer; }
 .tt2 .tt-blk.done { filter: grayscale(1); opacity: .5; }
 .tt2 .tt-blk.done:hover { filter: none; opacity: 1; }
 .tt2 .tt-blk.done::after { content: '종료'; position: absolute; top: 4px; right: 6px; font-size: 10.5px; font-weight: 700; color: #fff; background: #7A8794; border-radius: 6px; padding: 0 5px; line-height: 1.5; }

@@ -653,7 +653,7 @@ const Timetable = {
         const w = 100 / it.cols;
         const c = it.c;
         const cc = Classes.colorOf(c);
-        h += `<div class="tt-blk${it.indiv ? ' indiv' : ''}" data-cls="${c.id}"${isToday ? ` data-end="${it.e}"` : ''} title="${esc(c.name)}${it.indiv ? ' · 금요일 개인 시간' : ''}${viewOnly ? '' : ' — 눌러서 반 수정'}"
+        h += `<div class="tt-blk${it.indiv ? ' indiv' : ''}${it.mixed ? ' mixed' : ''}"${it.mixed ? '' : ` data-cls="${c.id}"`}${isToday ? ` data-end="${it.e}"` : ''} title="${it.mixed ? '여러 반 학생의 금요일 개인 시간' + (viewOnly ? '' : ' — 학생을 누르면 그 반 수정') : esc(c.name) + (it.indiv ? ' · 금요일 개인 시간' : '') + (viewOnly ? '' : ' — 눌러서 반 수정')}"
           style="--c:${cc};top:calc(var(--ppm) * ${s - this.START} + 1px);height:calc(var(--ppm) * ${e - s} - 3px);left:calc(${it.col * w}% + 3px);width:calc(${w}% - 6px);background:${this.blkBg(it, cc, isToday)};border-color:${cc}73;box-shadow:inset 5px 0 0 ${cc}">
           <div class="hd"><div class="nm" style="color:var(--ink)"><b>${esc(c.name)}${this.indivTag(it)}</b></div>
           <div class="tm">${esc(this.timeText(it, col.dow))} · ${this.cntText(it)}</div></div>
@@ -986,24 +986,39 @@ const Timetable = {
     });
     const ord = (c) => { const d = Classes.firstDay(c); return d == null ? 99 : DAY_ORDER.indexOf(d); };
     const items = regs.slice();
+    const left = {};   // 들어갈 정규 블록이 없는 개인 시간 묶음 { 시작|끝: [묶음] }
     pers.forEach(p => {
       const host = regs.filter(r => r.c.id !== p.c.id && r.s === p.s && r.e === p.e).sort((a, b) => ord(a.c) - ord(b.c) || ko(a.c.name, b.c.name))[0];
       if (host) {
         p.roster.forEach(st => host.guests.push({ c: p.c, s: st }));
         p.up.forEach(o => host.guests.push({ c: p.c, s: o.s, from: o.from }));
-      } else items.push({ c: p.c, s: p.s, e: p.e, roster: p.roster, up: p.up, guests: [], indiv: true });
+      } else (left[p.s + '|' + p.e] = left[p.s + '|' + p.e] || []).push(p);
+    });
+    // 시간이 완전히 같은 개인 시간끼리 한 블록: 한 반이면 그 반 색 개별 블록, 여러 반이면 회색 '금요일 개인' 블록(학생마다 반 색 점)
+    Object.values(left).forEach(ps => {
+      if (ps.length === 1) { const p = ps[0]; items.push({ c: p.c, s: p.s, e: p.e, roster: p.roster, up: p.up, guests: [], indiv: true }); return; }
+      ps.sort((a, b) => ord(a.c) - ord(b.c) || ko(a.c.name, b.c.name));
+      const guests = [];
+      ps.forEach(p => {
+        p.roster.forEach(st => guests.push({ c: p.c, s: st }));
+        p.up.forEach(o => guests.push({ c: p.c, s: o.s, from: o.from }));
+      });
+      items.push({ c: this.MIX_CLS, s: ps[0].s, e: ps[0].e, roster: [], up: [], guests, indiv: true, mixed: true });
     });
     return items;
   },
+  // 여러 반 학생이 섞인 개인 블록용 가상 반 (회색, 반 수정 창 없음)
+  MIX_CLS: { id: '', name: '금요일 개인', color: '#7D8794', days: [5] },
   // 블록 배경: 개별 블록은 반 색 빗금
   blkBg(it, cc, isToday) {
     const base = isToday ? `linear-gradient(${cc}1F,${cc}1F),#fff` : cc + '1F';
     return it.indiv ? `repeating-linear-gradient(135deg,${cc}26 0 5px,transparent 5px 11px),${isToday ? '#fff' : cc + '12'}` : base;
   },
-  indivTag(it) { return it.indiv ? ' <span class="ind-tag">개인</span>' : ''; },
+  indivTag(it) { return it.indiv && !it.mixed ? ' <span class="ind-tag">개인</span>' : ''; },
   timeText(it, dow) { return it.indiv ? Classes.ftLabel({ start: fromMin(it.s), duration: it.e - it.s }) : Classes.dayTimeLabel(it.c, dow); },
   cntText(it, short) {
     const g = (it.guests || []).filter(x => !x.from).length, gu = (it.guests || []).filter(x => x.from).length;
+    if (it.mixed) return short ? `${g}명${gu ? `+${gu}` : ''}` : `${g}명${gu ? ` +${gu} 예정` : ''}`;   // 여러 반 개인 블록: 모두 다른 반 학생
     if (short) return `${it.roster.length}명${g ? `+타${g}` : ''}${it.up.length + gu ? `+${it.up.length + gu}` : ''}`;
     return `${it.roster.length}명${g ? ` + 타반 ${g}명` : ''}${it.up.length + gu ? ` +${it.up.length + gu} 예정` : ''}`;
   },
