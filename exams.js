@@ -609,7 +609,7 @@ const Exams = {
     } else if (gen) {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>분류</th><th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap">${Books.catTag(m.cat)}</td><td class="nowrap"><b>${esc(m.name)}</b></td>
-      <td class="small">${m.cat === 'listen' ? '<span class="muted">-</span>' : m.cat === 'word' ? (+m.wtotal ? `전체 ${+m.wtotal}강` : '<span class="muted">-</span>') : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
+      <td class="small">${m.cat === 'listen' || m.cat === 'word' ? '<span class="muted">-</span>' : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
       <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th>쓰는 학교</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
@@ -654,8 +654,6 @@ const Exams = {
         <select name="mgrade">${GRADES.filter(isHigh).map(g => `<option value="${g}" ${(m && m.type === 'mock' ? +m.grade : 10) === g ? 'selected' : ''}>${gradeLabel(g)}</option>`).join('')}</select>
         <span class="hint">${NP.MOCK_MIN}~${NP.MOCK_MAX}번</span></div>
       <label class="req" data-mk="book">이름</label><input type="text" name="mname" data-mk="book" value="${esc(m && m.type !== 'mock' ? m.name : '')}" placeholder="예: 능률(오) 고2, 수능특강 영어독해" maxlength="40">
-      <label class="req" data-mw>전체 범위</label><div class="row" data-mw><input type="number" name="wtotal" min="1" max="999" value="${esc(m && +m.wtotal ? +m.wtotal : '')}" placeholder="예: 50" style="width:90px">강까지
-        <span class="hint">단어 시험 범위를 1~이 숫자 중에서 고릅니다</span></div>
       <label class="top req" data-mk="book" data-mu>단위</label><div data-mk="book" data-mu><div data-units></div>
         <div class="row" style="margin-top:6px"><button type="button" class="btn sm" data-uadd>+ 단위 추가</button>
         <span class="small soft">한 번에 만들기</span><input type="number" data-qn min="1" max="60" value="8" style="width:70px"><span class="small soft">개</span>
@@ -687,11 +685,10 @@ const Exams = {
           $$('[data-mc=gen]', b).forEach(x => { x.style.display = cat === 'gen' ? '' : 'none'; });
           $$('[data-mk=mock]', b).forEach(x => { x.style.display = mock ? '' : 'none'; });
           $$('[data-mk=book]', b).forEach(x => { x.style.display = mock ? 'none' : ''; });
-          // 듣기·단어(일반 교재)는 진도를 나가지 않으므로 단위(과·강)를 넣지 않는다 · 단어장은 전체 범위만
+          // 듣기·단어(일반 교재)는 진도를 나가지 않으므로 단위(과·강)를 넣지 않는다
           const bk = ($('[name=bkcat]:checked', b) || {}).value;
           const noUnit = cat === 'gen' && (bk === 'listen' || bk === 'word');
           $$('[data-mu]', b).forEach(x => { if (noUnit) x.style.display = 'none'; });
-          $$('[data-mw]', b).forEach(x => { x.style.display = cat === 'gen' && bk === 'word' ? '' : 'none'; });
           $('[data-clshint]', b).textContent = noUnit
             ? '듣기·단어 교재는 수업일지에 나오지 않습니다. 고른 반 학생은 학생 › 교재에서 이 교재를 고를 때 먼저 추천됩니다.'
             : '고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.';
@@ -782,11 +779,6 @@ const Exams = {
             const noUnit = rec.type === 'gen' && (bc === 'listen' || bc === 'word');   // 듣기·단어: 단위 없음
             if (noUnit) us = JSON.parse(JSON.stringify((m && m.units) || []));   // 다른 분류에서 바꾼 교재의 기존 단위는 건드리지 않음 (새 교재는 없음)
             else if (!us.length) { toast('단위(과·강)를 하나 이상 넣으세요'); return false; }
-            if (bc === 'word') {
-              const wt = Math.floor(+$('[name=wtotal]', b).value || 0);
-              if (wt < 1 || wt > 999) { toast('단어장 전체 범위(1~999)를 입력하세요'); return false; }
-              rec.wtotal = wt;
-            } else delete rec.wtotal;
             if (rec.type === 'gen') {
               if (!cls.size && !noCls) { toast('사용하는 반을 고르거나 “반 미지정”을 고르세요'); return false; }
               rec.cat = bc;

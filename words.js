@@ -5,7 +5,7 @@
    단어장은 학생 › 교재에서 분류 '단어'로 진행 중인 교재(sbook)를 그대로 쓴다.
    기록은 meta 테이블에 저장 (서버 SQL 변경 없음):
    wtest: { id 'WT_학생ID_날짜', kind:'wtest', studentId, date, classId(기록한 반), matId, matName(교재 이름 사본),
-            tries:[ { from, to, res:'pass'|'fail'|'abs', score, total, memo } ], createdAt, updatedAt }
+            tries:[ { kind:'new'|'re', of(다른 날 시험의 재시험이면 그 날짜), from, to, res:'pass'|'fail'|'abs'|''(예정), score, total, memo } ], createdAt, updatedAt }
    ========================================================= */
 const WT_RES = { pass: '합격', fail: '불합격', abs: '결시' };
 const WT_MARK = { pass: '○', fail: '✕', abs: '결시' };
@@ -27,7 +27,7 @@ const WordBook = {
       .sort((a, b) => ko(b.start, a.start))[0];
     return hit || this.curBook(sid);
   },
-  rangeLabel(t) { return t.from && t.to ? (+t.from === +t.to ? String(t.from) : t.from + '-' + t.to) : ''; },
+  rangeLabel(t) { return t.from ? (!t.to || +t.from === +t.to ? String(t.from) : t.from + '-' + t.to) : ''; },
   scoreLabel(t) { return t.score !== '' && t.score != null ? String(t.score) + (t.total !== '' && t.total != null ? '/' + t.total : '') : ''; },
 
   // 이 칸 학생이 그 날 결석인지 (출석부 기록 기준)
@@ -132,13 +132,19 @@ const WordBook = {
   },
 
   /* ---------- 표 ---------- */
-  cellInner(r) {
+  // 결과가 없는 시험 = 예정 (지난 날짜인데 결과가 없으면 'late'로 눈에 띄게)
+  cellInner(r, d) {
     if (!r || !(r.tries || []).length) return '<span class="dash">-</span>';
-    return r.tries.map(t => `<div class="wt-t ${t.res}">${t.res === 'abs' ? '' : `<b>${esc(this.rangeLabel(t))}</b>`}<i>${WT_MARK[t.res] || ''}</i>${this.scoreLabel(t) ? `<small>${esc(this.scoreLabel(t))}</small>` : ''}${t.memo ? '<em title="메모">•</em>' : ''}</div>`).join('');
+    const late = d && d < todayStr();
+    return r.tries.map((t, i) => {
+      const plan = !WT_RES[t.res];
+      const re = this.kindOf(t, i) === 're' ? `<span class="wt-re" title="${esc(isYmd(t.of) ? fmtMD(t.of) + ' 시험의 재시험' : '재시험')}">재</span>` : '';
+      return `<div class="wt-t ${plan ? 'plan' + (late ? ' late' : '') : t.res}">${re}${t.res === 'abs' ? '' : `<b>${esc(this.rangeLabel(t))}</b>`}<i>${plan ? '예정' : WT_MARK[t.res] || ''}</i>${this.scoreLabel(t) ? `<small>${esc(this.scoreLabel(t))}</small>` : ''}${t.memo ? '<em title="메모">•</em>' : ''}</div>`;
+    }).join('');
   },
   cellTip(r) {
     if (!r) return '';
-    return (r.tries || []).map((t, i) => `${i + 1}차 ${t.res === 'abs' ? '' : this.rangeLabel(t) + ' '}${WT_RES[t.res] || ''}${this.scoreLabel(t) ? ' ' + this.scoreLabel(t) : ''}${t.memo ? ' · ' + t.memo : ''}`).join('\n')
+    return (r.tries || []).map((t, i) => `${i + 1}. ${this.kindOf(t, i) === 're' ? '재시험' + (isYmd(t.of) ? '(' + fmtMD(t.of) + ')' : '') : '새 시험'} ${t.res === 'abs' ? '' : this.rangeLabel(t) + ' '}${WT_RES[t.res] || '예정'}${this.scoreLabel(t) ? ' ' + this.scoreLabel(t) : ''}${t.memo ? ' · ' + t.memo : ''}`).join('\n')
       + (r.matName ? '\n단어장: ' + r.matName : '');
   },
   // 칸 위의 날짜 (여러 반에 다니면 그 날 반의 색 점)
@@ -166,7 +172,7 @@ const WordBook = {
         const reg = it.ents.some(e => e.reg);
         const cls = `${it.d === today ? 'today' : ''} ${it.d > today ? 'future' : ''} ${reg ? '' : 'added'}`;
         if (it.absent && !r) { h += `<td class="ab-c wt-c wt-absent ${cls}" title="출석부에 결석으로 기록된 날">${this.dateHead(it, multi)}<div class="wt-ab">결석</div></td>`; return; }
-        h += `<td class="ab-c wt-c ${cls}" data-wcid="${g.c.id}" data-d="${it.d}" data-sid="${s.id}" title="${esc((reg ? '' : '수업일 아님 (추가한 날)\n') + this.cellTip(r))}">${this.dateHead(it, multi)}${this.cellInner(r)}</td>`;
+        h += `<td class="ab-c wt-c ${cls}" data-wcid="${g.c.id}" data-d="${it.d}" data-sid="${s.id}" title="${esc((reg ? '' : '수업일 아님 (추가한 날)\n') + this.cellTip(r))}">${this.dateHead(it, multi)}${this.cellInner(r, it.d)}</td>`;
       });
       for (let i = o.list.length; i < maxN; i++) h += '<td class="wt-pad"></td>';
       h += `<td class="num wt-n pass">${n.pass}</td><td class="num wt-n fail">${n.fail}</td></tr>`;
@@ -182,7 +188,7 @@ const WordBook = {
       <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
-    h += `<div class="toolbar small soft"><span>학생마다 한 줄, 그 학생이 오는 날만 칸으로 나옵니다 (여러 반에 다니면 앞선 반에 한 번만). 칸을 누르면 범위 · 합격/불합격/결시 · 점수 · 메모를 기록하고, 재시험은 같은 칸에 “+ 재시험 추가”, 수업 없는 날 재시험은 이름 아래 “+ 날짜”로 넣습니다. 출석부에서 결석인 날은 회색입니다.</span></div>`;
+    h += `<div class="toolbar small soft"><span>학생마다 한 줄, 그 학생이 오는 날만 칸으로 나옵니다 (여러 반에 다니면 앞선 반에 한 번만). 칸을 누르면 범위 · 합격/불합격/결시 · 점수 · 메모를 기록합니다. 결과를 고르지 않으면 ‘예정’으로 저장되니, 미리 범위를 적어 두고 시험 뒤에 결과를 고르세요. 재시험은 같은 칸의 “+ 재시험”, 다른 날은 불합격 옆 “다른 날 재시험”(또는 그 날짜 칸에서 “+ 재시험”)으로 넣습니다. 수업 없는 날은 이름 아래 “+ 날짜”로 칸을 만듭니다. 출석부에서 결석인 날은 회색입니다.</span></div>`;
     this.build(Y, M).forEach(g => {
       const c = g.c;
       if (c.active === false && !g.rows.length) return;
@@ -229,62 +235,117 @@ const WordBook = {
     };
   },
 
-  /* ---------- 한 칸 기록 창 ---------- */
-  // 새 시험의 기본 범위: 이 칸의 마지막 시험 → 이 학생의 가장 최근 기록 → 1~1
-  defRange(sid, d, tries) {
-    const lastT = tries.filter(t => t.res !== 'abs' && t.from).pop();
-    if (lastT) return { from: lastT.from, to: lastT.to };
-    const prev = this.recs().filter(r => r.studentId === sid && r.date < d && (r.tries || []).some(t => t.res !== 'abs' && t.from)).sort((a, b) => ko(b.date, a.date))[0];
-    const pt = prev ? prev.tries.filter(t => t.res !== 'abs' && t.from).pop() : null;
-    return pt ? { from: pt.from, to: pt.to } : { from: 1, to: 1 };
+  /* ---------- 한 칸 기록 창 ----------
+     시험(try)마다 kind: 'new'(새 시험) | 're'(재시험), of: 다른 날짜에서 잡은 재시험이면 원래 시험 날짜
+     res는 비어 있어도 됨 = 예정 (나중에 결과를 고름). 예전 기록은 kind가 없으므로 첫 시험은 새 시험, 나머지는 재시험으로 본다 */
+  kindOf(t, i) { return t.kind === 'new' || t.kind === 're' ? t.kind : (i ? 're' : 'new'); },
+  // 범위가 있는 시험 (결시 제외)
+  hasRange(t) { return t.res !== 'abs' && +t.from > 0; },
+  // 이 학생의 d 이전 기록 중 조건에 맞는 마지막 시험 { t, date }
+  lastBefore(sid, d, pick) {
+    const rs = this.recs().filter(r => r.studentId === sid && r.date < d).sort((a, b) => ko(b.date, a.date));
+    for (const r of rs) { const t = (r.tries || []).filter(pick).pop(); if (t) return { t, date: r.date }; }
+    return null;
   },
+  // 새 시험의 기본 범위: 마지막 범위(이 칸 → 이전 기록) 다음부터 같은 개수만큼 (없으면 빈칸)
+  defNew(sid, d, tries) {
+    const in0 = tries.filter(t => this.hasRange(t)).pop();
+    const t = in0 || ((this.lastBefore(sid, d, x => this.hasRange(x)) || {}).t);
+    if (!t) return { from: '', to: '' };
+    const f = +t.from, e = +t.to || f, n = e - f;
+    return { from: e + 1, to: e + 1 + n };
+  },
+  // 재시험의 기본 범위: 이 칸의 마지막 불합격 → 이전 기록의 마지막 불합격(그 날짜를 of로) → 마지막 범위
+  defRe(sid, d, tries) {
+    const inF = tries.filter(t => t.res === 'fail' && this.hasRange(t)).pop();
+    if (inF) return { from: inF.from, to: inF.to, of: '' };
+    // 이전 기록에서 아직 합격하지 못한 마지막 불합격 (뒤에 같은 범위를 합격했으면 건너뜀)
+    const key = (t) => +t.from + '-' + (+t.to || +t.from);
+    const passed = new Set(tries.filter(t => t.res === 'pass' && this.hasRange(t)).map(key));
+    const rs = this.recs().filter(x => x.studentId === sid && x.date < d).sort((a, b) => ko(b.date, a.date));
+    for (const x of rs) {
+      for (const t of [...(x.tries || [])].reverse()) {
+        if (!this.hasRange(t)) continue;
+        if (t.res === 'pass') passed.add(key(t));
+        else if (t.res === 'fail' && !passed.has(key(t))) return { from: t.from, to: t.to, of: x.date };
+      }
+    }
+    const last = tries.filter(t => this.hasRange(t)).pop();
+    return last ? { from: last.from, to: last.to, of: '' } : { from: '', to: '', of: '' };
+  },
+  newTry(kind, r) { return { kind, of: (r && r.of) || '', from: r ? r.from : '', to: r ? r.to : '', res: '', score: '', total: '', memo: '' }; },
 
-  openCell(cid, sid, d) {
+  // preset: 다른 날짜에서 잡은 재시험 { kind:'re', of, from, to } — 이 칸에 미리 채워 연다
+  openCell(cid, sid, d, preset) {
     const s = Store.get('students', sid);
     if (!s) return;
     const r = this.rec(sid, d);
     const bk = r ? null : this.bookOn(sid, d);
     if (!r && !bk) {
       confirmDlg(`${s.name} 학생에게 진행 중인 단어장이 없습니다.\n단어장을 먼저 연결할까요?`, '단어장 연결').then(ok => {
-        if (ok) Books.openRec(null, { sid, cat: 'word' }, () => { App.render(); if (this.curBook(sid)) this.openCell(cid, sid, d); });
+        if (ok) Books.openRec(null, { sid, cat: 'word' }, () => { App.render(); if (this.curBook(sid)) this.openCell(cid, sid, d, preset); });
       });
       return;
     }
     const matId = r ? r.matId : bk.matId;
     const matName = r ? (NP.mat(r.matId) ? NP.mat(r.matId).name : r.matName) : Books.nameOf(bk);
     const mat = NP.mat(matId);
-    // 단어장은 교재에 넣은 전체 범위(wtotal)로 1~N을 만든다 (전체 범위가 없는 예전 교재는 단위 개수로)
-    const useT = !!(mat && mat.cat === 'word' && +mat.wtotal > 0);
-    const units = useT ? [] : (mat && mat.units) || [];
-    const nTot = useT ? +mat.wtotal : units.length;
-    const tries = JSON.parse(JSON.stringify((r && r.tries) || []));
-    if (!tries.length) { const dr = this.defRange(sid, d, []); tries.push({ from: dr.from, to: dr.to, res: '', score: '', total: '', memo: '' }); }
-    const maxN = Math.max(nTot, ...tries.map(t => +t.to || 0), ...tries.map(t => +t.from || 0), 1);
-    const opt = (v) => {
-      let o = '';
-      for (let i = 1; i <= maxN; i++) {
-        const u = units[i - 1];
-        const nm = u && u.name && u.name !== String(i) ? ` · ${u.name}` : '';
-        o += `<option value="${i}" ${+v === i ? 'selected' : ''}>${i}${esc(nm)}</option>`;
-      }
-      return o;
-    };
+    const tries = JSON.parse(JSON.stringify((r && r.tries) || [])).map((t, i) => Object.assign({ of: '' }, t, { kind: this.kindOf(t, i) }));
+    if (preset) tries.push(this.newTry('re', preset));
+    else if (!tries.length) tries.push(this.newTry('new', this.defNew(sid, d, [])));
     const body = `<div class="wt-modal">
-      <div class="wt-mhead small"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? ` <span class="muted">(${useT ? '전체 ' + nTot + '강' : units.length + '개 단위'})</span>` : ' <span class="muted">(삭제된 교재)</span>'}</span></div>
+      <div class="wt-mhead small"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? '' : ' <span class="muted">(삭제된 교재)</span>'}</span>
+        <span class="muted">결과를 고르지 않으면 ‘예정’으로 저장됩니다. 시험을 본 뒤 다시 열어 결과를 고르세요.</span></div>
       <div data-tries></div>
-      <button type="button" class="btn sm" data-tadd style="margin-top:8px">+ 재시험 추가</button>
+      <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn sm" data-tadd="new">+ 새 시험</button><button type="button" class="btn sm" data-tadd="re">+ 재시험</button></div>
     </div>`;
+    const sv = (v) => (v === null || v === undefined ? '' : String(v));
+    // 입력값 검사 → 저장할 시험 목록 (잘못되면 null)
+    const collect = () => {
+      const out = [];
+      for (let i = 0; i < tries.length; i++) {
+        const t = tries[i], no = `${i + 1}번째 시험`;
+        const kind = t.kind, of = kind === 're' && isYmd(t.of) && t.of !== d ? t.of : '';
+        const memo = stripZws(t.memo || '').trim();
+        if (t.res === 'abs') { out.push({ kind, of, from: '', to: '', res: 'abs', score: '', total: '', memo }); continue; }
+        const fs = sv(t.from).trim(), ts = sv(t.to).trim();
+        if (!/^\d+$/.test(fs) || +fs < 1) { toast(`${no}: 범위 시작을 1 이상의 숫자로 넣으세요`); return null; }
+        if (ts !== '' && (!/^\d+$/.test(ts) || +ts < 1)) { toast(`${no}: 범위 끝을 숫자로 넣으세요`); return null; }
+        const from = +fs, to = ts === '' ? from : +ts;
+        if (from > to) { toast(`${no}: 범위의 시작이 끝보다 큽니다`); return null; }
+        const sc = sv(t.score).trim(), tt = sv(t.total).trim();
+        if (sc !== '' && isNaN(+sc)) { toast(`${no}: 점수를 숫자로 넣으세요`); return null; }
+        if (tt !== '' && isNaN(+tt)) { toast(`${no}: 만점을 숫자로 넣으세요`); return null; }
+        if (sc !== '' && tt !== '' && +sc > +tt) { toast(`${no}: 점수가 만점보다 큽니다`); return null; }
+        out.push({ kind, of, from, to, res: WT_RES[t.res] ? t.res : '', score: sc === '' ? '' : +sc, total: tt === '' ? '' : +tt, memo });
+      }
+      return out;
+    };
+    const save = (out) => {
+      const now = new Date().toISOString();
+      const rec = Object.assign({}, r || { id: this.recId(sid, d), kind: 'wtest', studentId: sid, date: d, classId: cid, createdAt: now }, {
+        matId, matName: matName || (r ? r.matName : ''), tries: out, updatedAt: now,
+      });
+      Store.put('meta', rec);
+    };
     const md = Modal.open({
       title: `${s.name} · ${fmtMD(d)} 단어 시험`, size: 'lg', body, autofocus: false,
       onMount: (b) => {
         const box = $('[data-tries]', b);
         const draw = () => {
-          box.innerHTML = tries.map((t, i) => `<div class="wt-try" data-i="${i}">
-            <div class="wt-try-h"><b>${i + 1}차</b>${i ? '<span class="small muted">재시험</span>' : ''}<span style="flex:1"></span>${tries.length > 1 ? `<button type="button" class="icon-btn" data-tdel="${i}" title="이 시험 삭제">✕</button>` : ''}</div>
+          box.innerHTML = tries.map((t, i) => `<div class="wt-try${t.kind === 're' ? ' re' : ''}" data-i="${i}">
+            <div class="wt-try-h"><b>${i + 1}.</b>
+              <div class="wt-kind">${['new', 're'].map(k => `<button type="button" data-tkind="${i}|${k}" class="${t.kind === k ? 'on' : ''}">${k === 'new' ? '새 시험' : '재시험'}</button>`).join('')}</div>
+              ${t.kind === 're' && isYmd(t.of) && t.of !== d ? `<span class="small soft">${fmtMD(t.of)} 시험의 재시험</span>` : ''}
+              ${WT_RES[t.res] ? '' : '<span class="wt-plan-b">예정</span>'}
+              <span style="flex:1"></span>${tries.length > 1 ? `<button type="button" class="icon-btn" data-tdel="${i}" title="이 시험 삭제">✕</button>` : ''}</div>
             <div class="form">
-              <label class="req">결과</label><div class="row">${Object.keys(WT_RES).map(k => `<label class="chk"><input type="radio" name="res${i}" value="${k}" ${t.res === k ? 'checked' : ''}>${WT_RES[k]}</label>`).join('')}</div>
-              <label class="req" data-nabs>범위</label><div class="row" data-nabs><select data-f="from" data-i="${i}">${opt(t.from)}</select>~<select data-f="to" data-i="${i}">${opt(t.to)}</select></div>
-              <label data-nabs>점수</label><div class="row" data-nabs><input type="number" data-f="score" data-i="${i}" value="${esc(t.score)}" min="0" style="width:90px"> / <input type="number" data-f="total" data-i="${i}" value="${esc(t.total)}" min="0" style="width:90px" placeholder="만점"><span class="hint">선택</span></div>
+              <label>결과</label><div class="row">${Object.keys(WT_RES).map(k => `<label class="chk"><input type="radio" name="res${i}" value="${k}" ${t.res === k ? 'checked' : ''}>${WT_RES[k]}</label>`).join('')}
+                ${WT_RES[t.res] ? `<button type="button" class="btn sm ghost" data-tclr="${i}" title="결과를 지우고 예정으로">결과 지우기</button>` : ''}
+                ${t.res === 'fail' ? `<button type="button" class="btn sm" data-tre="${i}" title="이 범위로 다른 날 재시험 잡기">다른 날 재시험</button>` : ''}</div>
+              <label class="req" data-nabs>범위</label><div class="row" data-nabs><input type="number" data-f="from" data-i="${i}" value="${esc(sv(t.from))}" min="1" style="width:80px">
+                ~ <input type="number" data-f="to" data-i="${i}" value="${esc(sv(t.to))}" min="1" style="width:80px"><span class="hint">한 강이면 뒤 칸은 비워도 됩니다</span></div>
+              <label data-nabs>점수</label><div class="row" data-nabs><input type="number" data-f="score" data-i="${i}" value="${esc(sv(t.score))}" min="0" style="width:90px"> / <input type="number" data-f="total" data-i="${i}" value="${esc(sv(t.total))}" min="0" style="width:90px" placeholder="만점"><span class="hint">선택</span></div>
               <label class="top">메모</label><textarea data-f="memo" data-i="${i}" rows="2">${esc(t.memo || '')}</textarea>
             </div></div>`).join('');
           tries.forEach((t, i) => { $$(`[data-i="${i}"] [data-nabs]`, box).forEach(x => { x.style.display = t.res === 'abs' ? 'none' : ''; }); });
@@ -292,22 +353,46 @@ const WordBook = {
         draw();
         b.addEventListener('change', (e) => {
           const rd = e.target.name && /^res\d+$/.test(e.target.name) ? e.target : null;
-          if (rd) { tries[+rd.name.slice(3)].res = rd.value; draw(); return; }
-          const f = e.target.dataset.f;
-          if (f === 'from' || f === 'to') tries[+e.target.dataset.i][f] = +e.target.value;
+          if (rd) { tries[+rd.name.slice(3)].res = rd.value; draw(); }
         });
         b.addEventListener('input', (e) => {
           const f = e.target.dataset.f;
-          if (f === 'score' || f === 'total' || f === 'memo') tries[+e.target.dataset.i][f] = e.target.value;
+          if (f) tries[+e.target.dataset.i][f] = e.target.value;
         });
-        b.addEventListener('click', (e) => {
-          if (e.target.closest('[data-tadd]')) {
-            const dr = this.defRange(sid, d, tries);
-            tries.push({ from: dr.from, to: dr.to, res: '', score: '', total: '', memo: '' });
+        b.addEventListener('click', async (e) => {
+          const ad = e.target.closest('[data-tadd]');
+          if (ad) {
+            const k = ad.dataset.tadd;
+            tries.push(this.newTry(k, k === 're' ? this.defRe(sid, d, tries) : this.defNew(sid, d, tries)));
             draw(); return;
           }
+          const kb = e.target.closest('[data-tkind]');
+          if (kb) {
+            const [i, k] = kb.dataset.tkind.split('|');
+            const t = tries[+i];
+            if (t.kind !== k) { t.kind = k; if (k === 'new') t.of = ''; draw(); }
+            return;
+          }
+          const cl = e.target.closest('[data-tclr]');
+          if (cl) { tries[+cl.dataset.tclr].res = ''; draw(); return; }
           const del = e.target.closest('[data-tdel]');
-          if (del) { tries.splice(+del.dataset.tdel, 1); draw(); }
+          if (del) { tries.splice(+del.dataset.tdel, 1); draw(); return; }
+          // 다른 날 재시험: 날짜를 고르면 이 칸을 저장하고, 그 날짜 칸을 이 범위의 재시험으로 연다 (같은 날이면 여기 추가)
+          const re = e.target.closest('[data-tre]');
+          if (re) {
+            const t = tries[+re.dataset.tre];
+            const d2 = await DatePicker.open(addDaysStr(d, 1), '재시험 날짜');
+            if (!isYmd(d2) || md.closed) return;
+            if (d2 === d) { tries.push(this.newTry('re', { from: t.from, to: t.to, of: '' })); draw(); return; }
+            const out = collect();
+            if (!out) return;
+            const ft = sv(t.from).trim(), tt = sv(t.to).trim();
+            save(out);
+            md.close();
+            this.extra[sid + '|' + d2] = 1;   // 수업 없는 날이어도 그 날짜 칸이 보이게
+            App.render();
+            this.openCell(cid, sid, d2, { from: +ft, to: tt === '' ? +ft : +tt, of: d });
+          }
         });
       },
       buttons: [
@@ -319,26 +404,10 @@ const WordBook = {
         } }] : []),
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: () => {
-          const out = [];
-          for (let i = 0; i < tries.length; i++) {
-            const t = tries[i];
-            if (!WT_RES[t.res]) { toast(`${i + 1}차 결과(합격·불합격·결시)를 고르세요`); return false; }
-            if (t.res === 'abs') { out.push({ from: '', to: '', res: 'abs', score: '', total: '', memo: stripZws(t.memo || '').trim() }); continue; }
-            const from = +t.from, to = +t.to;
-            if (!from || !to) { toast(`${i + 1}차 범위를 고르세요`); return false; }
-            if (from > to) { toast(`${i + 1}차 범위의 시작이 끝보다 큽니다`); return false; }
-            const sc = String(t.score === null || t.score === undefined ? '' : t.score).trim(), tt = String(t.total === null || t.total === undefined ? '' : t.total).trim();
-            if (sc !== '' && isNaN(+sc)) { toast(`${i + 1}차 점수를 숫자로 넣으세요`); return false; }
-            if (tt !== '' && isNaN(+tt)) { toast(`${i + 1}차 만점을 숫자로 넣으세요`); return false; }
-            if (sc !== '' && tt !== '' && +sc > +tt) { toast(`${i + 1}차 점수가 만점보다 큽니다`); return false; }
-            out.push({ from, to, res: t.res, score: sc === '' ? '' : +sc, total: tt === '' ? '' : +tt, memo: stripZws(t.memo || '').trim() });
-          }
-          const now = new Date().toISOString();
-          const rec = Object.assign({}, r || { id: this.recId(sid, d), kind: 'wtest', studentId: sid, date: d, classId: cid, createdAt: now }, {
-            matId, matName: matName || (r ? r.matName : ''), tries: out, updatedAt: now,
-          });
-          Store.put('meta', rec);
-          toast('단어 시험을 저장했습니다');
+          const out = collect();
+          if (!out) return false;
+          save(out);
+          toast(out.some(t => !t.res) ? '저장했습니다 (결과 없는 시험은 예정)' : '단어 시험을 저장했습니다');
           App.render();
         } },
       ],
@@ -365,7 +434,7 @@ const WordBook = {
           const dh = `<div class="dh ${dowOf(it.d) === 0 ? 'sun' : dowOf(it.d) === 6 ? 'sat' : ''}">${+it.d.slice(5, 7)}/${+it.d.slice(8)} ${DOW[dowOf(it.d)]}</div>`;
           if (it.absent && !r) return `<td class="absent">${dh}결석</td>`;
           if (!r) return `<td>${dh}</td>`;
-          return `<td>${dh}${(r.tries || []).map(t => `<div class="${t.res}">${t.res === 'abs' ? '결시' : esc(this.rangeLabel(t)) + ' ' + (WT_MARK[t.res] || '')}${this.scoreLabel(t) ? ' <small>' + esc(this.scoreLabel(t)) + '</small>' : ''}</div>`).join('')}</td>`;
+          return `<td>${dh}${(r.tries || []).map((t, i) => `<div class="${WT_RES[t.res] ? t.res : 'plan'}">${this.kindOf(t, i) === 're' ? '재 ' : ''}${t.res === 'abs' ? '결시' : esc(this.rangeLabel(t)) + ' ' + (WT_MARK[t.res] || '예정')}${this.scoreLabel(t) ? ' <small>' + esc(this.scoreLabel(t)) + '</small>' : ''}</div>`).join('')}</td>`;
         }).join('');
         let fill = ''; for (let i = o.list.length; i < maxN; i++) fill += '<td class="pad"></td>';
         return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span>${bk ? `<div class="bk">${esc(Books.nameOf(bk))}</div>` : ''}</td>${cells}${fill}<td>${n.pass}</td><td>${n.fail}</td></tr>`;
@@ -399,7 +468,7 @@ const WordBook = {
       th.sun { color: #c62828; } th.sat { color: #1f5fbf; }
       td div { white-space: nowrap; }
       td small { color: #555; font-size: 6.5pt; }
-      .pass { color: #1b7a52; } .fail { color: #c62828; font-weight: bold; } .abs { color: #777; }
+      .pass { color: #1b7a52; } .fail { color: #c62828; font-weight: bold; } .abs { color: #777; } .plan { color: #8a6d1d; }
       td.absent { background: #f0f1f3; color: #999; font-size: 6.5pt; }
       td.pad { background: #fafafa; border-color: #e3e6ea; }
       td .dh { font-size: 6pt; color: #555; border-bottom: 0.3pt dotted #bbb; margin-bottom: 0.4mm; }
@@ -466,6 +535,16 @@ const WordBook = {
 .wt-mhead { margin-bottom: 10px; }
 .wt-try { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; }
 .wt-try-h { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.wt-try.re { border-color: #E3C9A0; background: #FFFBF4; }
+.wt-kind { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.wt-kind button { border: 0; background: #fff; color: var(--ink-mute); font: inherit; font-size: 12.5px; padding: 2px 10px; cursor: pointer; }
+.wt-kind button + button { border-left: 1px solid var(--line-strong); }
+.wt-kind button.on { background: var(--accent); color: #fff; font-weight: 700; }
+.wt-plan-b { font-size: 11.5px; font-weight: 700; color: #8A6D1D; background: #FFF4D6; border-radius: 6px; padding: 0 6px; line-height: 1.6; }
+.wt-mhead { display: flex; flex-direction: column; gap: 2px; }
+.wt-t.plan i { color: #8A6D1D; font-weight: 700; font-size: 11px; }
+.wt-t.plan.late i { color: #fff; background: #D98A00; border-radius: 4px; padding: 0 3px; }
+.wt-re { display: inline-block; font-size: 10px; font-weight: 800; color: #A9650B; border: 1px solid #E3C9A0; border-radius: 4px; padding: 0 2px; margin-right: 2px; line-height: 1.3; vertical-align: 1px; }
 `;
   document.head.appendChild(st);
 })();
