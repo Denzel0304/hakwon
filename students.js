@@ -1215,6 +1215,7 @@ const Students = {
     Store.delWhere('meta', e => e.kind === 'sbook' && e.studentId === sid);   // 학생 교재 기록
     Store.delWhere('meta', e => e.kind === 'wtest' && e.studentId === sid);   // 단어 시험 기록
     Store.delWhere('meta', e => e.kind === 'ltest' && e.studentId === sid);   // 레벨테스트 기록
+    Store.delWhere('meta', e => e.kind === 'report' && e.studentId === sid);  // 월간 리포트
     Store.where('lessons', l => l.att && l.att[sid]).forEach(l => {
       const att = Object.assign({}, l.att); delete att[sid];
       Store.put('lessons', Object.assign({}, l, { att }));
