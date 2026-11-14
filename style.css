@@ -1213,3 +1213,15 @@ body.theme-gray {
   margin: 0; padding: 10px 12px 10px 34px; max-height: 50vh; overflow: auto; font-size: 13.5px; line-height: 1.6; user-select: text;
   background: var(--tint-strong); border: 1px solid var(--line); border-radius: 8px;
 }
+
+/* =========================================================
+   진도+일지 (lessons.js 의 PL) — 제목 → 탭(진도 | 수업일지) → 수업일지의 날짜·저장 줄
+   셋 다 위에 고정되는 제목줄 안에 있어, 긴 일지를 내려도 탭과 저장 버튼이 보임
+   ========================================================= */
+#main .page-narrow > .page-head.pl-head { flex-direction: column; align-items: stretch; gap: 0; }
+.pl-head > h1 { margin: 0 0 10px; }
+.pl-head > .tabs { margin-bottom: 0; }
+#main .page-narrow > .page-head.pl-head.no-bar { padding-bottom: 0; border-bottom: 0; }
+.pl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 12px; }
+.pl-bar .sub { color: var(--ink-soft); font-size: 14.5px; }
+.pl-bar .grow { flex: 1; }

@@ -648,6 +648,28 @@ const NP = {
    - 저장된 반은 선택 목록에서 ✓ 표시(회색) · 고르면 저장된 일지를 불러와 수정
    - 저장·취소하면 들어오기 전 화면(수업일지 탭 / 날짜 요약)으로 돌아감
    ========================================================= */
+/* ---------- 진도+일지 (선생님 › 진도+일지) ----------
+   진도(ProgressBook, 페이지 'progress')와 수업일지(Lessons, 페이지 'lessons')를 한 메뉴의 두 탭으로 보여 준다.
+   페이지 이름은 그대로 두어, 다른 화면에서 App.go('lessons'|'progress')로 바로 여는 연결은 모두 그대로 동작한다.
+   메뉴에서 열면 진도 탭 (메뉴 버튼이 'progress') · 수업일지 탭은 지금 고른 날짜로 연다 */
+const PL = {
+  head(cur, bar) {
+    const tab = (k, t) => `<button type="button" data-pltab="${k}" class="${cur === k ? 'active' : ''}">${t}</button>`;
+    return `<div class="page-head pl-head${bar ? '' : ' no-bar'}"><h1>진도+일지</h1>
+      <div class="tabs">${tab('progress', '진도')}${tab('lessons', '수업일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
+  },
+  click(e) {
+    const b = e.target.closest('[data-pltab]');
+    if (!b) return false;
+    const t = b.dataset.pltab;
+    if (t !== App.page) {
+      if (t === 'lessons') App.go('lessons', { date: App.selDate });
+      else App.go('progress', {});
+    }
+    return true;
+  },
+};
+
 const Lessons = {
   form: null,     // { date, classId, att, progress, homework, hw(학교·학년별 숙제), memo, todos:[{text,date, +상세: importance,memo,remind,checklist,time}] }
 
@@ -869,10 +891,10 @@ const Lessons = {
     // 취소 버튼: 저장된 일지 수정 중이거나, 날짜 요약에서 들어왔을 때
     const canCancel = isEdit || !!(classId && this.ret && this.ret.date === date && this.ret.classId === classId);
 
-    let h = `<div class="page-narrow"><div class="page-head"><h1>수업일지</h1>${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
+    let h = `<div class="page-narrow">${PL.head('lessons', `${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
       <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
       <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
-      <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + (canCancel ? '<button class="btn" data-cancel>취소</button>' : '') + '<button class="btn primary" data-save>저장</button>' : ''}</div>
+      <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + (canCancel ? '<button class="btn" data-cancel>취소</button>' : '') + '<button class="btn primary" data-save>저장</button>' : ''}`)}
       <div class="toolbar"><span style="display:inline-flex;align-items:center">${Classes.selDot(classId ? Store.get('classes', classId) : null)}<select data-cls style="min-width:260px">
         ${classId ? '' : `<option value="" selected>${allDone ? '모두 작성되었습니다' : '입력할 반을 선택하세요'}</option>`}
         ${sched.length ? `<optgroup label="${DOW[dowOf(date)]}요일 수업">${sched.map(opt).join('')}</optgroup>` : ''}
@@ -955,6 +977,7 @@ const Lessons = {
       return !!r;
     };
     main.onclick = (e) => {
+      if (PL.click(e)) return;
       if (npDo(e, 'click')) return;
       const a = e.target.closest('[data-a]');
       if (a) {
@@ -1401,7 +1424,7 @@ const ProgressBook = {
     if (linked && linked.active === false && this.classId === linked.id) act.push(linked);
     if (!this.classId || !act.some(c => c.id === this.classId)) this.classId = act[0] ? act[0].id : '';
     const cur = act.find(c => c.id === this.classId);
-    let h = `<div class="page-narrow"><div class="page-head"><h1>진도</h1></div>`;
+    let h = `<div class="page-narrow">${PL.head('progress')}`;
     // 반 선택 드롭다운 (검색칸 왼쪽, 선택된 반의 색 점 표시)
     const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-pcls style="min-width:180px">${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
     if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
@@ -1449,6 +1472,7 @@ const ProgressBook = {
 
   bind(main) {
     main.onclick = (e) => {
+      if (PL.click(e)) return;
       if (NP.handleSummary(e, this.classId)) return;
       const sx = e.target.closest('[data-npsx]');
       if (sx) {
