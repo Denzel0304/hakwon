@@ -1054,3 +1054,76 @@ body.theme-gray {
 .theme-pick.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .theme-pick.on .nm { color: var(--accent-ink); font-weight: 800; }
 .theme-pick.on::after { content: '✓'; position: absolute; top: 3px; right: 4px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 9.5px; font-weight: 800; line-height: 15px; text-align: center; }
+
+/* =========================================================
+   표지+양식 (prints.js) — 학생 > 표지+양식
+   화면(설정 상자·미리보기 틀·썸네일)은 테마 변수만 사용.
+   종이(표지·시험지·노트) 색은 prints.js 안에 고정되어 테마와 상관없이 원본과 같게 인쇄됨
+   ========================================================= */
+.pr-wrap { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .pr-wrap { grid-template-columns: 1fr; } }
+.panel.pr-side { padding: 4px 20px 16px; }
+.pr-sec { padding: 14px 0; border-top: 1px solid var(--line); }
+.pr-sec:first-child { border-top: 0; }
+.panel .pr-sec h2 { margin: 0 0 10px; font-size: 15.5px; }
+.pr-fld { display: block; margin-bottom: 10px; }
+.pr-fld > span, .pr-sub { display: block; font-size: 13px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; }
+.pr-fld input[type=text] { width: 100%; }
+.pr-fld.is-off { opacity: .45; }
+.pr-fld.is-off input { cursor: not-allowed; }
+.pr-range { display: flex; align-items: center; gap: 10px; }
+.pr-range input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.pr-range output { min-width: 52px; text-align: right; font-size: 14px; font-weight: 700; color: var(--accent-ink); }
+.pr-chk { font-size: 14px; color: var(--ink-soft); }
+.pr-wrap input[type=checkbox], .pr-wrap input[type=radio] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0 4px 0 0; }
+.pr-radio { margin: 12px 0 12px; }
+.pr-radio > label.chk { display: flex; padding: 3px 0; font-size: 14.5px; }
+.pr-radio > label.chk.is-off { color: var(--ink-mute); opacity: .6; cursor: not-allowed; }
+.pr-radio .pr-hint:empty { display: none; }
+.pr-hint { font-size: 12.5px; color: var(--ink-mute); margin: 8px 0 0; line-height: 1.5; }
+.pr-logo { display: flex; gap: 12px; align-items: center; }
+.pr-logo-prev {
+  width: 84px; height: 84px; flex: none; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  background: #fff; border: 1px dashed var(--line-strong); border-radius: 10px;
+  color: var(--ink-mute); font-size: 12px;
+}
+.pr-logo-prev img { max-width: 90%; max-height: 90%; object-fit: contain; }
+.pr-logo-btns { display: flex; flex-direction: column; gap: 6px; }
+.pr-inline { display: flex; gap: 6px; }
+.pr-inline input { flex: 1; min-width: 0; }
+.pr-presets { list-style: none; margin: 10px 0 0; padding: 0; }
+.pr-presets li { display: flex; align-items: center; gap: 6px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.pr-presets li:last-child { border-bottom: 0; }
+.pr-presets .pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-presets .pn small { color: var(--ink-mute); }
+.pr-presets .none { color: var(--ink-mute); font-size: 13px; }
+.pr-print { display: flex; gap: 8px; align-items: center; }
+.pr-print input[type=number] { width: 84px; text-align: center; }
+.pr-print .btn { flex: 1; padding: 9px 14px; }
+.pr-note {
+  margin-top: 10px; padding: 9px 12px; border-radius: 8px; line-height: 1.6;
+  background: var(--tint-strong); border: 1px solid var(--line); font-size: 12.5px; color: var(--ink-soft);
+}
+.pr-note b { color: var(--ink); }
+/* 미리보기 */
+.pr-view { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
+.pr-stage {
+  position: relative; height: calc(100vh - 330px); min-height: 460px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 36px 20px 20px; background: var(--tint-strong);
+}
+.pr-stage-name { position: absolute; top: 11px; left: 16px; font-size: 13.5px; font-weight: 700; color: var(--accent-ink); }
+.pr-scaler { position: relative; flex: none; background: #fff; box-shadow: 0 8px 26px rgba(22, 48, 70, .16), 0 1px 4px rgba(22, 48, 70, .1); }
+.pr-scaler > * { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.pr-gallery { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+.pr-thumb {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 5px; border: 2px solid transparent; border-radius: 10px; background: transparent;
+}
+.pr-thumb:hover { background: var(--accent-soft); }
+.pr-thumb.on { border-color: var(--accent); background: var(--accent-soft); }
+.pr-thumb .tw { width: 84px; height: 118.8px; position: relative; overflow: hidden; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .18); pointer-events: none; }
+.pr-thumb .tw > * { position: absolute; top: 0; left: 0; transform-origin: 0 0; transform: scale(.10583); }
+.pr-thumb .tl { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+.pr-thumb.on .tl { color: var(--accent-ink); font-weight: 700; }
