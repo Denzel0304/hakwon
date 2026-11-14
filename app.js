@@ -8,7 +8,7 @@ const App = {
   _needRender: false,
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
-    lessons: Lessons, attendance: AttBook, words: WordBook, books: Books, progress: ProgressBook, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
+    lessons: Lessons, attendance: AttBook, words: WordBook, vocas: Vocas, books: Books, progress: ProgressBook, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
     counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings,
   },
 
@@ -149,6 +149,7 @@ const App = {
     // 이 앱의 저장소만 지운다 (같은 주소의 다른 앱 데이터는 건드리지 않음)
     Object.keys(localStorage).forEach(k => { if (k.startsWith(CFG.PREFIX)) localStorage.removeItem(k); });
     await IDB.destroy();
+    await Vocas.wipe();               // 단어 출제: 이 기기에 등록한 단어장(IndexedDB mg77_voca)도 함께 지움
     Store.reset();
     Auth.ok();
     $('#main').innerHTML = '';

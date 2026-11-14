@@ -183,7 +183,7 @@ const WordBook = {
   render(main) {
     if (!this.month) this.month = App.selDate.slice(0, 7);
     const [Y, M] = this.month.split('-').map(Number);
-    let h = `<div class="page-narrow"><div class="page-head"><h1>단어</h1>
+    let h = `<div class="page-narrow"><div class="page-head"><h1>단어 기록</h1>
       <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
       <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     const all = Classes.sorted(Store.all('classes'));
