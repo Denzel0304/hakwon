@@ -93,7 +93,7 @@ const Vocas = (() => {
   /* =========================================================
      상태 (화면을 다시 그려도 그대로 남도록 모두 여기에)
      ========================================================= */
-  let tab = 'lib';                       // lib | memo | test | stu | book
+  let tab = 'test';                      // test | stu | memo | book | lib (기본: 단어 시험)
   let settings = loadSettings();
   let slots = loadSlots();
   let bookOrder = loadBookOrder();
@@ -1244,7 +1244,7 @@ const Vocas = (() => {
   /* =========================================================
      화면
      ========================================================= */
-  const TABS = [['lib', '단어장'], ['memo', '암기장'], ['test', '단어 시험'], ['stu', '학생별 출제'], ['book', '시험지 책']];
+  const TABS = [['test', '단어 시험'], ['stu', '학생별 출제'], ['memo', '암기장'], ['book', '시험지 책'], ['lib', '단어장']];
   const SUBS = {
     lib: '엑셀 단어장을 등록한 뒤 위 탭에서 암기장 · 시험지를 출제하세요.',
     memo: 'Day별 6회차 암기장과 시험지를 만듭니다.',
@@ -1538,7 +1538,7 @@ const Vocas = (() => {
       testDoc = null; stuDocs = null; bookDoc = null;
       Object.keys(cache).forEach(c => { cache[c] = ''; });
       Object.keys(stat).forEach(k => { stat[k] = null; });
-      tab = 'lib';
+      tab = 'test';
       await new Promise(res => {
         try {
           const rq = indexedDB.deleteDatabase(IDB_NAME);
