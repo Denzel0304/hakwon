@@ -31,15 +31,16 @@ const Vocas = (() => {
   const FONT_MAX_PT = 13;
   const WORD_MIN_RATIO = 0.22;       // 철자 칸 최소 비율 (번호 칸 제외한 너비 기준)
   const WORD_MAX_RATIO = 0.62;       // 철자 칸 최대 비율
-  const TABLE_W = 186;               // 표 전체 너비 (210 - 좌우 여백 12mm×2)
-  const GAP_W = 6;                   // 좌우 표 사이 간격
+  const TABLE_W = 186;               // 표 전체 너비 (210 - 좌우 여백 12mm×2) — 좌우 2단은 사이 간격 없이 붙임
 
   // 단어 시험지 (고정 양식)
   const TEST_PER_PAGE = 50;          // 한 장 50문항
   const TEST_ROWS = 25;              // 좌우 각 25줄
   const TEST_ROW_H = (PAGE_CONTENT_H - HEAD_H - 3 - 8 - 3 - 6.5 - 4) / TEST_ROWS;
   const TEST_FONT_PT = 12;
-  const TEST_COL = { no: 8, q: 39, a: 43 };   // 한쪽 90mm = 번호 + 문제 + 답
+  const TEST_COL_NO = 8;             // 번호 칸(mm). 문제·답 칸은 단어장 전체 글자 길이로 자동 계산 (testWidths)
+  const TEST_Q_ROOM = 3;             // 시험지: 가장 긴 문제 글자 뒤에 둘 여유(mm), 나머지는 답 칸
+  const TEST_Q_MIN = 0.30, TEST_Q_MAX = 0.55;   // 시험지: 문제 칸 비율 범위 (답 칸이 너무 넓거나 좁아지지 않게)
   const TYPE_NAMES = { ek: '영→한', ke: '한→영', mix: '혼합' };
   const BOOK_WIN = 7;                // 시험지 책: 한 회차 최대 과 수
 
@@ -60,7 +61,9 @@ const Vocas = (() => {
 .vc-sec table{width:100%;border-collapse:collapse;table-layout:fixed}
 .vc-sec td,.vc-sec th{border:.25mm solid #000;padding:0 1.2mm;white-space:nowrap;overflow:hidden;vertical-align:middle}
 .vc-sec .rt th{height:6mm;font-size:11pt;font-weight:700;background:#e6e6e6;text-align:center}
-.vc-sec .ch th{height:5.5mm;font-size:9.5pt;font-weight:400;background:#f3f3f3;text-align:center}
+.vc-sec .ch th{height:5.5mm;font-size:9.5pt;font-weight:700;background:#f3f3f3;text-align:center}
+.vc-sec table,.vc-tinfo{border:.5mm solid #000}
+.vc-sec .mid{border-left:.5mm solid #000}
 .vc-sec td.no{text-align:center}
 .vc-sec .ch th.no{font-size:8.5pt;padding:0 .4mm}
 .vc-sec td.gap,.vc-sec th.gap{border:none;background:none}
@@ -300,14 +303,21 @@ const Vocas = (() => {
   }
   // 철자·뜻 칸 너비: 그 Day의 실제 글자 길이를 재서, 글자를 줄여야 하는 칸이 가장 적어지도록 나눔
   // (발음이 철자 쪽에 있든 뜻 쪽에 있든 자동으로 균형)
+  const CELL_PAD = 2.4 + 0.5;                            // 좌우 안쪽 여백 + 선
+  const CELL_ROOM = 1.2;                                 // 글자 뒤에 남길 여유(mm)
   function colWidths(fontPt, items) {
-    const pad = 2.4 + 0.5;                               // 좌우 안쪽 여백 + 선
-    const no = Math.max(5.5, textWidthMM('000', fontPt, 400) + pad, textWidthMM('번호', 8.5, 400) + 1.3);
-    const half = (TABLE_W - GAP_W) / 2;
+    const pad = CELL_PAD;
+    const no = Math.max(5.5, textWidthMM('000', fontPt, 400) + pad, textWidthMM('번호', 8.5, 700) + 1.3);
+    const half = TABLE_W / 2;
     const avail = half - no;
-    const room = 1.2;                                    // 글자 뒤에 남길 여유(mm)
+    const room = CELL_ROOM;
     const ws = items.map(it => textWidthMM(it.w, fontPt, 600) + pad + room);
     const ms = items.map(it => textWidthMM(it.m, fontPt, 400) + pad + room);
+    const word = splitWidth(avail, ws, ms);
+    return { no, word, meaning: avail - word };
+  }
+  // 왼쪽 칸(ws)·오른쪽 칸(ms)에 필요한 너비 목록으로, 글자를 줄여야 하는 칸이 가장 적어지는 왼쪽 칸 너비
+  function splitWidth(avail, ws, ms) {
     const lo = avail * WORD_MIN_RATIO, hi = avail * WORD_MAX_RATIO, step = 0.25;
     // 후보 너비마다 [넘치는 칸 수, 넘치는 정도 합] 계산
     const cands = [];
@@ -323,24 +333,47 @@ const Vocas = (() => {
     const bestExc = Math.min(...pool.map(c => c.exc));
     pool = pool.filter(c => c.exc <= bestExc + 1e-6);
     // 같은 조건이면 그 범위의 가운데 → 두 칸에 여유를 고르게
-    const word = (pool[0].word + pool[pool.length - 1].word) / 2;
-    return { no, word, meaning: avail - word };
+    return (pool[0].word + pool[pool.length - 1].word) / 2;
+  }
+  // 단어 시험 양식(단어 시험·학생별 출제·시험지 책)의 칸 너비 — 단어장 전체 단어 + 유형 기준이라
+  // 같은 단어장·유형이면 학생·회차·페이지가 달라도 양식이 똑같다.
+  //   정답지: 문제·답 글자 길이를 함께 재서 암기장과 같은 방식으로 고르게 나눔
+  //   시험지: 가장 긴 문제 + 여유만 문제 칸, 나머지는 학생이 답을 쓰는 칸 (비율 범위 안에서)
+  const twCache = new Map();
+  function testWidths(book, type) {
+    const key = `${book.name}|${book.savedAt}|${type}`;
+    if (twCache.has(key)) return twCache.get(key);
+    const pt = TEST_FONT_PT, no = TEST_COL_NO;
+    const avail = TABLE_W / 2 - no;
+    const en = [], kr = [];
+    for (const [, ws] of book.days) for (const it of ws) { en.push(stripPron(it.w)); kr.push(stripPron(it.m)); }
+    const qs = type === 'ek' ? en : type === 'ke' ? kr : en.concat(kr);
+    const as = type === 'ek' ? kr : type === 'ke' ? en : en.concat(kr);
+    const need = (list, weight) => list.map(s => textWidthMM(s, pt, weight) + CELL_PAD + CELL_ROOM);
+    const qNeed = need(qs, 600);
+    // 정답지
+    const kq = splitWidth(avail, qNeed, need(as, 700));
+    // 시험지
+    const longest = qNeed.reduce((m, v) => Math.max(m, v), 0) + TEST_Q_ROOM;
+    const tq = Math.min(avail * TEST_Q_MAX, Math.max(avail * TEST_Q_MIN, longest));
+    const r = { test: { no, q: tq, a: avail - tq }, key: { no, q: kq, a: avail - kq } };
+    twCache.set(key, r);
+    return r;
   }
   function sectionHTML(s, showMeaning, rowH, fontPt, cw) {
     const len = s.cols[0].length;
     const cols = `<col style="width:${cw.no.toFixed(2)}mm"><col style="width:${cw.word.toFixed(2)}mm"><col style="width:${cw.meaning.toFixed(2)}mm">`;
     const cell = t => `<div class="c">${t}</div>`;
     let h = `<div class="vc-sec"><table style="--rh:${rowH.toFixed(3)}mm;--fs:${fontPt.toFixed(2)}pt">
-      <colgroup>${cols}<col style="width:${GAP_W}mm">${cols}</colgroup>
-      <tr class="rt"><th colspan="3">${s.names[0]}</th><th class="gap"></th><th colspan="3">${s.names[1]}</th></tr>
-      <tr class="ch"><th class="no">번호</th><th>철자</th><th>뜻</th><th class="gap"></th><th class="no">번호</th><th>철자</th><th>뜻</th></tr>`;
+      <colgroup>${cols}${cols}</colgroup>
+      <tr class="rt"><th colspan="3">${s.names[0]}</th><th colspan="3" class="mid">${s.names[1]}</th></tr>
+      <tr class="ch"><th class="no">번호</th><th>철자</th><th>뜻</th><th class="no mid">번호</th><th>철자</th><th>뜻</th></tr>`;
     for (let i = 0; i < len; i++) {
       const L = s.cols[0][i], R = s.cols[1][i];
       const no = s.start + i;
       h += `<tr class="d">
         <td class="no">${cell(no)}</td><td class="w fit">${cell(esc(L.w))}</td><td class="fit">${cell(showMeaning ? esc(L.m) : '')}</td>
-        <td class="gap"></td>
-        <td class="no">${cell(no)}</td><td class="w fit">${cell(esc(R.w))}</td><td class="fit">${cell(showMeaning ? esc(R.m) : '')}</td></tr>`;
+        <td class="no mid">${cell(no)}</td><td class="w fit">${cell(esc(R.w))}</td><td class="fit">${cell(showMeaning ? esc(R.m) : '')}</td></tr>`;
     }
     return h + `</table></div>`;
   }
@@ -477,6 +510,13 @@ const Vocas = (() => {
     const ds = book.days.map(x => x[0]);
     return ds.length ? `${book.prefix} ${ds[0]} ~ ${book.prefix} ${ds[ds.length - 1]}` : '';
   }
+  // Day 하나당 단어 수: 모두 같으면 "20", 다르면 "18~22"
+  function perDayText(counts) {
+    if (!counts.length) return '';
+    const lo = Math.min(...counts), hi = Math.max(...counts);
+    return lo === hi ? `${lo}` : `${lo}~${hi}`;
+  }
+  function bookPerDay(book) { return perDayText(book.days.map(x => x[1].length)); }
   function sortedBooks() { return [...books.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko')); }
   function loadBooks() {
     if (loadP) return loadP;
@@ -633,7 +673,8 @@ const Vocas = (() => {
       <div class="row"><span>파일</span><span>${esc(db.fileName)}${db.sheetName ? ' · ' + esc(db.sheetName) + ' 시트' : ''}</span></div>
       <div class="row"><span>읽은 1행(헤더)</span><span class="ok">${esc(hdr)}</span></div>
       <div class="row"><span>전체 범위</span><span>${esc(dayLabel(p.days[0]))} ~ ${esc(dayLabel(p.days[p.days.length - 1]))}</span></div>
-      <div class="row"><span>Day 수 / 단어 수</span><span>${p.days.length}개 / ${total}개</span></div></div>`;
+      <div class="row"><span>Day 수 / 단어 수</span><span>${p.days.length}개 / ${total}개</span></div>
+      <div class="row"><span>Day당 단어 수</span><span>${esc(perDayText(p.days.map(d => p.map.get(d).length)))}개</span></div></div>`;
   }
   function makeCurrent() {
     if (!memo.db) return;
@@ -740,7 +781,7 @@ const Vocas = (() => {
       const ek = type === 'ek' || (type === 'mix' && ekSet.has(i));
       return ek ? { q: en, a: kr } : { q: kr, a: en };
     });
-    return { test: { book: book.name, prefix: book.prefix, days, range: rangeLabel(days, book.prefix), n, type, items } };
+    return { test: { book: book.name, prefix: book.prefix, days, range: rangeLabel(days, book.prefix), n, type, items, cw: testWidths(book, type) } };
   }
   function todayText() {
     const d = new Date();
@@ -751,25 +792,27 @@ const Vocas = (() => {
      단어 시험: 그리기 (50칸 고정 양식)
      ========================================================= */
   function testPageHTML(t, name, pageIdx, pages, isKey) {
-    const cols = `<col style="width:${TEST_COL.no}mm"><col style="width:${TEST_COL.q}mm"><col style="width:${TEST_COL.a}mm">`;
+    const w = t.cw[isKey ? 'key' : 'test'];
+    const cols = `<col style="width:${w.no.toFixed(2)}mm"><col style="width:${w.q.toFixed(2)}mm"><col style="width:${w.a.toFixed(2)}mm">`;
     const cell = s => `<div class="c">${s}</div>`;
     const base = pageIdx * TEST_PER_PAGE;
-    const side = k => {
+    const side = (k, mid) => {
       const i = base + k;
       const it = t.items[i];
-      if (!it) return `<td class="no">${cell('')}</td><td class="q fit">${cell('')}</td><td class="a fit">${cell('')}</td>`;
-      return `<td class="no">${cell(i + 1)}</td><td class="q fit">${cell(esc(it.q))}</td><td class="a fit">${cell(isKey ? esc(it.a) : '')}</td>`;
+      const nc = mid ? 'no mid' : 'no';
+      if (!it) return `<td class="${nc}">${cell('')}</td><td class="q fit">${cell('')}</td><td class="a fit">${cell('')}</td>`;
+      return `<td class="${nc}">${cell(i + 1)}</td><td class="q fit">${cell(esc(it.q))}</td><td class="a fit">${cell(isKey ? esc(it.a) : '')}</td>`;
     };
     let rows = '';
-    for (let r = 0; r < TEST_ROWS; r++) rows += `<tr class="d">${side(r)}<td class="gap"></td>${side(r + TEST_ROWS)}</tr>`;
+    for (let r = 0; r < TEST_ROWS; r++) rows += `<tr class="d">${side(r)}${side(r + TEST_ROWS, true)}</tr>`;
     const part = pages > 1 ? `<span class="part">(${pageIdx + 1}/${pages})</span>` : '';
     return `<div class="vc-page${isKey ? ' vc-key' : ''}">
       <div class="vc-ph"><div class="lab">${isKey ? '정답지' : '단어 시험'}</div><div class="ttl">${esc(t.book)}</div><div class="day">${part}</div></div>
       <table class="vc-tinfo"><colgroup><col style="width:8%"><col style="width:24%"><col style="width:8%"><col style="width:18%"><col style="width:8%"><col style="width:16%"><col style="width:8%"><col style="width:10%"></colgroup>
         <tr><th>범위</th><td>${esc(t.range)}</td><th>이름</th><td>${esc(name || '')}</td><th>날짜</th><td>${esc(todayText())}</td><th>점수</th><td class="sc">/ ${t.n}</td></tr></table>
       <div class="vc-sec vc-tsec"><table style="--rh:${TEST_ROW_H.toFixed(3)}mm;--fs:${TEST_FONT_PT}pt">
-        <colgroup>${cols}<col style="width:${GAP_W}mm">${cols}</colgroup>
-        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="gap"></th><th class="no">번호</th><th>문제</th><th>답</th></tr>
+        <colgroup>${cols}${cols}</colgroup>
+        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="no mid">번호</th><th>문제</th><th>답</th></tr>
         ${rows}
       </table></div>
     </div>`;
@@ -786,7 +829,7 @@ const Vocas = (() => {
   }
   function testHints() {
     const book = books.get(tf.book);
-    const r = { range: book ? `전체: ${bookRangeText(book)}` : '', count: '' };
+    const r = { range: book ? `전체: ${bookRangeText(book)} (Day당 ${bookPerDay(book)}개)` : '', count: '' };
     if (!book) return r;
     const { days, errors } = parseRange(tf.range, book);
     if (errors.length || !days.length) return r;
@@ -821,27 +864,82 @@ const Vocas = (() => {
   function newSlot(from) {
     return Object.assign({ on: true, name: '', book: '', range: '', n: 50, type: 'ek' }, from || {}, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) });
   }
+  // 학생 한 명 = 2줄 카드 (1줄: 순서 핸들 · 체크 · 이름 · 단어장 / 2줄: 범위 · 문항 수 · 유형 · 복사 · 삭제)
   function slotsHtml() {
     const names = sortedBooks().map(b => b.name);
-    if (!slots.length) return `<tr><td colspan="7" class="vc-none">학생이 없습니다. 왼쪽 <b>학생 추가</b>를 누르세요.</td></tr>`;
+    if (!slots.length) return `<div class="vc-none">학생이 없습니다. 왼쪽 <b>학생 추가</b>를 누르세요.</div>`;
     const types = Object.entries(TYPE_NAMES);
-    return slots.map(s => {
+    return slots.map((s, idx) => {
       const missing = s.book && !books.has(s.book) && loaded;
       const opts = (missing ? [`<option value="${esc(s.book)}" selected>${esc(s.book)} (삭제됨)</option>`] : [])
         .concat([`<option value="">단어장 선택</option>`], names.map(b => `<option value="${esc(b)}"${b === s.book ? ' selected' : ''}>${esc(b)}</option>`)).join('');
-      return `<tr data-id="${esc(s.id)}">
-        <td class="ck"><input type="checkbox" data-k="on" ${s.on ? 'checked' : ''} aria-label="선택"></td>
-        <td class="nm"><input type="text" data-k="name" value="${esc(s.name)}" placeholder="이름" autocomplete="off"></td>
-        <td class="bk"><select data-k="book" class="${missing ? 'missing' : ''}" title="${missing ? '삭제된 단어장입니다. 다시 등록하거나 다른 단어장을 고르세요.' : ''}">${opts}</select></td>
-        <td class="rg"><input type="text" data-k="range" value="${esc(s.range)}" placeholder="예: 3-7" autocomplete="off"></td>
-        <td class="ct"><input type="number" data-k="n" min="1" value="${esc(s.n)}"></td>
-        <td class="tp"><select data-k="type">${types.map(([k, v]) => `<option value="${k}"${k === s.type ? ' selected' : ''}>${v}</option>`).join('')}</select></td>
-        <td class="ac"><button type="button" class="btn sm" data-slot="copy">복사</button><button type="button" class="btn sm danger" data-slot="del">삭제</button></td>
-      </tr>`;
+      const id = esc(s.id);
+      return `<div class="vc-slot" data-id="${id}">
+        <div class="vc-slot-hd" data-vc-handle title="끌어서 순서 바꾸기" aria-label="순서 바꾸기">⠿</div>
+        <div class="vc-slot-r1">
+          <input type="checkbox" data-k="on" ${s.on ? 'checked' : ''} aria-label="선택">
+          <span class="vc-slot-no">${idx + 1}</span>
+          <input type="text" class="nm" data-k="name" value="${esc(s.name)}" placeholder="학생 이름" autocomplete="off">
+          <select class="bk${missing ? ' missing' : ''}" data-k="book" title="${missing ? '삭제된 단어장입니다. 다시 등록하거나 다른 단어장을 고르세요.' : ''}">${opts}</select>
+        </div>
+        <div class="vc-slot-r2">
+          <label>범위<input type="text" class="rg" data-k="range" value="${esc(s.range)}" placeholder="예: 3-7" autocomplete="off"></label>
+          <label>문항 수<input type="number" class="ct" data-k="n" min="1" value="${esc(s.n)}"></label>
+          <label>유형<select class="tp" data-k="type">${types.map(([k, v]) => `<option value="${k}"${k === s.type ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <span class="vc-slot-ac"><button type="button" class="btn sm" data-slot="copy">복사</button><button type="button" class="btn sm danger" data-slot="del">삭제</button></span>
+        </div>
+      </div>`;
     }).join('');
   }
+  // 끌어서 순서 바꾸기: 핸들(⠿)을 잡았을 때만 끌기 (입력칸 글자 선택은 그대로)
+  function hookSlotDrag(main) {
+    const list = $('[data-vc-slots]', main);
+    if (!list) return;
+    let dragEl = null;
+    const renumber = () => $$('.vc-slot', list).forEach((el, i) => { const n = $('.vc-slot-no', el); if (n) n.textContent = i + 1; });
+    list.addEventListener('mousedown', e => {
+      const h = e.target.closest('[data-vc-handle]');
+      const card = h && h.closest('.vc-slot');
+      if (card) card.draggable = true;
+    });
+    list.addEventListener('mouseup', () => { $$('.vc-slot[draggable="true"]', list).forEach(el => { if (el !== dragEl) el.draggable = false; }); });
+    list.addEventListener('dragstart', e => {
+      const card = e.target.closest && e.target.closest('.vc-slot');
+      if (!card || !card.draggable) return;
+      dragEl = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) {}
+    });
+    list.addEventListener('dragover', e => {
+      if (!dragEl) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const over = e.target.closest('.vc-slot');
+      if (!over || over === dragEl) return;
+      const r = over.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      if (after) { if (over.nextElementSibling !== dragEl) over.after(dragEl); }
+      else if (over.previousElementSibling !== dragEl) over.before(dragEl);
+    });
+    list.addEventListener('drop', e => { if (dragEl) e.preventDefault(); });
+    list.addEventListener('dragend', () => {
+      if (!dragEl) return;
+      dragEl.classList.remove('dragging');
+      dragEl.draggable = false;
+      dragEl = null;
+      const order = $$('.vc-slot', list).map(el => el.dataset.id);
+      const byId = new Map(slots.map(x => [x.id, x]));
+      const next = order.map(id => byId.get(id)).filter(Boolean);
+      if (next.length === slots.length && next.some((x, i) => x !== slots[i])) {
+        slots = next;
+        saveSlots();
+      }
+      renumber();
+    });
+  }
   function onSlotInput(e) {
-    const tr = e.target.closest('tr[data-id]');
+    const tr = e.target.closest('[data-id]');
     if (!tr || !e.target.dataset.k) return false;
     const s = slots.find(x => x.id === tr.dataset.id);
     if (!s) return true;
@@ -852,7 +950,7 @@ const Vocas = (() => {
     return true;
   }
   async function onSlotClick(btn) {
-    const tr = btn.closest('tr[data-id]');
+    const tr = btn.closest('[data-id]');
     const i = slots.findIndex(x => x.id === tr.dataset.id);
     if (i < 0) return;
     if (btn.dataset.slot === 'del') {
@@ -949,26 +1047,28 @@ const Vocas = (() => {
       const ek = type === 'ek' || (type === 'mix' && ekSet.has(i));
       return ek ? { q: en, a: kr } : { q: kr, a: en };
     });
-    return { book: book.name, prefix: book.prefix, days, range: rangeLabel(days, book.prefix), n, type, items };
+    return { book: book.name, prefix: book.prefix, days, range: rangeLabel(days, book.prefix), n, type, items, cw: testWidths(book, type) };
   }
   // 책 한 장 (단어 시험 양식과 같고, 이름·날짜 칸만 없음)
   function bookPageHTML(t, isKey) {
-    const cols = `<col style="width:${TEST_COL.no}mm"><col style="width:${TEST_COL.q}mm"><col style="width:${TEST_COL.a}mm">`;
+    const w = t.cw[isKey ? 'key' : 'test'];
+    const cols = `<col style="width:${w.no.toFixed(2)}mm"><col style="width:${w.q.toFixed(2)}mm"><col style="width:${w.a.toFixed(2)}mm">`;
     const cell = s => `<div class="c">${s}</div>`;
-    const side = i => {
+    const side = (i, mid) => {
       const it = t.items[i];
-      if (!it) return `<td class="no">${cell('')}</td><td class="q fit">${cell('')}</td><td class="a fit">${cell('')}</td>`;
-      return `<td class="no">${cell(i + 1)}</td><td class="q fit">${cell(esc(it.q))}</td><td class="a fit">${cell(isKey ? esc(it.a) : '')}</td>`;
+      const nc = mid ? 'no mid' : 'no';
+      if (!it) return `<td class="${nc}">${cell('')}</td><td class="q fit">${cell('')}</td><td class="a fit">${cell('')}</td>`;
+      return `<td class="${nc}">${cell(i + 1)}</td><td class="q fit">${cell(esc(it.q))}</td><td class="a fit">${cell(isKey ? esc(it.a) : '')}</td>`;
     };
     let rows = '';
-    for (let r = 0; r < TEST_ROWS; r++) rows += `<tr class="d">${side(r)}<td class="gap"></td>${side(r + TEST_ROWS)}</tr>`;
+    for (let r = 0; r < TEST_ROWS; r++) rows += `<tr class="d">${side(r)}${side(r + TEST_ROWS, true)}</tr>`;
     return `<div class="vc-page${isKey ? ' vc-key' : ''}">
       <div class="vc-ph"><div class="lab">${isKey ? '정답지' : '단어 시험'}</div><div class="ttl">${esc(t.book)}</div><div class="day"></div></div>
       <table class="vc-tinfo"><colgroup><col style="width:12%"><col style="width:58%"><col style="width:12%"><col style="width:18%"></colgroup>
         <tr><th>범위</th><td>${esc(t.range)}</td><th>점수</th><td class="sc">/ ${t.n}</td></tr></table>
       <div class="vc-sec vc-tsec"><table style="--rh:${TEST_ROW_H.toFixed(3)}mm;--fs:${TEST_FONT_PT}pt">
-        <colgroup>${cols}<col style="width:${GAP_W}mm">${cols}</colgroup>
-        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="gap"></th><th class="no">번호</th><th>문제</th><th>답</th></tr>
+        <colgroup>${cols}${cols}</colgroup>
+        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="no mid">번호</th><th>문제</th><th>답</th></tr>
         ${rows}
       </table></div>
     </div>`;
@@ -977,7 +1077,7 @@ const Vocas = (() => {
     const book = books.get(bf.book);
     if (!book) return '';
     const wins = bookWindows(book.days.map(x => x[0]));
-    return `<b>${esc(bookRangeText(book))} · 총 ${wins.length}회차</b><br>` +
+    return `<b>${esc(bookRangeText(book))} (Day당 ${esc(bookPerDay(book))}개) · 총 ${wins.length}회차</b><br>` +
       wins.map((w, i) => `${i + 1}회: ${esc(w[0] === w[w.length - 1] ? `${w[0]}` : `${w[0]}-${w[w.length - 1]}`)}`).join(' · ');
   }
   function runBook() {
@@ -1116,10 +1216,10 @@ const Vocas = (() => {
     const list = sortedBooks();
     const rows = list.length ? list.map(b => `<tr>
         <td><b>${esc(b.name)}</b></td><td>${esc(bookRangeText(b))}</td>
-        <td class="num">${b.days.length}</td><td class="num">${b.total}</td>
+        <td>${b.days.length}</td><td>${esc(bookPerDay(b))}</td><td>${b.total}</td>
         <td>${esc(new Date(b.savedAt).toLocaleDateString('ko-KR'))}</td>
         <td class="num"><button type="button" class="btn sm danger" data-del="${esc(b.name)}">삭제</button></td></tr>`).join('')
-      : `<tr><td colspan="6" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
+      : `<tr><td colspan="7" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
     return `<div class="panel vc-lib">
         <div class="vc-lib-top">
           <div>
@@ -1132,7 +1232,7 @@ const Vocas = (() => {
         </div>
         <input type="file" data-vc-file accept=".xlsx,.xlsm,.xls" multiple hidden>
         <div class="tbl-wrap"><table class="tbl compact vc-lib-tbl">
-          <thead><tr><th>단어장 이름</th><th>범위</th><th class="num">Day 수</th><th class="num">단어 수</th><th>등록일</th><th></th></tr></thead>
+          <thead><tr><th>단어장 이름</th><th>범위</th><th>Day 수</th><th>Day당 단어 수</th><th>단어 수</th><th>등록일</th><th></th></tr></thead>
           <tbody>${rows}</tbody></table></div>
         ${storeOk ? '' : '<div class="vc-warn">브라우저 저장소를 쓸 수 없어, 등록한 단어장이 창을 닫으면 사라집니다.</div>'}
         ${statusHtml('lib')}
@@ -1260,8 +1360,12 @@ const Vocas = (() => {
     if (!p) return;
     const cs = getComputedStyle(stage);
     const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     const w = p.offsetWidth, h = p.offsetHeight;
-    const s = Math.max(0.2, Math.min(1, aw / w));
+    // 종이 한 장이 너비·높이 모두 미리보기 안에 다 들어가는 배율 (여러 장이면 아래로 스크롤)
+    const pg = p.querySelector('.vc-page');
+    const ph = pg ? pg.offsetHeight : 0;
+    const s = Math.max(0.2, Math.min(1, aw / w, ph ? ah / ph : 1));
     sc.style.width = (w * s) + 'px';
     sc.style.height = (h * s) + 'px';
     p.style.transform = `scale(${s})`;
@@ -1311,9 +1415,7 @@ const Vocas = (() => {
       if (tab === 'lib') body = libHtml();
       else {
         const side = { memo: memoSide, test: testSide, stu: stuSide, book: bookSide }[tab]();
-        const slotsPanel = tab === 'stu' ? `<div class="panel vc-slots"><div class="tbl-wrap"><table class="tbl compact vc-slot-tbl">
-            <thead><tr><th></th><th>학생 이름</th><th>단어장</th><th>범위</th><th>문항 수</th><th>유형</th><th></th></tr></thead>
-            <tbody data-vc-slots>${slotsHtml()}</tbody></table></div></div>` : '';
+        const slotsPanel = tab === 'stu' ? `<div class="panel vc-slots"><div class="vc-slot-list" data-vc-slots>${slotsHtml()}</div></div>` : '';
         body = `<div class="pr-wrap vc-wrap"><aside class="panel pr-side">${side}</aside>
           <section class="vc-right">${slotsPanel}<div class="vc-view"><div class="vc-stage" data-vc-stage></div></div></section></div>`;
       }
@@ -1324,6 +1426,7 @@ const Vocas = (() => {
       main.onkeydown = (e) => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-vc-drop]')) { e.preventDefault(); $('[data-vc-file]', main).click(); }
       };
+      if (tab === 'stu') hookSlotDrag(main);
       paint(main);
       if (!ro && window.ResizeObserver) ro = new ResizeObserver(() => scale());
       const stage = $('[data-vc-stage]', main);
