@@ -43,6 +43,8 @@ const Vocas = (() => {
   const TEST_Q_ROOM = 3;             // 시험지: 가장 긴 문제 글자 뒤에 둘 여유(mm), 나머지는 답 칸
   const TEST_Q_MIN = 0.30, TEST_Q_MAX = 0.55;   // 시험지: 문제 칸 비율 범위 (답 칸이 너무 넓거나 좁아지지 않게)
   const TYPE_NAMES = { ek: '영→한', ke: '한→영', mix: '혼합' };
+  // 시험지 열 이름: 영어 철자 칸은 '단어', 한글 뜻 칸은 '뜻' (혼합은 한 칸에 둘이 섞이므로 '문제', '정답')
+  const TEST_HEAD = { ek: ['단어', '뜻'], ke: ['뜻', '단어'], mix: ['문제', '정답'] };
   const BOOK_WIN = 7;                // 시험지 책: 한 회차 최대 과 수
 
   /* ---------- 종이 전용 글꼴 · CSS (테마와 무관하게 고정) ---------- */
@@ -369,7 +371,7 @@ const Vocas = (() => {
     let h = `<div class="vc-sec"><table style="--rh:${rowH.toFixed(3)}mm;--fs:${fontPt.toFixed(2)}pt">
       <colgroup>${cols}${cols}</colgroup>
       <tr class="rt"><th colspan="3">${s.names[0]}</th><th colspan="3" class="mid">${s.names[1]}</th></tr>
-      <tr class="ch"><th class="no">번호</th><th>철자</th><th>뜻</th><th class="no mid">번호</th><th>철자</th><th>뜻</th></tr>`;
+      <tr class="ch"><th class="no">번호</th><th>단어</th><th>뜻</th><th class="no mid">번호</th><th>단어</th><th>뜻</th></tr>`;
     for (let i = 0; i < len; i++) {
       const L = s.cols[0][i], R = s.cols[1][i];
       const no = s.start + i;
@@ -853,7 +855,7 @@ const Vocas = (() => {
         <tr><th>범위</th><td>${esc(t.range)}</td><th>이름</th><td>${esc(name || '')}</td><th>날짜</th><td>${esc(todayText())}</td><th>점수</th><td class="sc">/ ${t.n}</td></tr></table>
       <div class="vc-sec vc-tsec"><table style="--rh:${TEST_ROW_H.toFixed(3)}mm;--fs:${TEST_FONT_PT}pt">
         <colgroup>${cols}${cols}</colgroup>
-        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="no mid">번호</th><th>문제</th><th>답</th></tr>
+        <tr class="ch"><th class="no">번호</th><th>${TEST_HEAD[t.type][0]}</th><th>${TEST_HEAD[t.type][1]}</th><th class="no mid">번호</th><th>${TEST_HEAD[t.type][0]}</th><th>${TEST_HEAD[t.type][1]}</th></tr>
         ${rows}
       </table></div>
     </div>`;
@@ -1144,7 +1146,7 @@ const Vocas = (() => {
         <tr><th>범위</th><td>${esc(t.range)}</td><th>점수</th><td class="sc">/ ${t.n}</td></tr></table>
       <div class="vc-sec vc-tsec"><table style="--rh:${TEST_ROW_H.toFixed(3)}mm;--fs:${TEST_FONT_PT}pt">
         <colgroup>${cols}${cols}</colgroup>
-        <tr class="ch"><th class="no">번호</th><th>문제</th><th>답</th><th class="no mid">번호</th><th>문제</th><th>답</th></tr>
+        <tr class="ch"><th class="no">번호</th><th>${TEST_HEAD[t.type][0]}</th><th>${TEST_HEAD[t.type][1]}</th><th class="no mid">번호</th><th>${TEST_HEAD[t.type][0]}</th><th>${TEST_HEAD[t.type][1]}</th></tr>
         ${rows}
       </table></div>
     </div>`;
