@@ -1216,10 +1216,10 @@ const Vocas = (() => {
     const list = sortedBooks();
     const rows = list.length ? list.map(b => `<tr>
         <td><b>${esc(b.name)}</b></td><td>${esc(bookRangeText(b))}</td>
-        <td>${b.days.length}</td><td>${esc(bookPerDay(b))}</td><td>${b.total}</td>
+        <td>${esc(bookPerDay(b))}</td><td>${b.total}</td>
         <td>${esc(new Date(b.savedAt).toLocaleDateString('ko-KR'))}</td>
         <td class="num"><button type="button" class="btn sm danger" data-del="${esc(b.name)}">삭제</button></td></tr>`).join('')
-      : `<tr><td colspan="7" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
+      : `<tr><td colspan="6" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
     return `<div class="panel vc-lib">
         <div class="vc-lib-top">
           <div>
@@ -1232,7 +1232,7 @@ const Vocas = (() => {
         </div>
         <input type="file" data-vc-file accept=".xlsx,.xlsm,.xls" multiple hidden>
         <div class="tbl-wrap"><table class="tbl compact vc-lib-tbl">
-          <thead><tr><th>단어장 이름</th><th>범위</th><th>Day 수</th><th>Day당 단어 수</th><th>단어 수</th><th>등록일</th><th></th></tr></thead>
+          <thead><tr><th>단어장 이름</th><th>범위</th><th>Day당 단어 수</th><th>총 단어 수</th><th>등록일</th><th></th></tr></thead>
           <tbody>${rows}</tbody></table></div>
         ${storeOk ? '' : '<div class="vc-warn">브라우저 저장소를 쓸 수 없어, 등록한 단어장이 창을 닫으면 사라집니다.</div>'}
         ${statusHtml('lib')}
