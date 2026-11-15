@@ -231,7 +231,7 @@ const Vocas = (() => {
      3회차: (1회차 섞음)·(5회차 섞음) 번갈아
      4회차: (2회차 섞음)·(6회차 섞음) 번갈아
      5회차: B그룹 랜덤          6회차: 5회차를 다시 섞음
-     시험지: 암기장 각 칸의 단어를 한 번 더 섞고 뜻은 비움
+     (암기장만 만든다. 따로 시험지는 없음)
      ========================================================= */
   function buildDay(words) {
     const n = words.length;
@@ -250,13 +250,7 @@ const Vocas = (() => {
       { names: ['3회차', '4회차'], cols: [s3, s4], start: 1 },
       { names: ['5회차', '6회차'], cols: [s5, s6], start: na + 1 },
     ].filter(s => s.cols[0].length > 0);
-
-    const quiz = memoSecs.map(s => ({
-      names: s.names,
-      start: s.start,
-      cols: s.cols.map(c => shuffleDistinct(c, c)),
-    }));
-    return { n, memo: memoSecs, quiz };
+    return { n, memo: memoSecs };
   }
 
   /* =========================================================
@@ -390,21 +384,25 @@ const Vocas = (() => {
     let html = '';
     const page = (sections, label, showMeaning, idx) => {
       const part = total > 1 ? ` <span class="part">(${idx + 1}/${total})</span>` : '';
-      // 암기장·시험지는 각각 한 장 → 양면 프린터면 빈 면을 더해 서로 다른 종이로
-      html += padDuplex([`<div class="vc-page">
+      // 암기장은 외우라고 주는 것이라 빈 면 없이 계속 이어짐 (양면이면 앞뒤로 이어 찍힘)
+      html += `<div class="vc-page">
         <div class="vc-ph"><div class="lab">${esc(label)}</div><div class="ttl">${esc(memo.db.name)}</div><div class="day">${esc(dayLabel(dayNum))}${part}</div></div>
         ${sections.map(s => sectionHTML(s, showMeaning, rowH, fontPt, cw)).join('')}
-      </div>`]);
+      </div>`;
     };
-    // 세트별로 암기장 → 시험지 번갈아
-    built.sets.forEach((b, idx) => {
-      page(b.memo, settings.memo, true, idx);
-      page(b.quiz, settings.quiz, false, idx);
-    });
+    // 세트별 암기장만 차례로 (단어가 쪼개지면 Day 1 (1/2), Day 1 (2/2) …)
+    built.sets.forEach((b, idx) => page(b.memo, settings.memo, true, idx));
     return html;
   }
   // 칸을 넘치는 글자만 처리 (줄 높이는 고정, 표는 절대 밀리지 않음)
   // 1단계: 한 줄 유지하며 75%까지 축소 → 2단계: 같은 높이 안에서 두 줄로 나누고 필요한 만큼 축소
+  // 칸 안 글자가 실제로 몇 줄로 그려졌는지 (칸 높이는 고정이라 scrollHeight로는 알 수 없음)
+  function lineCount(el) {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const tops = new Set([...r.getClientRects()].filter(x => x.width > 0).map(x => Math.round(x.top)));
+    return tops.size;
+  }
   function fitCells(root) {
     const over = el => el.scrollWidth > el.clientWidth + 0.5 || el.scrollHeight > el.clientHeight + 0.5;
     root.querySelectorAll('td.fit > .c').forEach(c => {
@@ -425,6 +423,11 @@ const Vocas = (() => {
       while (over(c) && scale > 0.4) {
         scale -= 0.03;
         c.style.fontSize = (base * scale) + 'px';
+      }
+      // 줄어든 글자가 실제로 한 줄에 들어가면 두 줄 모드를 풀어 칸 가운데에 (위쪽 절반에 붙지 않게)
+      if (lineCount(c) <= 1) {
+        c.classList.remove('two');
+        if (over(c)) c.classList.add('two');      // 혹시 한 줄로 되돌려 넘치면 두 줄 모드 유지
       }
     });
     root.querySelectorAll('.vc-ph .ttl').forEach(t => {
@@ -1248,8 +1251,8 @@ const Vocas = (() => {
      ========================================================= */
   const TABS = [['test', '단어 시험'], ['stu', '학생별 출제'], ['memo', '암기장'], ['book', '시험지 책'], ['lib', '단어장']];
   const SUBS = {
-    lib: '엑셀 단어장을 등록한 뒤 위 탭에서 암기장 · 시험지를 출제하세요.',
-    memo: 'Day별 6회차 암기장과 시험지를 만듭니다.',
+    lib: '엑셀 단어장을 등록한 뒤 위 탭에서 시험지와 암기장을 출제하세요.',
+    memo: 'Day별 6회차 암기장을 만듭니다. 빈 면 없이 이어서 인쇄됩니다.',
     test: '범위를 정해 50문항 시험지를 출제합니다.',
     stu: '학생마다 단어장과 범위를 저장해 한꺼번에 출제합니다.',
     book: '누적 범위(최대 7과)로 전체 시험지와 답지를 책으로 만듭니다.',
@@ -1342,7 +1345,6 @@ const Vocas = (() => {
           <button type="button" class="btn" data-act="memo-reset">초기화</button>
         </div></div>
       <div class="pr-sec"><h2>인쇄</h2>
-        <div class="vc-checks">${optChk('duplex', '양면 프린터 사용')}</div>
         <div class="vc-btns">
           <button type="button" class="btn primary wide" data-act="memo-print"${dis(has && memo.cur)}>현재 출제 인쇄 / PDF</button>
           <button type="button" class="btn wide" data-act="memo-print-all"${dis(has)}>전체 Day 한 번에 인쇄 / PDF</button>
@@ -1351,7 +1353,6 @@ const Vocas = (() => {
       <div class="pr-sec"><h2>상단 문구</h2>
         <div class="vc-set">
           <label for="vc-set-memo">암기장 이름</label><input type="text" id="vc-set-memo" data-set="memo" value="${esc(settings.memo)}" autocomplete="off">
-          <label for="vc-set-quiz">시험지 이름</label><input type="text" id="vc-set-quiz" data-set="quiz" value="${esc(settings.quiz)}" autocomplete="off">
         </div></div>
       ${statusHtml('memo')}`;
   }
