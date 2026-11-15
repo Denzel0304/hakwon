@@ -1017,7 +1017,7 @@ const Vocas = (() => {
   }
   function addSlot() {
     const last = slots[slots.length - 1];
-    slots.push(newSlot(last ? { book: last.book, n: last.n, type: last.type } : null));
+    slots.push(newSlot(last ? { n: last.n, type: last.type } : null));   // 단어장은 '단어장 선택'으로 시작
     saveSlots();
     rerender();
     const inputs = $$('#main [data-vc-slots] input[data-k="name"]');
@@ -1256,11 +1256,10 @@ const Vocas = (() => {
   const statusHtml = (k) => `<div class="vc-status${stat[k] && stat[k].bad ? ' bad' : ''}" data-vc-status role="status">${stat[k] ? esc(stat[k].text) : ''}</div>`;
   const dis = (on) => on ? '' : ' disabled';
 
-  // 단어 시험·시험지 책은 단어장이 하나라도 있으면 기본으로 첫 단어장 (원본과 같음)
+  // 모든 탭의 기본값은 '단어장 선택'(빈 값) → 단어장을 직접 고르기 전에는 출제되지 않음
   function fixDefaults() {
-    const first = sortedBooks()[0];
-    if (!books.has(tf.book)) tf.book = first ? first.name : '';
-    if (!books.has(bf.book)) bf.book = first ? first.name : '';
+    if (!books.has(tf.book)) tf.book = '';
+    if (!books.has(bf.book)) bf.book = '';
     if (memo.book && !books.has(memo.book)) { memo.book = ''; clearMemo(); }
   }
 
@@ -1336,7 +1335,7 @@ const Vocas = (() => {
     const hasBook = books.has(tf.book);
     return `<div class="pr-sec"><h2>출제 조건</h2>
         <div class="vc-set">
-          <label for="vc-tbook">단어장</label><select id="vc-tbook" data-f="tBook">${bookOpts(tf.book)}</select>
+          <label for="vc-tbook">단어장</label><select id="vc-tbook" data-f="tBook">${bookOpts(tf.book, '단어장 선택')}</select>
           <label for="vc-trange">범위</label><input type="text" id="vc-trange" data-f="tRange" value="${esc(tf.range)}" placeholder="예: 3-7, 10" autocomplete="off">
           <span class="vc-hint" data-vc-hint="range">${esc(h.range)}</span>
           <label for="vc-tcount">문항 수</label><input type="number" id="vc-tcount" data-f="tCount" min="1" value="${esc(tf.count)}">
@@ -1380,7 +1379,7 @@ const Vocas = (() => {
     return `<div class="pr-sec"><h2>출제 조건</h2>
         <p class="vc-guide">범위는 단어장 전체 Day로 자동으로 정해집니다. <b>1-2</b>부터 7과까지 누적한 뒤 7과씩 밀고, 끝에서 다시 줄어듭니다. 회차마다 <b>50문항</b>을 랜덤으로 출제하고, 범위 안 단어가 50개보다 적으면 있는 만큼 모두 출제합니다.</p>
         <div class="vc-set">
-          <label for="vc-bbook">단어장</label><select id="vc-bbook" data-f="bBook">${bookOpts(bf.book)}</select>
+          <label for="vc-bbook">단어장</label><select id="vc-bbook" data-f="bBook">${bookOpts(bf.book, '단어장 선택')}</select>
           <label>유형</label>${radios('vc-btype', bf.type)}
         </div>
         <div class="vc-bklist">${bookHintHtml()}</div>
@@ -1575,7 +1574,7 @@ const Vocas = (() => {
       if (t.matches('[data-f="memoBook"]')) { selectMemoBook(t.value); rerender(); }
       else if (t.matches('[data-f="memoDay"]')) memo.day = t.value;
       else if (t.matches('[name="vc-mmode"]')) { if (t.checked) { memo.mode = t.value; rerender(); } }
-      else if (t.matches('[data-f="tBook"]')) { tf.book = t.value; updateTestHints(main); }
+      else if (t.matches('[data-f="tBook"]')) { tf.book = t.value; rerender(); }   // 출제 버튼 켜기/끄기와 안내 문구를 함께 갱신
       else if (t.matches('[name="vc-ttype"]')) { if (t.checked) tf.type = t.value; }
       else if (t.matches('[data-f="bBook"]')) { bf.book = t.value; resetBook(); setStatus('book', ''); rerender(); }
       else if (t.matches('[name="vc-btype"]')) { if (t.checked) bf.type = t.value; }
