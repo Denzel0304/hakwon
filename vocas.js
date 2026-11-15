@@ -97,7 +97,7 @@ const Vocas = (() => {
   let slots = loadSlots();
   let books = new Map();
   let loaded = false, loadP = null, storeOk = true;
-  const memo = { book: '', db: null, day: '', cur: null };
+  const memo = { book: '', db: null, day: '', cur: null, mode: 'day', range: '' };   // mode: day(Day 하나) | range(범위)
   const tf = { book: '', range: '', count: '50', type: 'ek' };
   let testDoc = null;
   let stuDocs = null;
@@ -676,14 +676,31 @@ const Vocas = (() => {
       <div class="row"><span>Day 수 / 단어 수</span><span>${p.days.length}개 / ${total}개</span></div>
       <div class="row"><span>Day당 단어 수</span><span>${esc(perDayText(p.days.map(d => p.map.get(d).length)))}개</span></div></div>`;
   }
+  // 출제: Day 하나 또는 범위(예: 1-3, 5, 8). memo.cur = { days, label, list: [{ day, built }] }
   function makeCurrent() {
     if (!memo.db) return;
+    const map = memo.db.parsed.map;
+    if (memo.mode === 'range') {
+      const book = books.get(memo.db.name);
+      const { days, errors } = book ? parseRange(memo.range, book) : { days: [], errors: ['단어장을 찾을 수 없습니다.'] };
+      if (errors.length) {
+        showErrorBox('암기장을 출제하지 못했습니다', memo.db.fileName, '범위를 확인하세요. (예: 1-3, 5, 8)', errors);
+        setStatus('memo', '범위를 확인하세요.', true);
+        return;
+      }
+      memo.cur = { days, label: rangeLabel(days, memo.db.parsed.prefix), list: days.map(d => ({ day: d, built: buildDayAll(map.get(d)) })) };
+      cache.memo = '';
+      const n = days.reduce((t, d) => t + map.get(d).length, 0);
+      setStatus('memo', `${memo.cur.label} 출제 완료 (${days.length}개 Day, 단어 ${n}개)`);
+      rerender();
+      return;
+    }
     const d = parseInt(memo.day, 10);
-    const words = memo.db.parsed.map.get(d);
+    const words = map.get(d);
     if (!words) { setStatus('memo', '선택한 Day를 찾을 수 없습니다.', true); return; }
-    memo.cur = { day: d, built: buildDayAll(words) };
+    memo.cur = { days: [d], label: dayLabel(d), list: [{ day: d, built: buildDayAll(words) }] };
     cache.memo = '';
-    const sets = memo.cur.built.sets.length;
+    const sets = memo.cur.list[0].built.sets.length;
     setStatus('memo', `${dayLabel(d)} 출제 완료 (${words.length}개${sets > 1 ? `, ${sets}세트` : ''})`);
     rerender();
   }
@@ -1184,7 +1201,7 @@ const Vocas = (() => {
   };
   // 탭마다 미리보기 HTML (출제가 없으면 '')
   const PREVIEW = {
-    memo: () => memo.cur && memo.db ? dayPagesHTML(memo.cur.day, memo.cur.built) : '',
+    memo: () => memo.cur && memo.db ? memo.cur.list.map(x => dayPagesHTML(x.day, x.built)).join('') : '',
     test: () => testDoc ? testDocHTML(testDoc, '') : '',
     stu: () => stuDocs ? stuDocs.map(d => testDocHTML(d.test, d.name)).join('') : '',
     book: () => bookDoc ? bookPreviewHtml() : '',
@@ -1250,7 +1267,14 @@ const Vocas = (() => {
         <select data-f="memoBook" aria-label="단어장 선택">${bookOpts(memo.book, '단어장 선택')}</select>
         ${memoInfoHtml()}</div>
       <div class="pr-sec"><h2>출제</h2>
-        <select data-f="memoDay" aria-label="Day 선택"${dis(has)}>${dayOpts}</select>
+        <div class="vc-radios vc-mmode">
+          <label class="chk"><input type="radio" name="vc-mmode" value="day"${memo.mode === 'day' ? ' checked' : ''}>Day 하나</label>
+          <label class="chk"><input type="radio" name="vc-mmode" value="range"${memo.mode === 'range' ? ' checked' : ''}>범위</label>
+        </div>
+        ${memo.mode === 'range'
+          ? `<input type="text" class="vc-mrange" data-f="memoRange" value="${esc(memo.range)}" placeholder="예: 1-3, 5, 8" autocomplete="off" aria-label="범위"${dis(has)}>
+             <div class="vc-hint vc-mhint">${p && p.days.length ? esc(`전체: ${dayLabel(p.days[0])} ~ ${dayLabel(p.days[p.days.length - 1])}`) : ''}</div>`
+          : `<select data-f="memoDay" aria-label="Day 선택"${dis(has)}>${dayOpts}</select>`}
         <div class="vc-btns three">
           <button type="button" class="btn primary" data-act="memo-make"${dis(has)}>출제</button>
           <button type="button" class="btn" data-act="memo-make"${dis(has && memo.cur)}>다시 섞기</button>
@@ -1259,7 +1283,7 @@ const Vocas = (() => {
       <div class="pr-sec"><h2>인쇄</h2>
         <div class="vc-checks">${optChk('duplex', '양면 프린터 사용')}</div>
         <div class="vc-btns">
-          <button type="button" class="btn primary wide" data-act="memo-print"${dis(has && memo.cur)}>현재 Day 인쇄 / PDF</button>
+          <button type="button" class="btn primary wide" data-act="memo-print"${dis(has && memo.cur)}>현재 출제 인쇄 / PDF</button>
           <button type="button" class="btn wide" data-act="memo-print-all"${dis(has)}>전체 Day 한 번에 인쇄 / PDF</button>
         </div>
         <div class="pr-note">인쇄 창에서 <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>, <b>여백 없음</b>으로 맞춰 주세요. 머리글 칸 회색이 안 나오면 <b>배경 그래픽</b>을 켜 주세요.</div></div>
@@ -1346,6 +1370,11 @@ const Vocas = (() => {
     if (!stage) return;
     const k = tab;
     const html = cache[k] || PREVIEW[k]();
+    // 학생별 출제: 출제 전(빈 상자)에는 학생 목록 높이만큼 줄여 다른 탭처럼 화면 안에 들어가게, 출제 후에는 원래 크기
+    const slotsBox = k === 'stu' && !html ? $('.vc-slots', main) : null;
+    stage.style.height = slotsBox ? `calc(100vh - 200px - ${slotsBox.offsetHeight + 14}px)` : '';
+    stage.style.minHeight = slotsBox ? '200px' : '';
+    stage.classList.toggle('vc-short', !!slotsBox);
     if (!html) { stage.innerHTML = `<div class="empty vc-empty">${EMPTY[k]}</div>`; return; }
     stage.innerHTML = `<div class="vc-scaler"><div class="vc-pages" data-vc-pages>${html}</div></div>`;
     const pages = $('[data-vc-pages]', stage);
@@ -1441,7 +1470,7 @@ const Vocas = (() => {
       store.db = null; store.ok = false;
       books = new Map(); loaded = false; loadP = null; storeOk = true;
       settings = Object.assign({}, DEFAULT_SETTINGS); slots = [];
-      memo.book = ''; clearMemo();
+      memo.book = ''; clearMemo(); memo.mode = 'day'; memo.range = '';
       Object.assign(tf, { book: '', range: '', count: '50', type: 'ek' });
       Object.assign(bf, { book: '', type: 'ek', mode: 'split' });
       testDoc = null; stuDocs = null; bookDoc = null;
@@ -1470,7 +1499,7 @@ const Vocas = (() => {
       const a = b.dataset.act;
       if (a === 'memo-make') makeCurrent();
       else if (a === 'memo-reset') resetMemo();
-      else if (a === 'memo-print') { if (memo.cur && cache.memo) printPaper(flatPages(cache.memo), `${memo.db.name}_${dayLabel(memo.cur.day)}`); }
+      else if (a === 'memo-print') { if (memo.cur && cache.memo) printPaper(flatPages(cache.memo), `${memo.db.name}_${memo.cur.label}`); }
       else if (a === 'memo-print-all') printMemoAll();
       else if (a === 'test-make') runTest();
       else if (a === 'test-print') { if (testDoc && cache.test) printPaper(flatPages(cache.test), `단어시험_${testDoc.book}_${testDoc.range}`); }
@@ -1488,6 +1517,7 @@ const Vocas = (() => {
       const t = e.target;
       if (onSlotInput(e)) return;
       if (t.matches('[data-f="tRange"]')) { tf.range = t.value; updateTestHints(main); }
+      else if (t.matches('[data-f="memoRange"]')) memo.range = t.value;
       else if (t.matches('[data-f="tCount"]')) tf.count = t.value;
       else if (t.matches('[data-set]')) {
         settings[t.dataset.set] = t.value;
@@ -1504,6 +1534,7 @@ const Vocas = (() => {
       if (t.matches('[data-opt]')) { setOpt(t.dataset.opt, t.checked); return; }
       if (t.matches('[data-f="memoBook"]')) { selectMemoBook(t.value); rerender(); }
       else if (t.matches('[data-f="memoDay"]')) memo.day = t.value;
+      else if (t.matches('[name="vc-mmode"]')) { if (t.checked) { memo.mode = t.value; rerender(); } }
       else if (t.matches('[data-f="tBook"]')) { tf.book = t.value; updateTestHints(main); }
       else if (t.matches('[name="vc-ttype"]')) { if (t.checked) tf.type = t.value; }
       else if (t.matches('[data-f="bBook"]')) { bf.book = t.value; resetBook(); setStatus('book', ''); rerender(); }

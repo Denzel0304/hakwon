@@ -1147,6 +1147,9 @@ body.theme-gray {
 .vc-hint { grid-column: 2; font-size: 12.5px; color: var(--ink-mute); margin-top: -3px; }
 .vc-hint:empty { display: none; }
 .vc-radios { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; }
+.vc-mmode { margin-bottom: 8px; }
+.pr-sec > .vc-mrange { width: 100%; }
+.vc-mhint { margin-top: 5px; }
 .vc-checks { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-soft); }
 .vc-checks label.chk { display: flex; }
 .vc-wrap input[type=checkbox], .vc-wrap input[type=radio] { accent-color: var(--accent); }
@@ -1210,6 +1213,8 @@ body.theme-gray {
 .vc-view { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
 .vc-stage { height: calc(100vh - 200px); min-height: 460px; overflow: auto; padding: 22px 20px; background: var(--tint-strong); }
 .vc-empty { margin-top: 16vh; }
+.vc-stage.vc-short { display: flex; align-items: center; justify-content: center; }
+.vc-stage.vc-short .vc-empty { margin: 0; }
 .vc-scaler { position: relative; margin: 0 auto; }
 .vc-pages { position: absolute; top: 0; left: 0; width: 210mm; transform-origin: 0 0; display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .vc-pages .vc-grp { display: flex; flex-direction: column; align-items: center; gap: 18px; }
