@@ -1185,6 +1185,11 @@ body.theme-gray {
 .vc-drop b { display: block; font-size: 16px; }
 .vc-drop small { display: block; font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
 .vc-lib .vc-status { border-top: 0; padding-top: 10px; }
+.vc-lib-tbl .vc-hd-td { width: 28px; padding-left: 6px !important; padding-right: 0 !important; vertical-align: middle; }
+.vc-hd { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 26px; border-radius: 6px; cursor: grab; color: var(--ink-mute); font-size: 16px; user-select: none; }
+.vc-hd:hover { background: var(--accent-soft); color: var(--accent-ink); }
+.vc-hd:active { cursor: grabbing; }
+.vc-lib-tbl tr.dragging td { opacity: .45; background: var(--accent-soft); }
 .vc-none { text-align: center !important; color: var(--ink-mute); padding: 22px 10px !important; }
 .vc-warn { margin-top: 10px; color: var(--danger); font-size: 13px; }
 @media (max-width: 900px) { .vc-lib-top { grid-template-columns: 1fr; } }

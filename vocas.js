@@ -19,6 +19,7 @@ const Vocas = (() => {
   const MAX_ERR_SHOW = 300;    // 오류 창에 보여 줄 최대 줄 수
   const LS_SET = 'mg77_voca_set';
   const LS_SLOTS = 'mg77_voca_slots';
+  const LS_ORDER = 'mg77_voca_order';      // 단어장 순서 (단어장 탭에서 끌어서 정함)
   const IDB_NAME = 'mg77_voca';
   const XLSX_SRC = 'xlsx.js?v=0.18.5';
 
@@ -95,6 +96,7 @@ const Vocas = (() => {
   let tab = 'lib';                       // lib | memo | test | stu | book
   let settings = loadSettings();
   let slots = loadSlots();
+  let bookOrder = loadBookOrder();
   let books = new Map();
   let loaded = false, loadP = null, storeOk = true;
   const memo = { book: '', db: null, day: '', cur: null, mode: 'day', range: '' };   // mode: day(Day 하나) | range(범위)
@@ -469,6 +471,16 @@ const Vocas = (() => {
   function saveSlots() {
     try { localStorage.setItem(LS_SLOTS, JSON.stringify(slots)); } catch (e) {}
   }
+  function loadBookOrder() {
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_ORDER) || 'null');
+      if (Array.isArray(s)) return s.map(String);
+    } catch (e) {}
+    return [];
+  }
+  function saveBookOrder() {
+    try { localStorage.setItem(LS_ORDER, JSON.stringify(bookOrder)); } catch (e) {}
+  }
 
   // 단어장 저장소 (IndexedDB, 실패하면 이번 창에서만 유지)
   const store = {
@@ -517,7 +529,14 @@ const Vocas = (() => {
     return lo === hi ? `${lo}` : `${lo}~${hi}`;
   }
   function bookPerDay(book) { return perDayText(book.days.map(x => x[1].length)); }
-  function sortedBooks() { return [...books.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko')); }
+  // 단어장 순서: 단어장 탭에서 끌어서 정한 순서. 순서에 없는 단어장(새로 등록 등)은 맨 뒤에 이름순
+  function sortedBooks() {
+    const pos = new Map(bookOrder.map((n, i) => [n, i]));
+    return [...books.values()].sort((a, b) => {
+      const pa = pos.has(a.name) ? pos.get(a.name) : Infinity, pb = pos.has(b.name) ? pos.get(b.name) : Infinity;
+      return pa !== pb ? pa - pb : a.name.localeCompare(b.name, 'ko');
+    });
+  }
   function loadBooks() {
     if (loadP) return loadP;
     loadP = (async () => {
@@ -601,6 +620,7 @@ const Vocas = (() => {
     if (!await confirmDlg(`“${name}” 단어장을 삭제할까요?`, '삭제', true)) return;
     try { await store.del(name); } catch (e) {}
     books.delete(name);
+    if (bookOrder.includes(name)) { bookOrder = bookOrder.filter(n => n !== name); saveBookOrder(); }
     if (memo.book === name) { memo.book = ''; clearMemo(); }
     if (testDoc && testDoc.book === name) resetTest();
     if (bookDoc && bookDoc.book === name) resetBook();
@@ -908,32 +928,31 @@ const Vocas = (() => {
       </div>`;
     }).join('');
   }
-  // 끌어서 순서 바꾸기: 핸들(⠿)을 잡았을 때만 끌기 (입력칸 글자 선택은 그대로)
-  function hookSlotDrag(main) {
-    const list = $('[data-vc-slots]', main);
+  // 끌어서 순서 바꾸기 (공용): 핸들(⠿)을 잡았을 때만 끌기 (입력칸 글자 선택은 그대로)
+  // list 안의 itemSel 요소들을 옮기고, 놓으면 onDone(바뀐 순서의 요소 목록)
+  function makeSortable(list, itemSel, onDone) {
     if (!list) return;
     let dragEl = null;
-    const renumber = () => $$('.vc-slot', list).forEach((el, i) => { const n = $('.vc-slot-no', el); if (n) n.textContent = i + 1; });
     list.addEventListener('mousedown', e => {
       const h = e.target.closest('[data-vc-handle]');
-      const card = h && h.closest('.vc-slot');
-      if (card) card.draggable = true;
+      const item = h && h.closest(itemSel);
+      if (item) item.draggable = true;
     });
-    list.addEventListener('mouseup', () => { $$('.vc-slot[draggable="true"]', list).forEach(el => { if (el !== dragEl) el.draggable = false; }); });
+    list.addEventListener('mouseup', () => { $$(`${itemSel}[draggable="true"]`, list).forEach(el => { if (el !== dragEl) el.draggable = false; }); });
     list.addEventListener('dragstart', e => {
-      const card = e.target.closest && e.target.closest('.vc-slot');
-      if (!card || !card.draggable) return;
-      dragEl = card;
-      card.classList.add('dragging');
+      const item = e.target.closest && e.target.closest(itemSel);
+      if (!item || !item.draggable) return;
+      dragEl = item;
+      item.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) {}
+      try { e.dataTransfer.setData('text/plain', ''); } catch (err) {}
     });
     list.addEventListener('dragover', e => {
       if (!dragEl) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      const over = e.target.closest('.vc-slot');
-      if (!over || over === dragEl) return;
+      const over = e.target.closest(itemSel);
+      if (!over || over === dragEl || over.parentNode !== dragEl.parentNode) return;
       const r = over.getBoundingClientRect();
       const after = e.clientY > r.top + r.height / 2;
       if (after) { if (over.nextElementSibling !== dragEl) over.after(dragEl); }
@@ -945,14 +964,31 @@ const Vocas = (() => {
       dragEl.classList.remove('dragging');
       dragEl.draggable = false;
       dragEl = null;
-      const order = $$('.vc-slot', list).map(el => el.dataset.id);
+      onDone($$(itemSel, list));
+    });
+  }
+  // 학생 목록 순서
+  function hookSlotDrag(main) {
+    const list = $('[data-vc-slots]', main);
+    makeSortable(list, '.vc-slot', els => {
       const byId = new Map(slots.map(x => [x.id, x]));
-      const next = order.map(id => byId.get(id)).filter(Boolean);
+      const next = els.map(el => byId.get(el.dataset.id)).filter(Boolean);
       if (next.length === slots.length && next.some((x, i) => x !== slots[i])) {
         slots = next;
         saveSlots();
       }
-      renumber();
+      els.forEach((el, i) => { const n = $('.vc-slot-no', el); if (n) n.textContent = i + 1; });
+    });
+  }
+  // 단어장 순서 (단어장 탭 표) → 모든 탭의 단어장 선택 순서도 이 순서
+  function hookBookDrag(main) {
+    const list = $('[data-vc-books]', main);
+    makeSortable(list, 'tr[data-book]', els => {
+      const next = els.map(el => el.dataset.book);
+      if (next.join('\n') !== sortedBooks().map(b => b.name).join('\n')) {
+        bookOrder = next;
+        saveBookOrder();
+      }
     });
   }
   function onSlotInput(e) {
@@ -1080,7 +1116,7 @@ const Vocas = (() => {
     let rows = '';
     for (let r = 0; r < TEST_ROWS; r++) rows += `<tr class="d">${side(r)}${side(r + TEST_ROWS, true)}</tr>`;
     return `<div class="vc-page${isKey ? ' vc-key' : ''}">
-      <div class="vc-ph"><div class="lab">${isKey ? '정답지' : '단어 시험'}</div><div class="ttl">${esc(t.book)}</div><div class="day"></div></div>
+      <div class="vc-ph"><div class="lab">${isKey ? '답지' : '시험지'}</div><div class="ttl">${esc(t.book)}</div><div class="day"></div></div>
       <table class="vc-tinfo"><colgroup><col style="width:12%"><col style="width:58%"><col style="width:12%"><col style="width:18%"></colgroup>
         <tr><th>범위</th><td>${esc(t.range)}</td><th>점수</th><td class="sc">/ ${t.n}</td></tr></table>
       <div class="vc-sec vc-tsec"><table style="--rh:${TEST_ROW_H.toFixed(3)}mm;--fs:${TEST_FONT_PT}pt">
@@ -1231,12 +1267,13 @@ const Vocas = (() => {
   /* ---------- 탭별 왼쪽 설정 상자 ---------- */
   function libHtml() {
     const list = sortedBooks();
-    const rows = list.length ? list.map(b => `<tr>
+    const rows = list.length ? list.map(b => `<tr data-book="${esc(b.name)}">
+        <td class="vc-hd-td"><span class="vc-hd" data-vc-handle title="끌어서 순서 바꾸기" aria-label="순서 바꾸기">⠿</span></td>
         <td><b>${esc(b.name)}</b></td><td>${esc(bookRangeText(b))}</td>
         <td>${esc(bookPerDay(b))}</td><td>${b.total}</td>
         <td>${esc(new Date(b.savedAt).toLocaleDateString('ko-KR'))}</td>
         <td class="num"><button type="button" class="btn sm danger" data-del="${esc(b.name)}">삭제</button></td></tr>`).join('')
-      : `<tr><td colspan="6" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
+      : `<tr><td colspan="7" class="vc-none">${loaded ? '등록된 단어장이 없습니다. 오른쪽 위 <b>단어장 등록</b>으로 엑셀 파일을 등록하세요.' : '불러오는 중…'}</td></tr>`;
     return `<div class="panel vc-lib">
         <div class="vc-lib-top">
           <div>
@@ -1249,8 +1286,8 @@ const Vocas = (() => {
         </div>
         <input type="file" data-vc-file accept=".xlsx,.xlsm,.xls" multiple hidden>
         <div class="tbl-wrap"><table class="tbl compact vc-lib-tbl">
-          <thead><tr><th>단어장 이름</th><th>범위</th><th>Day당 단어 수</th><th>총 단어 수</th><th>등록일</th><th></th></tr></thead>
-          <tbody>${rows}</tbody></table></div>
+          <thead><tr><th class="vc-hd-td"></th><th>단어장 이름</th><th>범위</th><th>Day당 단어 수</th><th>총 단어 수</th><th>등록일</th><th></th></tr></thead>
+          <tbody data-vc-books>${rows}</tbody></table></div>
         ${storeOk ? '' : '<div class="vc-warn">브라우저 저장소를 쓸 수 없어, 등록한 단어장이 창을 닫으면 사라집니다.</div>'}
         ${statusHtml('lib')}
       </div>`;
@@ -1406,9 +1443,11 @@ const Vocas = (() => {
     dropHooked = true;
     const here = () => App.page === 'vocas';
     const zone = () => $('#main [data-vc-drop]');
+    const isFile = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
     ['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => {
       if (!here()) return;
       e.preventDefault();
+      if (!isFile(e)) return;
       const z = zone(); if (z) z.classList.add('over');
     }));
     document.addEventListener('dragleave', e => {
@@ -1456,6 +1495,7 @@ const Vocas = (() => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-vc-drop]')) { e.preventDefault(); $('[data-vc-file]', main).click(); }
       };
       if (tab === 'stu') hookSlotDrag(main);
+      if (tab === 'lib') hookBookDrag(main);
       paint(main);
       if (!ro && window.ResizeObserver) ro = new ResizeObserver(() => scale());
       const stage = $('[data-vc-stage]', main);
@@ -1469,7 +1509,7 @@ const Vocas = (() => {
       try { if (store.db) store.db.close(); } catch (e) {}
       store.db = null; store.ok = false;
       books = new Map(); loaded = false; loadP = null; storeOk = true;
-      settings = Object.assign({}, DEFAULT_SETTINGS); slots = [];
+      settings = Object.assign({}, DEFAULT_SETTINGS); slots = []; bookOrder = [];
       memo.book = ''; clearMemo(); memo.mode = 'day'; memo.range = '';
       Object.assign(tf, { book: '', range: '', count: '50', type: 'ek' });
       Object.assign(bf, { book: '', type: 'ek', mode: 'split' });
