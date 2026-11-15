@@ -604,6 +604,9 @@ const Vocas = (() => {
         await store.put(book);
         books.set(name, book);
         if (memo.book === name) clearMemo();        // 내용이 바뀐 단어장으로 만든 출제는 비움
+        if (testDoc && testDoc.book === name) resetTest();
+        if (bookDoc && bookDoc.book === name) resetBook();
+        if (stuDocs && stuDocs.some(d => d.test.book === name)) { stuDocs = null; cache.stu = ''; }
         added++;
       } catch (err) {
         fails.push({ file: file.name, errors: ['엑셀 파일을 읽지 못했습니다: ' + err.message] });
@@ -624,6 +627,7 @@ const Vocas = (() => {
     if (memo.book === name) { memo.book = ''; clearMemo(); }
     if (testDoc && testDoc.book === name) resetTest();
     if (bookDoc && bookDoc.book === name) resetBook();
+    if (stuDocs && stuDocs.some(d => d.test.book === name)) { stuDocs = null; cache.stu = ''; }
     toast('단어장을 삭제했습니다');
     rerender();
   }
@@ -894,6 +898,25 @@ const Vocas = (() => {
     rerender();
   }
   function resetTest() { testDoc = null; cache.test = ''; }
+  // 출제 조건(단어장·Day·범위·문항 수·유형·학생 정보)이 바뀌면 그 탭의 이전 출제를 버림
+  // → 미리보기를 비우고 인쇄 버튼을 꺼서, 화면의 조건과 다른 예전 시험지가 인쇄되는 일이 없게 함
+  function stale(k) {
+    const had = { memo: !!memo.cur, test: !!testDoc, stu: !!stuDocs, book: !!bookDoc }[k];
+    if (k === 'memo') memo.cur = null;
+    else if (k === 'test') testDoc = null;
+    else if (k === 'stu') stuDocs = null;
+    else if (k === 'book') bookDoc = null;
+    cache[k] = '';
+    if (!had) return;
+    setStatus(k, '조건이 바뀌었습니다. 출제를 다시 누르세요.');
+    const main = $('#main');
+    if (main && tab === k && App.page === 'vocas') {
+      paint(main);
+      $$(`[data-act="${k}-print"]`, main).forEach(b => { b.disabled = true; });
+    }
+  }
+  // 학생 목록이 바뀔 때마다 (입력·체크·추가·복사·삭제·순서·가져오기): 저장 + 이전 출제 버림
+  function slotsChanged() { saveSlots(); stale('stu'); }
 
   /* =========================================================
      학생별 출제
@@ -975,7 +998,7 @@ const Vocas = (() => {
       const next = els.map(el => byId.get(el.dataset.id)).filter(Boolean);
       if (next.length === slots.length && next.some((x, i) => x !== slots[i])) {
         slots = next;
-        saveSlots();
+        slotsChanged();
       }
       els.forEach((el, i) => { const n = $('.vc-slot-no', el); if (n) n.textContent = i + 1; });
     });
@@ -999,7 +1022,7 @@ const Vocas = (() => {
     const k = e.target.dataset.k;
     s[k] = k === 'on' ? e.target.checked : e.target.value;
     if (k === 'book') e.target.classList.toggle('missing', !!s.book && !books.has(s.book));
-    saveSlots();
+    slotsChanged();
     return true;
   }
   async function onSlotClick(btn) {
@@ -1012,13 +1035,13 @@ const Vocas = (() => {
     } else {
       slots.splice(i + 1, 0, newSlot(Object.assign({}, slots[i], { name: '' })));
     }
-    saveSlots();
+    slotsChanged();
     rerender();
   }
   function addSlot() {
     const last = slots[slots.length - 1];
     slots.push(newSlot(last ? { n: last.n, type: last.type } : null));   // 단어장은 '단어장 선택'으로 시작
-    saveSlots();
+    slotsChanged();
     rerender();
     const inputs = $$('#main [data-vc-slots] input[data-k="name"]');
     if (inputs.length) inputs[inputs.length - 1].focus();
@@ -1026,7 +1049,7 @@ const Vocas = (() => {
   function toggleSlots() {
     const all = slots.length && slots.every(s => s.on);
     slots.forEach(s => { s.on = !all; });
-    saveSlots();
+    slotsChanged();
     rerender();
   }
   function runStudents() {
@@ -1066,7 +1089,7 @@ const Vocas = (() => {
       if (!Array.isArray(list)) throw new Error('학생 목록 파일이 아닙니다.');
       if (slots.length && !await confirmDlg('지금 학생 목록을 가져온 목록으로 바꿀까요?', '바꾸기')) return;
       slots = list.map(s => newSlot({ on: !!s.on, name: String(s.name || ''), book: String(s.book || ''), range: String(s.range || ''), n: s.n || 50, type: TYPE_NAMES[s.type] ? s.type : 'ek' }));
-      saveSlots();
+      slotsChanged();
       setStatus('stu', `학생 ${slots.length}명을 가져왔습니다.`);
       rerender();
     } catch (err) {
@@ -1555,9 +1578,9 @@ const Vocas = (() => {
     onInput(e, main) {
       const t = e.target;
       if (onSlotInput(e)) return;
-      if (t.matches('[data-f="tRange"]')) { tf.range = t.value; updateTestHints(main); }
-      else if (t.matches('[data-f="memoRange"]')) memo.range = t.value;
-      else if (t.matches('[data-f="tCount"]')) tf.count = t.value;
+      if (t.matches('[data-f="tRange"]')) { tf.range = t.value; updateTestHints(main); stale('test'); }
+      else if (t.matches('[data-f="memoRange"]')) { memo.range = t.value; stale('memo'); }
+      else if (t.matches('[data-f="tCount"]')) { tf.count = t.value; stale('test'); }
       else if (t.matches('[data-set]')) {
         settings[t.dataset.set] = t.value;
         saveSettings();
@@ -1572,12 +1595,12 @@ const Vocas = (() => {
       if (onSlotInput(e)) return;
       if (t.matches('[data-opt]')) { setOpt(t.dataset.opt, t.checked); return; }
       if (t.matches('[data-f="memoBook"]')) { selectMemoBook(t.value); rerender(); }
-      else if (t.matches('[data-f="memoDay"]')) memo.day = t.value;
-      else if (t.matches('[name="vc-mmode"]')) { if (t.checked) { memo.mode = t.value; rerender(); } }
-      else if (t.matches('[data-f="tBook"]')) { tf.book = t.value; rerender(); }   // 출제 버튼 켜기/끄기와 안내 문구를 함께 갱신
-      else if (t.matches('[name="vc-ttype"]')) { if (t.checked) tf.type = t.value; }
+      else if (t.matches('[data-f="memoDay"]')) { memo.day = t.value; stale('memo'); }
+      else if (t.matches('[name="vc-mmode"]')) { if (t.checked) { memo.mode = t.value; stale('memo'); rerender(); } }
+      else if (t.matches('[data-f="tBook"]')) { tf.book = t.value; stale('test'); rerender(); }   // 출제 버튼 켜기/끄기와 안내 문구를 함께 갱신
+      else if (t.matches('[name="vc-ttype"]')) { if (t.checked) { tf.type = t.value; stale('test'); } }
       else if (t.matches('[data-f="bBook"]')) { bf.book = t.value; resetBook(); setStatus('book', ''); rerender(); }
-      else if (t.matches('[name="vc-btype"]')) { if (t.checked) bf.type = t.value; }
+      else if (t.matches('[name="vc-btype"]')) { if (t.checked) { bf.type = t.value; stale('book'); } }
       else if (t.matches('[name="vc-bmode"]')) { if (t.checked) { bf.mode = t.value; cache.book = ''; rerender(); } }
     },
   };
