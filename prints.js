@@ -246,6 +246,7 @@ const Prints = (() => {
     fields: { academy: '○○영어학원', type: '변형문제', school: '○○고 2학년', book: '천재(이재영) Lesson 3~4', exam: '1학기 중간고사', student: '' },
     nameBlank: true,
     copies: 1,
+    duplexPrinter: true,      // 양면 프린터 사용: 표지 뒤마다 빈 장을 넣어 앞면만 인쇄되게 (시험지·노트 설정과 따로 저장)
   };
 
   let cv = null, logo = null, presets = [];
@@ -254,6 +255,7 @@ const Prints = (() => {
     cv = load(K_CV_STATE, null) || JSON.parse(JSON.stringify(CV_DEFAULT));
     cv.fields = Object.assign({}, CV_DEFAULT.fields, cv.fields || {});
     if (typeof cv.tpl !== 'number' || cv.tpl < 0 || cv.tpl >= CV_NAMES.length) cv.tpl = 0;
+    if (typeof cv.duplexPrinter !== 'boolean') cv.duplexPrinter = true;
     logo = load(K_CV_LOGO, null);
     presets = load(K_CV_PRESETS, []);
     if (!Array.isArray(presets)) presets = [];
@@ -744,7 +746,10 @@ const Prints = (() => {
 
     onChange(e, main) {
       const t = e.target;
-      if (t.matches('[data-cv-blank]')) {
+      if (t.matches('[data-cv-duplex]')) {
+        cv.duplexPrinter = t.checked; saveCv();
+        const h = $('[data-cv-duplex-hint]', main); if (h) h.textContent = this.cvDuplexHint();
+      } else if (t.matches('[data-cv-blank]')) {
         cv.nameBlank = t.checked; saveCv();
         this.cvUpdate(main, false);
       } else if (t.matches('[data-cv-logo-file]')) {
@@ -879,13 +884,18 @@ const Prints = (() => {
           <p class="pr-hint">디자인과 입력한 글자를 함께 저장해요. 마지막 입력 내용은 자동으로 기억돼요.</p>
         </div>
         <div class="pr-sec"><h2>인쇄</h2>
-          <div class="pr-print">
+          <label class="chk pr-chk"><input type="checkbox" data-cv-duplex ${cv.duplexPrinter ? 'checked' : ''}>양면 프린터 사용</label>
+          <p class="pr-hint" data-cv-duplex-hint>${this.cvDuplexHint()}</p>
+          <div class="pr-print" style="margin-top:10px">
             <input type="number" data-cv-copies min="1" max="300" value="${cv.copies || 1}" aria-label="인쇄 매수"${pkOn() ? ' disabled' : ''}>
             <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>${pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${Math.min(300, Math.max(1, +cv.copies || 1))}장)`}</button>
           </div>
-          <div class="pr-note">인쇄 창에서 <b>양면 인쇄는 끄기</b>, <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>로 맞춰 주세요.
+          <div class="pr-note">인쇄 창에서 <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>로 맞춰 주세요. 양면 프린터를 사용할 땐 인쇄 창의 <b>양면 인쇄</b>도 켜져 있어야 해요.
             색이 안 나오면 <b>배경 그래픽</b>을 켜 주세요.</div>
         </div>`;
+    },
+    cvDuplexHint() {
+      return cv.duplexPrinter ? '표지 뒤마다 빈 장을 넣어, 표지는 항상 앞면에만 인쇄돼요.' : '단면 프린터용: 빈 장 없이 표지만 인쇄해요.';
     },
     cvLogoPrevHtml() { return logo ? `<img src="${logo}" alt="학원 로고">` : '로고 없음'; },
     cvPrintLabel(main) {
@@ -1012,18 +1022,21 @@ const Prints = (() => {
       box.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden';
       document.body.appendChild(box);
       const render = (c) => { box.innerHTML = cvPageHTML(cv.tpl, c); fitAll(box); return box.innerHTML; };
-      let html;
+      let pages;
       if (pkOn()) {
         // 반에서 선택: 학생마다 한 장, 이름만 바꿔서
         const list = this.nmPrintList();
         if (!list.length) { box.remove(); return; }
-        html = list.map(s => render(ctx(s.name))).join('');
+        pages = list.map(s => render(ctx(s.name)));
       } else {
         // 직접 입력: 한 장을 매수만큼 복사
-        html = render(ctx()).repeat(cvCopies(main));
+        const one = render(ctx());
+        pages = Array(cvCopies(main)).fill(one);
       }
       box.remove();
-      printPaper(html, `표지_${CV_NAMES[cv.tpl]}`);
+      // 표지는 항상 단면: 양면 프린터면 표지마다 뒤에 빈 장을 넣어 뒷면이 비게 함
+      const blank = '<div class="cv-page"></div>';
+      printPaper(pages.map(pg => cv.duplexPrinter ? pg + blank : pg).join(''), `표지_${CV_NAMES[cv.tpl]}`);
     },
 
     /* ---------- 시험지·노트: 화면 ---------- */
