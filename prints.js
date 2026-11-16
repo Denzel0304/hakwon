@@ -33,8 +33,8 @@ const Prints = (() => {
 .cv-t6 .bk{color:#13294B}
 .cv-t7 .bk{left:64mm;right:22mm;color:#0F6E6B}
 .cv-t8 .bk{color:#1A1A2E}
-.cv-page .name{font-size:5mm;display:flex;align-items:flex-end;gap:3mm}
-.cv-page .name .nv{display:inline-block;min-width:55mm;border-bottom:0.35mm solid currentColor;padding:0 2mm 0.8mm;font-weight:700}
+.cv-page .name{font-size:5mm;display:flex;align-items:flex-end;gap:3mm;margin-left:auto}      /* 이름은 항상 오른쪽 */
+.cv-page .name .nv{display:inline-block;min-width:30mm;border-bottom:0.35mm solid currentColor;padding:0 1.5mm 0.8mm;font-weight:700;text-align:center;white-space:nowrap}   /* 밑줄: 5자 정도, 이름은 가운데 */
 
 /* 1. 클래식 */
 
@@ -75,7 +75,7 @@ const Prints = (() => {
 .cv-t5 .se{margin-top:24mm;justify-content:center}
 .cv-t5 .school{font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
 .cv-t5 .exam{margin-top:6mm;font-size:6.4mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
-.cv-t5 .name{position:absolute;bottom:30mm;left:0;right:0;justify-content:center}
+.cv-t5 .name{position:absolute;bottom:30mm;right:26mm}
 
 /* 6. 사선 */
 .cv-t6 .bands i{position:absolute;width:420mm;transform:rotate(-28deg);transform-origin:50% 50%}
@@ -110,7 +110,7 @@ const Prints = (() => {
 .cv-t7 .school{font-weight:700;font-size:8.4mm;color:#444}
 .cv-t7 .book{margin-top:3mm;font-weight:700;font-size:9mm;line-height:1.35;color:#14171F;word-break:keep-all}
 .cv-t7 .title{margin-top:8mm;font-family:'Black Han Sans',sans-serif;font-size:24mm;line-height:1.05;color:#0F6E6B;white-space:nowrap}
-.cv-t7 .name{position:absolute;bottom:24mm;left:64mm}
+.cv-t7 .name{position:absolute;bottom:24mm;right:22mm}
 
 /* 8. 도형 */
 .cv-t8 .circ i{position:absolute;border-radius:50%;mix-blend-mode:multiply}
