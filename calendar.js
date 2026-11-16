@@ -452,9 +452,9 @@ const DayPage = {
       const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
       const sk = !les && Lessons.isSkipped(c.id, date);
       const roster = Classes.rosterOn(c.id, date);
-      // 출석 = 실제로 온 학생(출석·지각·조퇴), checked = 출결을 입력한 학생
+      // 출석 = 실제로 온 학생(출석·지각·조퇴 + 미리 온 선보강), checked = 출결을 입력한 학생
       const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
-      const came = les ? roster.filter(s => les.att && ['P', 'L', 'E'].includes(les.att[s.id])).length : 0;
+      const came = les ? roster.filter(s => les.att && ['P', 'L', 'E', 'M'].includes(les.att[s.id])).length : 0;
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
         <div class="what">${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>

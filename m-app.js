@@ -228,7 +228,7 @@ const MProgress = {
     return `<div class="m-cnt">${allCls ? '전체 반 ' : ''}${list.length}회</div>` + list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
-      const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}` : '';
+      const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}${n('M') ? ' 보' + n('M') : ''}` : '';
       const tds = this.todosOf(l.id);
       const pg = stripZws(l.progress || '').trim(), hw = stripZws(l.homework || '').trim(), mm = stripZws(l.memo || '').trim();
       let f = `<span class="k">진도</span><div class="pre">${pg ? highlight(pg, q) : ((l.np || []).length || (l.gp || []).length || (l.dist || []).length ? '' : '<span class="muted">-</span>')}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</div>`;
@@ -272,12 +272,12 @@ const MProgress = {
    ========================================================= */
 const MMakeups = {
   tab: 'open', q: '',
-  ST_BADGE: { none: 'gray', plan: '', done: 'green', skip: 'gray' },
+  ST_BADGE: { none: 'gray', plan: '', info: 'gray', done: 'green', skip: 'gray' },
 
   render(main) {
     const all = Makeups.collect().filter(o => !o.fut);
     const cnt = { open: 0, done: 0, all: all.length };
-    all.forEach(o => { if (o.status === 'done') cnt.done++; else cnt.open++; });
+    all.forEach(o => { if (mkDone(o.status)) cnt.done++; else cnt.open++; });
     if (!(this.tab in cnt)) this.tab = 'open';
     main.innerHTML = `<div class="tabs m-tabs4">${[['open', '처리 필요'], ['done', '완료'], ['all', '전체']].map(([k, t]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
       <div class="m-bar">${mSearchHtml(this.q, '학생 이름, 반 이름 검색')}</div>
@@ -287,7 +287,7 @@ const MMakeups = {
 
   filtered(all) {
     const q = this.q.trim();
-    const list = all.filter(o => this.tab === 'all' || (this.tab === 'open' ? ['none', 'plan'].includes(o.status) : o.status === this.tab))
+    const list = all.filter(o => this.tab === 'all' || (this.tab === 'open' ? ['none', 'plan'].includes(o.status) : mkDone(o.status)))   // 완료: 안내 완료 + 보강 완료
       .filter(o => !q || o.s.name.includes(q) || (o.c && o.c.name.includes(q)));
     if (this.tab === 'open') list.sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
     else list.sort((a, b) => ko(b.l.date, a.l.date));
@@ -315,7 +315,7 @@ const MMakeups = {
       f += `<span class="k">숙제</span><div class="pre">${esc(my.hw) || '<span class="muted">입력 전</span>'}</div>`;
       if (my.memo) f += `<span class="k">수업 메모</span><div class="pre">${esc(my.memo)}</div>`;
       if (my.dist.length) f += `<span class="k">배부</span><div>${my.dist.map(([d, i]) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
-      return `<div class="m-card ${o.status === 'done' ? 'm-dim' : ''}">
+      return `<div class="m-card ${mkDone(o.status) ? 'm-dim' : ''}">
         <div class="m-card-hd"><b class="m-who">${highlight(o.s.name, q)}</b><span class="tag">${esc(stTag(o.s))}</span>
           ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
           <span class="m-grow"></span><span class="badge ${this.ST_BADGE[o.status] || 'gray'}">${MK_STATUS[o.status] || '미지정'}</span></div>

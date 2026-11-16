@@ -556,6 +556,10 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .att-seg button.on.L { background: var(--warn); color: #fff; }
 .att-seg button.on.A { background: var(--danger); color: #fff; }
 .att-seg button.on.E { background: var(--early); color: #fff; }
+.att-seg button.on.M { background: #12898B; color: #fff; }
+.att-row:has(.att-mkpre) { flex-wrap: wrap; row-gap: 4px; }
+.att-mkpre { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.att-mkpre input[type=date] { padding: 2px 4px; font-size: 12.5px; }
 .att-sum { display: flex; gap: 12px; font-size: 13.5px; color: var(--ink-soft); }
 .lesson-field + .lesson-field { margin-top: 12px; }
 .lesson-field > label { display: block; font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
@@ -599,6 +603,8 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .tbl.ab td.ab-c.L { color: var(--warn); background: var(--warn-soft); }
 .tbl.ab td.ab-c.A { color: var(--danger); background: var(--danger-soft); }
 .tbl.ab td.ab-c.E { color: var(--early); background: var(--early-soft); }
+.tbl.ab td.ab-c.M { color: #12898B; background: #E2F4F4; }
+.tbl.ab td.ab-c .mkok { font-size: 10px; color: var(--ok); margin-left: 1px; }
 .tbl.ab th.ab-d { min-width: 30px; }
 .tbl.ab th.ab-d.offday { color: var(--ink-mute); font-weight: 500; }
 .tbl.ab th.ab-d.reg { background: var(--accent-soft); color: var(--accent-ink); }
