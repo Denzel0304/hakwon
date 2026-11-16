@@ -24,6 +24,15 @@ const Prints = (() => {
 .cv-page .lg{display:block;object-fit:contain}
 .cv-page .se{display:flex;align-items:center;flex-wrap:wrap;gap:2mm 5mm}
 .cv-page .se > *{margin:0 !important}
+/* 뒷표지: 디자인만 남기고 하단 가운데에 로고 + 학원명(앞표지 학원명의 약 2배) */
+.cv-page .bk{position:absolute;left:20mm;right:20mm;bottom:24mm;display:flex;align-items:center;justify-content:center;gap:4mm;font-weight:700;font-size:19.8mm;line-height:1.2}
+.cv-page .bk .bt{width:auto;max-width:100%;min-width:0;overflow:hidden}
+.cv-page .bk .lg{flex:none;max-height:22mm;max-width:50mm}
+.cv-t2 .bk{color:#111}
+.cv-t5 .bk{bottom:32mm;left:26mm;right:26mm;font-family:'Noto Serif KR',serif;font-size:19mm;letter-spacing:2.4mm}
+.cv-t6 .bk{color:#13294B}
+.cv-t7 .bk{left:64mm;right:22mm;color:#0F6E6B}
+.cv-t8 .bk{color:#1A1A2E}
 .cv-page .name{font-size:5mm;display:flex;align-items:flex-end;gap:3mm}
 .cv-page .name .nv{display:inline-block;min-width:55mm;border-bottom:0.35mm solid currentColor;padding:0 2mm 0.8mm;font-weight:700}
 
@@ -284,6 +293,23 @@ const Prints = (() => {
 
   ];
   const cvPageHTML = (i, c) => `<div class="cv-page cv-t${CV_KEEP[i]}">${CV_TPL[i](c)}</div>`;
+
+  // 뒷표지: 앞표지(CV_TPL)와 같은 순서·같은 디자인에서 글자를 모두 빼고, 하단 가운데에 로고 + 학원명만
+  const backAc = (c) => (c.logo || c.v.academy) ? `<div class="bk">${c.logo}${w(c.v.academy, `<span class="bt fit">${c.v.academy}</span>`)}</div>` : '';
+  const CV_BACK = [
+    // 1 블록
+    c => `<div class="block"><div class="deco fit-v">CINDY ENGLISH</div></div><div class="bar"></div>${backAc(c)}`,
+    // 2 아카데미
+    c => `<div class="frame"></div><div class="frame2"></div>
+      ${['tl', 'tr', 'bl', 'br'].map(p => `<i class="orn ${p}"></i>`).join('')}${backAc(c)}`,
+    // 3 사선
+    c => `<div class="bands"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>${backAc(c)}`,
+    // 4 인덱스
+    c => `<div class="side"><div class="vt fit-v">CINDY ENGLISH</div></div><div class="tabx"><i></i><i></i><i></i></div>${backAc(c)}`,
+    // 5 도형
+    c => `<div class="circ"><i class="c1"></i><i class="c2"></i><i class="c3"></i></div>${backAc(c)}`,
+  ];
+  const cvBackHTML = (i, c) => `<div class="cv-page cv-t${CV_KEEP[i]} cv-back">${CV_BACK[i](c)}</div>`;
 
   // 긴 글자는 칸에 맞게 줄임 (원본과 같은 방식)
   function fitAll(root) {
@@ -792,6 +818,7 @@ const Prints = (() => {
             <input type="number" data-cv-copies min="1" max="300" value="${cv.copies || 1}" aria-label="인쇄 매수"${pkOn() ? ' disabled' : ''}>
             <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>${pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${Math.min(300, Math.max(1, +cv.copies || 1))}장)`}</button>
           </div>
+          <p class="pr-hint">앞표지를 모두 인쇄한 뒤, 뒷표지(디자인 + 학원명)가 같은 수만큼 이어서 나와요.</p>
           <div class="pr-note">인쇄 창에서 <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>로 맞춰 주세요. 양면 프린터를 사용할 땐 인쇄 창의 <b>양면 인쇄</b>도 켜져 있어야 해요.
             색이 안 나오면 <b>배경 그래픽</b>을 켜 주세요.</div>
         </div>`;
@@ -924,7 +951,7 @@ const Prints = (() => {
       box.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden';
       document.body.appendChild(box);
       const render = (c) => { box.innerHTML = cvPageHTML(cv.tpl, c); fitAll(box); return box.innerHTML; };
-      let pages;
+      let pages;                                      // 앞표지들
       if (pkOn()) {
         // 반에서 선택: 학생마다 한 장, 이름만 바꿔서
         const list = this.nmPrintList();
@@ -935,6 +962,10 @@ const Prints = (() => {
         const one = render(ctx());
         pages = Array(cvCopies(main)).fill(one);
       }
+      // 뒷표지: 앞표지를 모두 찍은 뒤, 같은 수만큼 이어서 (이름이 없어 모두 같음)
+      box.innerHTML = cvBackHTML(cv.tpl, ctx()); fitAll(box);
+      const back = box.innerHTML;
+      pages = pages.concat(Array(pages.length).fill(back));
       box.remove();
       // 표지는 항상 단면: 양면 프린터면 표지마다 뒤에 빈 장을 넣어 뒷면이 비게 함
       const blank = '<div class="cv-page"></div>';
