@@ -85,7 +85,7 @@ const Prints = (() => {
 
 /* 7. 인덱스 */
 .cv-t7 .side{position:absolute;top:0;bottom:0;left:0;width:48mm;background:#0F6E6B;display:flex;flex-direction:column;align-items:center;padding:24mm 0 18mm}
-.cv-t7 .vt{writing-mode:vertical-rl;white-space:nowrap;font-family:'Archivo Black',sans-serif;font-size:15mm;color:transparent;-webkit-text-stroke:0.35mm #fff;letter-spacing:2mm}
+.cv-t7 .vt{writing-mode:vertical-rl;white-space:nowrap;max-height:220mm;height:220mm;overflow:hidden;font-family:'Archivo Black',sans-serif;font-size:15mm;color:transparent;-webkit-text-stroke:0.35mm #fff;letter-spacing:2mm}
 .cv-t7 .sbrand{margin-top:auto;background:#fff;border-radius:3mm;padding:2.5mm;display:flex}
 .cv-t7 .sbrand:empty{display:none}
 .cv-t7 .lg{max-width:30mm;max-height:16mm}
@@ -98,7 +98,7 @@ const Prints = (() => {
 .cv-t7 .grp{margin-top:auto}
 .cv-t7 .se{margin-bottom:14mm}
 .cv-t7 .exam{margin-top:3mm;font-size:8.4mm;color:#0F6E6B;font-weight:700}
-.cv-t7 .school{font-size:8.4mm;color:#444}
+.cv-t7 .school{font-weight:700;font-size:8.4mm;color:#444}
 .cv-t7 .book{margin-top:3mm;font-weight:700;font-size:9mm;line-height:1.35;color:#14171F;word-break:keep-all}
 .cv-t7 .title{margin-top:8mm;font-family:'Black Han Sans',sans-serif;font-size:24mm;line-height:1.05;color:#0F6E6B;white-space:nowrap}
 .cv-t7 .name{position:absolute;bottom:24mm;left:64mm}
@@ -110,10 +110,10 @@ const Prints = (() => {
 .cv-t8 .c3{width:82mm;height:82mm;top:-6mm;left:142mm;background:#22B8A7}
 .cv-t8 .main{position:absolute;top:158mm;left:20mm;right:20mm}
 .cv-t8 .se{margin-bottom:0}
-.cv-t8 .school{font-size:10.5mm;color:#555;margin-bottom:4mm}
+.cv-t8 .school{font-weight:700;font-size:10.5mm;color:#555;margin-bottom:4mm}
 .cv-t8 .title{margin-top:6mm;font-weight:700;font-size:21mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
 .cv-t8 .book{margin-top:14mm;font-weight:500;font-size:8.5mm;line-height:1.35;color:#1A1A2E}
-.cv-t8 .exam{display:inline-block;font-size:6.7mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
+.cv-t8 .exam{display:inline-block;font-size:8.7mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
 .cv-t8 .foot{position:absolute;left:20mm;right:20mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
 .cv-t8 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
 .cv-t8 .lg{max-height:13mm;max-width:40mm}
@@ -261,7 +261,7 @@ const Prints = (() => {
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
     // 4 인덱스 (원래 7)
-    c => `<div class="side"><div class="vt">ENGLISH</div><div class="sbrand">${c.logo}</div></div>
+    c => `<div class="side"><div class="vt fit-v">CINDY ENGLISH</div><div class="sbrand">${c.logo}</div></div>
       <div class="tabx"><i></i><i></i><i></i></div>
       <div class="main">
         ${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}
