@@ -424,12 +424,12 @@ const DayPage = {
     const end14 = addDaysStr(date, 14);
     const upcoming = Store.all('events').filter(ev => isYmd(ev.date) && ev.date > date && ev.date <= end14)
       .sort((a, b) => ko(a.date, b.date) || ko(a.start, b.start));
-    // 일정 첫날까지 남은 날 (오늘 기준): N일 전 / 오늘 / 진행 중 (이미 끝난 일정은 표시 안 함)
+    // 일정 첫날까지 남은 날 (보고 있는 날짜 기준): N일 전 / 오늘(다른 날짜면 당일) / 진행 중 (이미 끝난 일정은 표시 안 함)
     const dLeft = (ev) => {
-      const n = Math.round((parseYmd(ev.date) - parseYmd(today)) / 864e5);
+      const n = Math.round((parseYmd(ev.date) - parseYmd(date)) / 864e5);
       if (n > 0) return ` <span class="badge gray">${n}일 전</span>`;
-      if (n === 0) return ' <span class="badge orange">오늘</span>';
-      return evEnd(ev) >= today ? ' <span class="badge orange">진행 중</span>' : '';
+      if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
+      return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
     };
     const evRow = (ev, dl) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
       <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
