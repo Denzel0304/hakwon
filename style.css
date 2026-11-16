@@ -1099,6 +1099,24 @@ body.theme-gray {
 .pr-presets .pn small { color: var(--ink-mute); }
 .pr-presets .none { color: var(--ink-mute); font-size: 13px; }
 .pr-print { display: flex; gap: 8px; align-items: center; }
+.pr-print input[type=number]:disabled { opacity: .45; cursor: not-allowed; }
+/* 학생 이름: 직접 입력 / 반에서 선택 */
+.pr-nm-mode { display: flex; gap: 16px; margin-bottom: 10px; font-size: 14.5px; }
+.pr-nm-mode label.chk { display: flex; align-items: center; }
+.pr-fld select, .pr-fld input[type=date] { width: 100%; }
+.pr-fld .pr-inline input[type=date] { width: auto; flex: 1; }
+.pr-hint + .pr-fld { margin-top: 12px; }
+.pr-nm-list { border: 1px solid var(--line); border-radius: 8px; background: var(--tint-strong); font-size: 14px; }
+.pr-nm-list .none { padding: 10px 12px; color: var(--ink-mute); font-size: 13px; }
+.pr-nm-list label.chk { display: flex; align-items: center; padding: 4px 10px; }
+.pr-nm-list label.chk small { margin-left: 6px; color: var(--ink-mute); font-size: 12px; }
+.pr-nm-all { font-weight: 700; color: var(--accent-ink); border-bottom: 1px solid var(--line); padding: 7px 10px !important; }
+.pr-nm-stus { max-height: 220px; overflow-y: auto; padding: 4px 0; }
+.pr-nm-picked { margin-top: 8px; font-size: 13px; }
+.pr-nm-picked .none { color: var(--ink-mute); }
+.pr-nm-ph { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pr-nm-ph b { color: var(--accent-ink); }
+.pr-nm-names { margin-top: 4px; color: var(--ink-soft); line-height: 1.55; max-height: 72px; overflow-y: auto; overflow-wrap: anywhere; }
 .pr-print input[type=number] { width: 84px; text-align: center; }
 .pr-print .btn { flex: 1; padding: 9px 14px; }
 .pr-note {

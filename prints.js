@@ -205,6 +205,7 @@ const Prints = (() => {
 .pn-sheet .pn-fields{display:flex;gap:7mm;font-size:10.5pt;color:var(--pn-ink-soft)}
 .pn-sheet .pn-field{display:flex;align-items:flex-end;gap:2mm}
 .pn-sheet .pn-blank{display:inline-block;border-bottom:0.3mm solid var(--pn-line);height:5mm}
+.pn-sheet .pn-blank.pn-val{color:var(--pn-ink);font-weight:700;text-align:center;line-height:5mm;white-space:nowrap;overflow:hidden}
 .pn-sheet .pn-secs{flex:1;display:flex;flex-direction:column;gap:6mm;min-height:0}
 .pn-sheet .pn-sec{display:flex;flex-direction:column;min-height:0}
 .pn-sheet .pn-tagrow{height:8mm;flex-shrink:0;display:flex;align-items:flex-start}
@@ -260,13 +261,15 @@ const Prints = (() => {
   const saveCv = () => save(K_CV_STATE, cv);
 
   const w = (cond, html) => cond ? html : '';
-  function ctx() {
+  // studentName: 반에서 고른 학생 이름으로 바꿔 그릴 때 (undefined 면 입력칸 값 그대로)
+  function ctx(studentName) {
     const v = {};
     CV_FIELDS.forEach(k => v[k] = esc((cv.fields[k] || '').trim()));
+    if (studentName !== undefined) v.student = esc(String(studentName || '').trim());
     return {
       v,
       logo: logo ? `<img class="lg" src="${logo}" alt="">` : '',
-      showName: !!v.student || !!cv.nameBlank,
+      showName: studentName !== undefined ? true : (!!v.student || !!cv.nameBlank),
     };
   }
   function nameBlock(c) {
@@ -425,6 +428,31 @@ const Prints = (() => {
   }
 
   /* =========================================================
+     학생 이름: 직접 입력 / 반에서 선택 (표지·시험지·노트 탭이 함께 씀)
+     · 반에서 선택: 여러 반을 오가며 체크한 학생이 누적됨. 학생 수만큼 한 장씩, 이름만 바꿔 인쇄
+     · 앱을 켜 둔 동안만 기억 (저장하지 않음)
+     ========================================================= */
+  const pick = { mode: 'manual', classId: '', sel: [] };     // sel: 고른 순서대로 학생 id
+  const isActiveStu = (s) => s && s.status !== 'pause' && s.status !== 'left';
+  function pkClasses() {
+    return Classes.sorted(Store.all('classes').filter(c => c.active !== false));
+  }
+  // 오늘 기준 그 반의 재원생
+  function pkRoster(classId) {
+    return classId ? Classes.rosterAt(classId, todayStr()).filter(isActiveStu) : [];
+  }
+  // 고른 학생 중 지금도 있는 학생만 (지워진 학생은 빼고)
+  function pkStudents() {
+    return pick.sel.map(id => Store.get('students', id)).filter(Boolean);
+  }
+  const pkOn = () => pick.mode === 'class';
+  // 미리보기 제목 뒤에 붙는 글자: " · 홍길동 외 3명"
+  function pkSuffix() {
+    const list = pkOn() ? pkStudents() : [];
+    return list.length ? ` · ${list[0].name}${list.length > 1 ? ` 외 ${list.length - 1}명` : ''}` : '';
+  }
+
+  /* =========================================================
      시험지·노트
      ========================================================= */
   // 양식 정의 (새 양식은 여기에 추가)
@@ -439,7 +467,7 @@ const Prints = (() => {
   function loadPn() {
     if (pn) return;
     // 양식·출력 모드·부수는 원본처럼 저장하지 않음 (앱을 켜 둔 동안만 기억). 학원명은 표지 탭과 함께 씀
-    pn = { template: 'reading', gap: 8, gridGap: 5, duplexPrinter: true, mode: 'single', copies: '' };
+    pn = { template: 'reading', gap: 8, gridGap: 5, duplexPrinter: true, mode: 'single', copies: '', name: '', date: '' };
     const saved = load(K_PN, null);
     if (saved) {
       if (typeof saved.gap === 'number' && saved.gap >= 6 && saved.gap <= 12) pn.gap = saved.gap;
@@ -450,12 +478,20 @@ const Prints = (() => {
   const savePn = () => save(K_PN, { gap: pn.gap, gridGap: pn.gridGap, duplexPrinter: pn.duplexPrinter });
   const pnAcademy = () => cv.fields.academy || '';
 
-  function pnSheetHTML(tpl) {
+  // 2026-11-16 → 2026. 11. 16.
+  const pnDateText = (d) => isYmd(d) ? `${d.slice(0, 4)}. ${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '';
+  // 미리보기·썸네일에 넣을 이름 (반에서 선택이면 첫 학생)
+  function pnShownName() {
+    if (pkOn()) { const s = pkStudents()[0]; return s ? s.name : ''; }
+    return (pn.name || '').trim();
+  }
+  function pnSheetHTML(tpl, nameText = pnShownName()) {
+    const dt = pnDateText(pn.date), nm = String(nameText || '').trim();
     let h = `<div class="pn-sheet"><div class="pn-head">
         <div class="pn-academy">${esc(pnAcademy())}</div>
         <div class="pn-fields">
-          <span class="pn-field">날짜<span class="pn-blank" style="width:30mm"></span></span>
-          <span class="pn-field">이름<span class="pn-blank" style="width:38mm"></span></span>
+          <span class="pn-field">날짜<span class="pn-blank${dt ? ' pn-val' : ''}" data-pn-dt style="width:30mm">${esc(dt)}</span></span>
+          <span class="pn-field">이름<span class="pn-blank${nm ? ' pn-val' : ''}" data-pn-nm style="width:38mm">${esc(nm)}</span></span>
         </div>
       </div><div class="pn-secs">`;
     tpl.sections.forEach(sec => {
@@ -597,6 +633,8 @@ const Prints = (() => {
             <div class="pr-gallery" data-gallery role="listbox" aria-label="${cover ? '표지 디자인' : '양식'}"></div>
           </section>
         </div>`;
+      const nmAll = $('[data-nm-all]', main);
+      if (nmAll) nmAll.indeterminate = nmAll.hasAttribute('data-indet');
       main.onclick = (e) => this.onClick(e, main);
       main.oninput = (e) => this.onInput(e, main);
       main.onchange = (e) => this.onChange(e, main);
@@ -664,6 +702,12 @@ const Prints = (() => {
       else if (a === 'preset-del') this.cvDelPreset(main, +b.dataset.i);
       else if (a === 'cv-print') this.cvPrint(main);
       else if (a === 'pn-print') this.pnPrint(main);
+      else if (a === 'nm-clear') { pick.sel = []; this.nmRefresh(main, true); }
+      else if (a === 'pn-date-clear') {
+        pn.date = '';
+        const d = $('[data-pn-date]', main); if (d) d.value = '';
+        this.pnNameUpdate(main);
+      }
     },
 
     onInput(e, main) {
@@ -689,6 +733,12 @@ const Prints = (() => {
         this.pnRefill(main); savePn();
       } else if (t.matches('[data-pn-copies]')) {
         pn.copies = t.value;
+      } else if (t.matches('[data-pn-name]')) {
+        pn.name = t.value;
+        this.pnNameUpdate(main);
+      } else if (t.matches('[data-pn-date]')) {
+        pn.date = isYmd(t.value) ? t.value : '';
+        this.pnNameUpdate(main);
       }
     },
 
@@ -703,15 +753,112 @@ const Prints = (() => {
         pn.duplexPrinter = t.checked; savePn(); this.pnSyncMode(main);
       } else if (t.matches('[name="pn-mode"]')) {
         if (t.checked) { pn.mode = t.value; this.pnSyncMode(main); }
+      } else if (t.matches('[name="pr-nm-mode"]')) {
+        if (t.checked) this.nmSetMode(main, t.value);
+      } else if (t.matches('[data-nm-class]')) {
+        pick.classId = t.value;
+        const l = $('[data-nm-list]', main); if (l) l.innerHTML = '';     // 새 반은 목록 맨 위부터
+        this.nmRefresh(main, true);
+      } else if (t.matches('[data-nm-all]')) {
+        this.nmToggle(main, pkRoster(pick.classId).map(s => s.id), t.checked);
+        this.nmRefresh(main, true);
+      } else if (t.matches('[data-nm-stu]')) {
+        this.nmToggle(main, [t.dataset.nmStu], t.checked);
+        this.nmRefresh(main, true);
       }
+    },
+
+    /* ---------- 학생 이름 (표지·시험지·노트 공통) ---------- */
+    // 틀: 방식 고르기 + 내용 칸(data-nm-body)
+    nmSecHtml() {
+      return `<div class="pr-sec" data-nm-sec><h2>학생 이름</h2>
+          <div class="pr-nm-mode" role="radiogroup" aria-label="학생 이름 넣는 방식">
+            <label class="chk"><input type="radio" name="pr-nm-mode" value="manual" ${pkOn() ? '' : 'checked'}>직접 입력</label>
+            <label class="chk"><input type="radio" name="pr-nm-mode" value="class" ${pkOn() ? 'checked' : ''}>반에서 선택</label>
+          </div>
+          <div data-nm-body>${this.nmBodyHtml()}</div>
+        </div>`;
+    },
+    nmBodyHtml() {
+      const cover = this.tab === 'cover';
+      if (!pkOn()) {
+        return cover
+          ? `${fld('student')}
+            <label class="chk pr-chk"><input type="checkbox" data-cv-blank ${cv.nameBlank ? 'checked' : ''}>이름을 비워 두면 쓰는 칸으로 표시</label>`
+          : `<label class="pr-fld"><span>학생 이름</span><input type="text" data-pn-name value="${esc(pn.name)}" placeholder="비워 두면 빈 줄로 나와요" maxlength="20" autocomplete="off"></label>`;
+      }
+      const cls = pkClasses();
+      if (pick.classId && !cls.some(c => c.id === pick.classId)) pick.classId = '';
+      return `<label class="pr-fld"><span>반</span>
+          <select data-nm-class>
+            <option value="">반을 고르세요</option>
+            ${cls.map(c => `<option value="${esc(c.id)}"${c.id === pick.classId ? ' selected' : ''}>${esc(c.name)} (${pkRoster(c.id).length}명)</option>`).join('')}
+          </select></label>
+        <div class="pr-nm-list" data-nm-list>${this.nmListHtml()}</div>
+        <div class="pr-nm-picked" data-nm-picked>${this.nmPickedHtml()}</div>
+        <p class="pr-hint">다른 반을 골라도 체크한 학생은 그대로 남아요. 고른 학생 수만큼 한 장씩, 이름만 바뀌어 인쇄돼요.</p>`;
+    },
+    nmListHtml() {
+      if (!pick.classId) return '<div class="none">반을 고르면 학생 목록이 나와요.</div>';
+      const ros = pkRoster(pick.classId);
+      if (!ros.length) return '<div class="none">이 반에는 재원생이 없어요.</div>';
+      const on = new Set(pick.sel);
+      const all = ros.every(s => on.has(s.id)), some = ros.some(s => on.has(s.id));
+      return `<label class="chk pr-nm-all"><input type="checkbox" data-nm-all ${all ? 'checked' : ''}${!all && some ? ' data-indet' : ''}>반 전체 선택</label>
+        <div class="pr-nm-stus">${ros.map(s =>
+          `<label class="chk"><input type="checkbox" data-nm-stu="${esc(s.id)}" ${on.has(s.id) ? 'checked' : ''}>${esc(s.name)}${stTag(s) ? ` <small>${esc(stTag(s))}</small>` : ''}</label>`).join('')}</div>`;
+    },
+    nmPickedHtml() {
+      const list = pkStudents();
+      if (!list.length) return '<span class="none">고른 학생: 없음</span>';
+      return `<div class="pr-nm-ph"><b>고른 학생 ${list.length}명</b><button type="button" class="btn sm" data-act="nm-clear">모두 해제</button></div>
+        <div class="pr-nm-names">${list.map(s => esc(s.name)).join(', ')}</div>`;
+    },
+    // 학생 목록·고른 학생·인쇄 버튼·미리보기를 다시 맞춤
+    nmRefresh(main, listToo) {
+      if (listToo) {
+        const l = $('[data-nm-list]', main);
+        if (l) {
+          const box = $('.pr-nm-stus', l), top = box ? box.scrollTop : 0;    // 체크할 때 목록이 위로 튀지 않게
+          l.innerHTML = this.nmListHtml();
+          const nb = $('.pr-nm-stus', l); if (nb) nb.scrollTop = top;
+        }
+      }
+      const all = $('[data-nm-all]', main);
+      if (all) all.indeterminate = all.hasAttribute('data-indet');
+      const p = $('[data-nm-picked]', main);
+      if (p) p.innerHTML = this.nmPickedHtml();
+      if (this.tab === 'cover') { this.cvPrintLabel(main); this.cvUpdate(main, false); }
+      else { this.pnPrintLabel(main); this.pnNameUpdate(main); }
+    },
+    // 직접 입력 ↔ 반에서 선택
+    nmSetMode(main, mode) {
+      pick.mode = mode === 'class' ? 'class' : 'manual';
+      const b = $('[data-nm-body]', main);
+      if (b) b.innerHTML = this.nmBodyHtml();
+      this.nmRefresh(main, false);
+    },
+    nmToggle(main, ids, on) {
+      const cur = new Set(pick.sel);
+      ids.forEach(id => {
+        if (on && !cur.has(id)) { pick.sel.push(id); cur.add(id); }
+        else if (!on && cur.has(id)) cur.delete(id);
+      });
+      if (!on) pick.sel = pick.sel.filter(id => cur.has(id));
+    },
+    // 반에서 선택 모드에서 인쇄할 학생 (없으면 안내)
+    nmPrintList() {
+      const list = pkStudents();
+      if (!list.length) toast('인쇄할 학생을 선택하세요.');
+      return list;
     },
 
     /* ---------- 표지: 화면 ---------- */
     cvSideHtml() {
       return `<div class="pr-sec"><h2>글자</h2>
-          ${CV_FIELDS.map(fld).join('')}
-          <label class="chk pr-chk"><input type="checkbox" data-cv-blank ${cv.nameBlank ? 'checked' : ''}>이름을 비워 두면 쓰는 칸으로 표시</label>
+          ${CV_FIELDS.filter(k => k !== 'student').map(fld).join('')}
         </div>
+        ${this.nmSecHtml()}
         <div class="pr-sec"><h2>로고</h2>
           <div class="pr-logo">
             <div class="pr-logo-prev" data-cv-logo-prev>${this.cvLogoPrevHtml()}</div>
@@ -733,8 +880,8 @@ const Prints = (() => {
         </div>
         <div class="pr-sec"><h2>인쇄</h2>
           <div class="pr-print">
-            <input type="number" data-cv-copies min="1" max="300" value="${cv.copies || 1}" aria-label="인쇄 매수">
-            <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>인쇄하기 (${Math.min(300, Math.max(1, +cv.copies || 1))}장)</button>
+            <input type="number" data-cv-copies min="1" max="300" value="${cv.copies || 1}" aria-label="인쇄 매수"${pkOn() ? ' disabled' : ''}>
+            <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>${pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${Math.min(300, Math.max(1, +cv.copies || 1))}장)`}</button>
           </div>
           <div class="pr-note">인쇄 창에서 <b>양면 인쇄는 끄기</b>, <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>로 맞춰 주세요.
             색이 안 나오면 <b>배경 그래픽</b>을 켜 주세요.</div>
@@ -743,19 +890,27 @@ const Prints = (() => {
     cvLogoPrevHtml() { return logo ? `<img src="${logo}" alt="학원 로고">` : '로고 없음'; },
     cvPrintLabel(main) {
       const b = $('[data-cv-print-btn]', main);
-      if (b) b.textContent = `인쇄하기 (${cvCopies(main)}장)`;
+      if (b) b.textContent = pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${cvCopies(main)}장)`;
+      const inp = $('[data-cv-copies]', main);
+      if (inp) inp.disabled = pkOn();
+    },
+    // 반에서 선택이면 첫 학생 이름으로 보여 줌
+    cvCtx() {
+      if (!pkOn()) return ctx();
+      const s = pkStudents()[0];
+      return ctx(s ? s.name : '');
     },
     cvPreview(main) {
       const sc = $('[data-scaler]', main);
-      sc.innerHTML = cvPageHTML(cv.tpl, ctx());
-      $('[data-stage-name]', main).textContent = `${cv.tpl + 1}. ${CV_NAMES[cv.tpl]}`;
+      sc.innerHTML = cvPageHTML(cv.tpl, this.cvCtx());
+      $('[data-stage-name]', main).textContent = `${cv.tpl + 1}. ${CV_NAMES[cv.tpl]}` + pkSuffix();
       fitAll(sc);
       this.scale();
     },
     cvGallery(main) {
       const g = $('[data-gallery]', main);
       if (!g) return;
-      const c = ctx();
+      const c = this.cvCtx();
       g.innerHTML = CV_NAMES.map((nm, i) =>
         `<button type="button" class="pr-thumb${i === cv.tpl ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${i === cv.tpl}">
           <div class="tw">${cvPageHTML(i, c)}</div><span class="tl">${i + 1}. ${nm}</span></button>`).join('');
@@ -852,16 +1007,23 @@ const Prints = (() => {
 
     /* ---------- 표지: 인쇄 ---------- */
     cvPrint(main) {
-      const n = cvCopies(main);
-      // 실제 크기로 한 장을 그려 글자 줄임을 계산한 뒤, 그 결과를 매수만큼 복사
+      // 실제 크기로 그려 글자 줄임을 계산한 뒤 인쇄
       const box = document.createElement('div');
       box.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden';
       document.body.appendChild(box);
-      box.innerHTML = cvPageHTML(cv.tpl, ctx());
-      fitAll(box);
-      const one = box.innerHTML;
+      const render = (c) => { box.innerHTML = cvPageHTML(cv.tpl, c); fitAll(box); return box.innerHTML; };
+      let html;
+      if (pkOn()) {
+        // 반에서 선택: 학생마다 한 장, 이름만 바꿔서
+        const list = this.nmPrintList();
+        if (!list.length) { box.remove(); return; }
+        html = list.map(s => render(ctx(s.name))).join('');
+      } else {
+        // 직접 입력: 한 장을 매수만큼 복사
+        html = render(ctx()).repeat(cvCopies(main));
+      }
       box.remove();
-      printPaper(one.repeat(n), `표지_${CV_NAMES[cv.tpl]}`);
+      printPaper(html, `표지_${CV_NAMES[cv.tpl]}`);
     },
 
     /* ---------- 시험지·노트: 화면 ---------- */
@@ -869,7 +1031,11 @@ const Prints = (() => {
       return `<div class="pr-sec"><h2>글자</h2>
           <label class="pr-fld"><span>학원명</span><input type="text" data-pn-academy value="${esc(pnAcademy())}" placeholder="학원명을 입력하세요" maxlength="40" autocomplete="off"></label>
           <p class="pr-hint">표지 탭의 학원명과 같은 값이에요.</p>
+          <label class="pr-fld"><span>날짜 (선택)</span>
+            <div class="pr-inline"><input type="date" data-pn-date value="${esc(pn.date)}" aria-label="날짜"><button type="button" class="btn sm" data-act="pn-date-clear">지우기</button></div></label>
+          <p class="pr-hint">비워 두면 날짜 칸이 빈 줄로 나와요.</p>
         </div>
+        ${this.nmSecHtml()}
         <div class="pr-sec"><h2>간격</h2>
           <div class="pr-fld" data-pn-gap-fld><span>줄 간격</span>
             <div class="pr-range"><input type="range" data-pn-gap min="6" max="12" step="0.5" value="${pn.gap}" aria-label="줄 간격"><output data-pn-gap-out>${pn.gap.toFixed(1)}mm</output></div></div>
@@ -885,8 +1051,8 @@ const Prints = (() => {
             <p class="pr-hint" data-pn-mode-hint></p>
           </div>
           <div class="pr-print">
-            <input type="number" data-pn-copies min="1" max="500" step="1" value="${esc(pn.copies)}" placeholder="부수" aria-label="출력 부수">
-            <button type="button" class="btn primary" data-act="pn-print">출력</button>
+            <input type="number" data-pn-copies min="1" max="500" step="1" value="${esc(pn.copies)}" placeholder="부수" aria-label="출력 부수"${pkOn() ? ' disabled' : ''}>
+            <button type="button" class="btn primary" data-act="pn-print" data-pn-print-btn>${pkOn() ? `출력 (${pkStudents().length}명)` : '출력'}</button>
           </div>
           <div class="pr-note">인쇄창에서 배율은 <b>기본값(100%)</b>으로 두세요. 양면 프린터를 사용할 땐 인쇄창의 <b>양면 인쇄</b>도 켜져 있어야 해요.</div>
         </div>`;
@@ -900,7 +1066,7 @@ const Prints = (() => {
       $('[data-pn-grid-fld]', main).classList.toggle('is-off', !hasGrid);
       const sc = $('[data-scaler]', main);
       sc.innerHTML = pnSheetHTML(tpl);
-      $('[data-stage-name]', main).textContent = tpl.name;
+      $('[data-stage-name]', main).textContent = tpl.name + pkSuffix();
       this.scale();
       this.pnRefill(main, false, true);
     },
@@ -922,6 +1088,20 @@ const Prints = (() => {
           <div class="tw">${pnSheetHTML(PN_TEMPLATES[k])}</div><span class="tl">${esc(PN_TEMPLATES[k].name)}</span></button>`).join('');
       $$('.pn-sheet', g).forEach(fillLines);
     },
+    pnPrintLabel(main) {
+      const b = $('[data-pn-print-btn]', main);
+      if (b) b.textContent = pkOn() ? `출력 (${pkStudents().length}명)` : '출력';
+      const inp = $('[data-pn-copies]', main);
+      if (inp) inp.disabled = pkOn();
+    },
+    // 날짜·이름 칸만 바꿈 (줄 위치는 그대로) + 썸네일은 잠깐 뒤에
+    pnNameUpdate(main) {
+      const set = (el, txt) => { if (!el) return; el.textContent = txt; el.classList.toggle('pn-val', !!txt); };
+      set($('[data-scaler] [data-pn-dt]', main), pnDateText(pn.date));
+      set($('[data-scaler] [data-pn-nm]', main), pnShownName());
+      $('[data-stage-name]', main).textContent = PN_TEMPLATES[pn.template].name + pkSuffix();
+      this.pnGalleryLater(main);
+    },
     pnGalleryLater(main) {
       clearTimeout(galleryT);
       galleryT = setTimeout(() => { if (main.contains($('[data-gallery]', main))) this.pnGallery(main); }, 200);
@@ -940,18 +1120,34 @@ const Prints = (() => {
 
     /* ---------- 시험지·노트: 인쇄 ---------- */
     pnPrint(main) {
-      const inp = $('[data-pn-copies]', main);
-      if (inp.value.trim() === '') { toast('출력 부수를 입력하세요.'); inp.focus(); return; }
-      const n = pnReadCopies(inp.value);
-      if (n === null) { toast('출력 부수는 1에서 500 사이로 입력하세요.'); inp.focus(); return; }
+      // 반에서 선택: 학생마다 한 장씩(이름만 바꿈) / 직접 입력: 부수만큼
+      let names = null, n;
+      if (pkOn()) {
+        const list = this.nmPrintList();
+        if (!list.length) return;
+        names = list.map(s => s.name);
+        n = names.length;
+      } else {
+        const inp = $('[data-pn-copies]', main);
+        if (inp.value.trim() === '') { toast('출력 부수를 입력하세요.'); inp.focus(); return; }
+        n = pnReadCopies(inp.value);
+        if (n === null) { toast('출력 부수는 1에서 500 사이로 입력하세요.'); inp.focus(); return; }
+      }
       const sheet = $('[data-scaler] > .pn-sheet', main);
       if (!sheet) return;
       fillLines(sheet);
       const master = sheet.cloneNode(true);
       master.style.transform = '';
-      const one = master.outerHTML, blank = '<div class="pn-sheet"></div>';
+      const blank = '<div class="pn-sheet"></div>';
+      const sheetFor = (name) => {
+        const nm = master.querySelector('[data-pn-nm]');
+        if (nm) { nm.textContent = name; nm.classList.toggle('pn-val', !!name); }
+        return master.outerHTML;
+      };
+      const fixed = names ? '' : master.outerHTML;
       let h = '';
       for (let i = 0; i < n; i++) {
+        const one = names ? sheetFor(names[i]) : fixed;
         h += one;
         if (pn.mode === 'double') h += one;            // 앞뒤 같은 양식
         else if (pn.duplexPrinter) h += blank;         // 양면 프린터에서 단면 출력: 뒷면은 빈 장
