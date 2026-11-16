@@ -1061,6 +1061,7 @@ body.theme-gray {
    종이(표지·시험지·노트) 색은 prints.js 안에 고정되어 테마와 상관없이 원본과 같게 인쇄됨
    ========================================================= */
 .pr-wrap { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+#main[data-page="prints"] { padding-bottom: 20px; }   /* 미리보기 아래 끝을 사이드바 맨 아래 선에 맞추므로 아래 여백은 작게 */
 @media (max-width: 1100px) { .pr-wrap { grid-template-columns: 1fr; } }
 .panel.pr-side { padding: 4px 20px 16px; }
 .pr-sec { padding: 14px 0; border-top: 1px solid var(--line); }

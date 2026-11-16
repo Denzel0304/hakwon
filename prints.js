@@ -26,33 +26,19 @@ const Prints = (() => {
 .cv-page .name .nv{display:inline-block;min-width:55mm;border-bottom:0.35mm solid currentColor;padding:0 2mm 0.8mm;font-weight:700}
 
 /* 1. 클래식 */
-.cv-t1{color:#1B2A4A}
-.cv-t1 .frame{position:absolute;inset:12mm;border:0.7mm solid #1B2A4A}
-.cv-t1 .frame2{position:absolute;inset:14.5mm;border:0.25mm solid #1B2A4A}
-.cv-t1 .top{position:absolute;top:32mm;left:25mm;right:25mm;display:flex;flex-direction:column;align-items:center;gap:4mm;text-align:center}
-.cv-t1 .lg{max-height:18mm;max-width:60mm}
-.cv-t1 .academy{font-family:'Noto Serif KR',serif;font-weight:700;font-size:5.4mm;letter-spacing:0.8mm}
-.cv-t1 .mid{position:absolute;top:92mm;left:25mm;right:25mm;display:flex;flex-direction:column;align-items:center;text-align:center}
-.cv-t1 .school{font-size:5mm;letter-spacing:0.5mm;color:#4A5878;margin-bottom:7mm}
-.cv-t1 .title{font-family:'Noto Serif KR',serif;font-weight:900;font-size:27mm;line-height:1.15}
-.cv-t1 .rule{width:28mm;height:0.6mm;background:#B08D57;margin:10mm 0}
-.cv-t1 .book{font-family:'Noto Serif KR',serif;font-weight:700;font-size:8mm}
-.cv-t1 .exam{margin-top:9mm;padding:2mm 7mm;border:0.3mm solid #1B2A4A;border-radius:10mm;font-size:4.6mm}
-.cv-t1 .eng{position:absolute;bottom:62mm;left:0;right:0;text-align:center;font-family:'Playfair Display',serif;font-style:italic;font-size:8mm;color:#B08D57}
-.cv-t1 .name{position:absolute;bottom:33mm;left:0;right:0;justify-content:center}
 
 /* 2. 블록 */
 .cv-t2 .block{position:absolute;left:0;right:0;top:0;height:178mm;background:#F5C518;padding:22mm 20mm 18mm;display:flex;flex-direction:column}
-.cv-t2 .school{align-self:flex-start;font-weight:700;font-size:5.6mm;border:0.6mm solid #111;padding:1.6mm 4.5mm}
+.cv-t2 .school{align-self:flex-start;font-weight:700;font-size:7.8mm;border:0.6mm solid #111;padding:1.6mm 4.5mm}
 .cv-t2 .ttx{margin-top:auto;padding-right:16mm}
-.cv-t2 .exam{font-weight:700;font-size:6.5mm;margin-bottom:3mm}
-.cv-t2 .title{font-family:'Black Han Sans',sans-serif;font-size:46mm;line-height:1;color:#111}
+.cv-t2 .exam{font-weight:700;font-size:9.1mm;margin-bottom:3mm}
+.cv-t2 .title{font-family:'Black Han Sans',sans-serif;font-size:34.5mm;line-height:1;color:#111}
 .cv-t2 .deco{position:absolute;right:9mm;top:20mm;writing-mode:vertical-rl;font-family:'Archivo Black',sans-serif;font-size:15mm;color:transparent;-webkit-text-stroke:0.35mm #111;letter-spacing:1mm}
 .cv-t2 .bar{position:absolute;left:0;right:0;top:178mm;height:4mm;background:#111}
 .cv-t2 .lower{position:absolute;top:182mm;left:20mm;right:20mm;bottom:20mm;display:flex;flex-direction:column;padding-top:16mm}
 .cv-t2 .book{font-weight:700;font-size:10mm;line-height:1.35;border-left:2.2mm solid #111;padding-left:5mm}
 .cv-t2 .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
-.cv-t2 .brand{margin-left:auto;display:flex;align-items:center;gap:3mm;font-weight:700;font-size:5.2mm}
+.cv-t2 .brand{margin-left:auto;display:flex;align-items:center;gap:3mm;font-weight:700;font-size:7.3mm}
 .cv-t2 .lg{max-height:13mm;max-width:40mm}
 
 /* 3. 노트 */
@@ -60,33 +46,18 @@ const Prints = (() => {
 .cv-t3 .mgn{position:absolute;top:0;bottom:0;left:31mm;width:0.45mm;background:#E79C9C}
 .cv-t3 .holes{position:absolute;left:9mm;top:22mm;bottom:22mm;display:flex;flex-direction:column;justify-content:space-between}
 .cv-t3 .holes i{display:block;width:6.5mm;height:6.5mm;border-radius:50%;background:#DDE3EA;box-shadow:inset 0.5mm 0.6mm 0.8mm rgba(0,0,0,.25)}
-.cv-t3 .acad{position:absolute;top:16mm;right:18mm;display:flex;align-items:center;gap:3mm;font-family:'Gowun Dodum',sans-serif;font-size:5mm;color:#2C3E66;background:#fff;padding:1mm 2mm}
+.cv-t3 .acad{position:absolute;top:16mm;right:18mm;display:flex;align-items:center;gap:3mm;font-family:'Gowun Dodum',sans-serif;font-size:7mm;color:#2C3E66;background:#fff;padding:1mm 2mm}
 .cv-t3 .lg{max-height:11mm;max-width:36mm}
 .cv-t3 .tape{position:absolute;top:58mm;left:44mm;right:20mm;background:#FFE587;padding:11mm 10mm 9mm;transform:rotate(-2deg);box-shadow:0 1.2mm 2.5mm rgba(0,0,0,.14)}
 .cv-t3 .tape::before{content:"";position:absolute;top:-4mm;left:50%;width:30mm;height:9mm;margin-left:-15mm;background:rgba(255,255,255,.6);transform:rotate(3deg)}
-.cv-t3 .school{font-family:'Gowun Dodum',sans-serif;font-size:5.5mm;color:#5A4A12;margin-bottom:2mm}
-.cv-t3 .title{font-family:'Nanum Pen Script',cursive;font-size:36mm;line-height:1;color:#1E3A8A}
+.cv-t3 .school{font-family:'Gowun Dodum',sans-serif;font-size:7.7mm;color:#5A4A12;margin-bottom:2mm}
+.cv-t3 .title{font-family:'Nanum Pen Script',cursive;font-size:27mm;line-height:1;color:#1E3A8A}
 .cv-t3 .body{position:absolute;top:148mm;left:44mm;right:20mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48}
 .cv-t3 .book{font-size:8mm;line-height:18mm}
-.cv-t3 .exam{font-family:'Nanum Pen Script',cursive;font-size:12mm;line-height:18mm;color:#C2362B}
+.cv-t3 .exam{font-family:'Nanum Pen Script',cursive;font-size:16.8mm;line-height:25.2mm;color:#C2362B}
 .cv-t3 .name{position:absolute;bottom:28mm;left:44mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48;background:#fff;padding:1mm 2mm}
 
 /* 4. 스위스 */
-.cv-t4 .grid i{position:absolute;top:0;bottom:0;width:0.2mm;background:#E5E5E5}
-.cv-t4 .grid i:nth-child(1){left:70mm}
-.cv-t4 .grid i:nth-child(2){left:140mm}
-.cv-t4 .head{position:absolute;top:16mm;left:16mm;right:16mm;display:flex;justify-content:space-between;align-items:center;padding-bottom:4mm;border-bottom:0.5mm solid #111;min-height:12mm}
-.cv-t4 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:5mm}
-.cv-t4 .lg{max-height:10mm;max-width:36mm}
-.cv-t4 .exam{font-size:4.6mm;font-weight:500}
-.cv-t4 .aa{position:absolute;top:26mm;left:12mm;font-family:'Archivo Black',sans-serif;font-size:122mm;line-height:1;color:#E4322B;letter-spacing:-4mm}
-.cv-t4 .main{position:absolute;top:158mm;left:16mm;right:16mm}
-.cv-t4 .title{font-weight:700;font-size:24mm;line-height:1.1;letter-spacing:-0.6mm;margin-bottom:10mm}
-.cv-t4 .row{display:grid;grid-template-columns:30mm 1fr;padding:3.5mm 0;border-top:0.3mm solid #111;font-size:5.6mm}
-.cv-t4 .row .k{color:#777;font-size:4.2mm;padding-top:1mm}
-.cv-t4 .row .val{font-weight:700}
-.cv-t4 .name{position:absolute;bottom:20mm;left:16mm}
-.cv-t4 .sq{position:absolute;right:16mm;bottom:16mm;width:24mm;height:24mm;background:#E4322B}
 
 /* 5. 아카데미 */
 .cv-t5{background:#1D3A2E;color:#EFE5CD}
@@ -99,15 +70,15 @@ const Prints = (() => {
 .cv-t5 .crest{width:34mm;height:34mm;border-radius:50%;background:#EFE5CD;border:0.6mm solid #C8A55A;box-shadow:0 0 0 1.6mm #1D3A2E,0 0 0 1.9mm #C8A55A;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .cv-t5 .crest .lg{max-width:24mm;max-height:24mm}
 .cv-t5 .ini{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;font-size:18mm;color:#1D3A2E}
-.cv-t5 .academy{margin-top:7mm;font-family:'Noto Serif KR',serif;font-weight:700;font-size:5mm;letter-spacing:1.2mm}
+.cv-t5 .academy{margin-top:7mm;font-family:'Noto Serif KR',serif;font-weight:700;font-size:7mm;letter-spacing:1.2mm}
 .cv-t5 .eng{margin-top:22mm;font-family:'Playfair Display',serif;font-style:italic;font-size:9mm;color:#C8A55A}
-.cv-t5 .title{margin-top:3mm;font-family:'Noto Serif KR',serif;font-weight:900;font-size:24mm;line-height:1.15}
+.cv-t5 .title{margin-top:3mm;font-family:'Noto Serif KR',serif;font-weight:900;font-size:18mm;line-height:1.15}
 .cv-t5 .rule{display:flex;align-items:center;gap:3mm;margin:9mm 0;width:60mm}
 .cv-t5 .rule::before,.cv-t5 .rule::after{content:"";flex:1;height:0.25mm;background:#C8A55A}
 .cv-t5 .rule b{width:2.6mm;height:2.6mm;background:#C8A55A;transform:rotate(45deg)}
 .cv-t5 .book{font-family:'Noto Serif KR',serif;font-weight:700;font-size:7.5mm}
-.cv-t5 .school{margin-top:5mm;font-size:4.8mm;letter-spacing:0.5mm;color:#D9CBA6}
-.cv-t5 .exam{margin-top:7mm;font-size:4.6mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
+.cv-t5 .school{margin-top:5mm;font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
+.cv-t5 .exam{margin-top:7mm;font-size:6.4mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
 .cv-t5 .name{position:absolute;bottom:30mm;left:0;right:0;justify-content:center}
 
 /* 6. 사선 */
@@ -116,17 +87,17 @@ const Prints = (() => {
 .cv-t6 .b2{top:70mm;right:-160mm;height:11mm;background:#FF6B57}
 .cv-t6 .b3{top:86mm;right:-150mm;height:4mm;background:#7FB7E8}
 .cv-t6 .main{position:absolute;top:132mm;left:20mm;right:20mm}
-.cv-t6 .school{display:inline-block;background:#FF6B57;color:#fff;font-weight:700;font-size:5.4mm;padding:1.8mm 5mm;margin-bottom:6mm}
-.cv-t6 .title{font-family:'Do Hyeon',sans-serif;font-size:42mm;line-height:1.05;color:#13294B}
+.cv-t6 .school{display:inline-block;background:#FF6B57;color:#fff;font-weight:700;font-size:7.6mm;padding:1.8mm 5mm;margin-bottom:6mm}
+.cv-t6 .title{font-family:'Do Hyeon',sans-serif;font-size:31.5mm;line-height:1.05;color:#13294B}
 .cv-t6 .book{margin-top:8mm;font-weight:700;font-size:9mm;line-height:1.35;color:#13294B}
-.cv-t6 .exam{margin-top:5mm;font-size:5.4mm;color:#4C5D7D}
+.cv-t6 .exam{margin-top:5mm;font-size:7.6mm;color:#4C5D7D}
 .cv-t6 .foot{position:absolute;left:20mm;right:20mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;color:#13294B}
-.cv-t6 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:5.2mm}
+.cv-t6 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:7.3mm}
 .cv-t6 .lg{max-height:13mm;max-width:40mm}
 
 /* 7. 인덱스 */
 .cv-t7 .side{position:absolute;top:0;bottom:0;left:0;width:48mm;background:#0F6E6B;display:flex;flex-direction:column;align-items:center;padding:24mm 0 18mm}
-.cv-t7 .vt{writing-mode:vertical-rl;height:200mm;white-space:nowrap;font-family:'Black Han Sans',sans-serif;font-size:30mm;color:#fff;letter-spacing:2mm;text-align:start}
+.cv-t7 .vt{writing-mode:vertical-rl;height:200mm;white-space:nowrap;font-family:'Black Han Sans',sans-serif;font-size:22.5mm;color:#fff;letter-spacing:2mm;text-align:start}
 .cv-t7 .sbrand{margin-top:auto;background:#fff;border-radius:3mm;padding:2.5mm;display:flex}
 .cv-t7 .sbrand:empty{display:none}
 .cv-t7 .lg{max-width:30mm;max-height:16mm}
@@ -135,9 +106,9 @@ const Prints = (() => {
 .cv-t7 .tabx i:nth-child(2){background:#4AA3A0}
 .cv-t7 .tabx i:nth-child(3){background:#A7D3D1}
 .cv-t7 .main{position:absolute;top:30mm;left:64mm;right:22mm;bottom:50mm;display:flex;flex-direction:column}
-.cv-t7 .academy{font-weight:700;font-size:5.2mm;color:#0F6E6B;padding-bottom:5mm;border-bottom:0.4mm solid #0F6E6B}
-.cv-t7 .exam{margin-top:auto;font-size:5.4mm;color:#0F6E6B;font-weight:700}
-.cv-t7 .school{margin-top:3mm;font-size:6mm;color:#444}
+.cv-t7 .academy{font-weight:700;font-size:7.3mm;color:#0F6E6B;padding-bottom:5mm;border-bottom:0.4mm solid #0F6E6B}
+.cv-t7 .exam{margin-top:auto;font-size:7.6mm;color:#0F6E6B;font-weight:700}
+.cv-t7 .school{margin-top:3mm;font-size:8.4mm;color:#444}
 .cv-t7 .book{margin-top:6mm;font-weight:700;font-size:15mm;line-height:1.2;letter-spacing:-0.4mm;color:#14171F;word-break:keep-all}
 .cv-t7 .name{position:absolute;bottom:24mm;left:64mm}
 
@@ -147,47 +118,17 @@ const Prints = (() => {
 .cv-t8 .c2{width:104mm;height:104mm;top:36mm;left:70mm;background:#FF9147}
 .cv-t8 .c3{width:82mm;height:82mm;top:-6mm;left:142mm;background:#22B8A7}
 .cv-t8 .main{position:absolute;top:166mm;left:20mm;right:20mm}
-.cv-t8 .school{font-size:5.6mm;color:#555;margin-bottom:4mm}
-.cv-t8 .title{font-weight:700;font-size:28mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
+.cv-t8 .school{font-size:7.8mm;color:#555;margin-bottom:4mm}
+.cv-t8 .title{font-weight:700;font-size:21mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
 .cv-t8 .book{margin-top:8mm;font-weight:500;font-size:8.5mm;line-height:1.35;color:#1A1A2E}
-.cv-t8 .exam{display:inline-block;margin-top:6mm;font-size:4.8mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
+.cv-t8 .exam{display:inline-block;margin-top:6mm;font-size:6.7mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
 .cv-t8 .foot{position:absolute;left:20mm;right:20mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
-.cv-t8 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:5.2mm}
+.cv-t8 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:7.3mm}
 .cv-t8 .lg{max-height:13mm;max-width:40mm}
 
 /* 9. 시험지 */
-.cv-t9{font-family:'Nanum Myeongjo',serif}
-.cv-t9 .hd{position:absolute;top:16mm;left:16mm;right:16mm;text-align:center}
-.cv-t9 .exam{font-size:5.4mm;margin-bottom:3mm;letter-spacing:0.6mm}
-.cv-t9 .title{font-weight:800;font-size:20mm;line-height:1.2;letter-spacing:2mm}
-.cv-t9 .dbl{margin-top:5mm;border-top:1.4mm solid #111;padding-top:0.8mm}
-.cv-t9 .dbl::after{content:"";display:block;border-top:0.3mm solid #111}
-.cv-t9 .tb{margin:5mm auto 0;border-collapse:collapse;font-size:4.8mm}
-.cv-t9 .tb th{border:0.3mm solid #111;padding:2mm 4mm;font-weight:800;background:#F1F1F1;white-space:nowrap}
-.cv-t9 .tb td{border:0.3mm solid #111;padding:2mm 5mm;min-width:44mm;text-align:left}
-.cv-t9 .tb td.nm{min-width:50mm}
-.cv-t9 .cl{position:absolute;top:90mm;bottom:34mm;left:50%;width:0.3mm;background:#111}
-.cv-t9 .box{position:absolute;top:150mm;left:30mm;right:30mm;display:flex;justify-content:center}
-.cv-t9 .bk{background:#fff;border:0.5mm solid #111;padding:6mm 9mm;font-weight:800;font-size:8mm;line-height:1.4;text-align:center;box-shadow:1.6mm 1.6mm 0 #111}
-.cv-t9 .ft{position:absolute;left:16mm;right:16mm;bottom:16mm;border-top:0.3mm solid #111;padding-top:4mm;display:flex;justify-content:center;align-items:center;gap:3mm;font-size:5mm;font-weight:800;min-height:10mm}
-.cv-t9 .lg{max-height:10mm;max-width:34mm}
 
 /* 10. 사전 */
-.cv-t10{background:#F3F5F9;color:#17233D}
-.cv-t10 .run{position:absolute;top:14mm;left:18mm;right:30mm;display:flex;justify-content:space-between;font-size:4.4mm;color:#5B6680;border-bottom:0.3mm solid #9AA4BA;padding-bottom:3mm;min-height:9mm}
-.cv-t10 .idx{position:absolute;top:14mm;bottom:14mm;right:0;width:10mm;display:flex;flex-direction:column}
-.cv-t10 .idx i{flex:1;display:flex;align-items:center;justify-content:center;font-style:normal;font-family:'Playfair Display',serif;font-size:3.6mm;color:#8B95AB;border-bottom:0.2mm solid #DCE1EA}
-.cv-t10 .idx i.on{background:#17233D;color:#fff;font-size:5mm;font-weight:700}
-.cv-t10 .entry{position:absolute;top:78mm;left:18mm;right:30mm}
-.cv-t10 .hw{font-family:'Noto Serif KR',serif;font-weight:900;font-size:26mm;line-height:1.15}
-.cv-t10 .meta{margin-top:4mm;display:flex;gap:4mm;align-items:baseline;font-size:6mm}
-.cv-t10 .ph{color:#5B6680}
-.cv-t10 .pos{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;color:#D2483A}
-.cv-t10 .defs{margin:10mm 0 0;padding-left:9mm;font-size:7.5mm;line-height:1.5}
-.cv-t10 .defs li{padding-left:2mm;margin-bottom:2mm}
-.cv-t10 .ex{margin-top:12mm;padding-left:5mm;border-left:0.8mm solid #D2483A;font-family:'Playfair Display',serif;font-style:italic;font-size:6.5mm;color:#5B6680}
-.cv-t10 .foot{position:absolute;left:18mm;right:30mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
-.cv-t10 .lg{max-height:13mm;max-width:40mm}
 /* ================= 시험지·노트 (A4) ================= */
 .pn-sheet{
   --pn-line:#c4ced8; --pn-frame:#cfd6dc; --pn-tag-bg:#e7eee5; --pn-tag-ink:#4c5f4d; --pn-ink:#3d4950; --pn-ink-soft:#7d8a92;
@@ -240,9 +181,17 @@ const Prints = (() => {
     academy: ['학원명', ''], type: ['교재 종류', '예: 변형문제, 워크북'], school: ['학교 · 학년', '예: ○○고 2학년'],
     book: ['교재명 · 범위', '예: 천재(이재영) Lesson 3~4'], exam: ['시험 구분', '예: 1학기 중간고사'], student: ['학생 이름', ''],
   };
-  const CV_NAMES = ['클래식', '블록', '노트', '스위스', '아카데미', '사선', '인덱스', '도형', '시험지', '사전'];
+  // 남긴 표지: 원래 번호 2·3·5·6·7·8 (1 클래식·4 스위스·9 시험지·10 사전은 삭제) → 화면에는 1~6 으로 다시 번호
+  const CV_KEEP = [2, 3, 5, 6, 7, 8];                 // 원래 번호 (CSS 클래스 cv-t번호 와 저장값 tk 에 씀)
+  const CV_NAMES = ['블록', '노트', '아카데미', '사선', '인덱스', '도형'];
+  // 저장값 → 지금 목록의 순번. tk(원래 번호)가 있으면 그걸로, 없으면 예전 순번(tpl, 10개 시절)으로 판단. 지운 표지면 첫 번째로
+  function cvTplIdx(o) {
+    const tk = (o && typeof o.tk === 'number') ? o.tk : (o && typeof o.tpl === 'number') ? o.tpl + 1 : 0;
+    const i = CV_KEEP.indexOf(tk);
+    return i < 0 ? 0 : i;
+  }
   const CV_DEFAULT = {
-    tpl: 0,
+    tpl: 0, tk: 2,
     fields: { academy: '○○영어학원', type: '변형문제', school: '○○고 2학년', book: '천재(이재영) Lesson 3~4', exam: '1학기 중간고사', student: '' },
     nameBlank: true,
     copies: 1,
@@ -254,11 +203,12 @@ const Prints = (() => {
     if (cv) return;
     cv = load(K_CV_STATE, null) || JSON.parse(JSON.stringify(CV_DEFAULT));
     cv.fields = Object.assign({}, CV_DEFAULT.fields, cv.fields || {});
-    if (typeof cv.tpl !== 'number' || cv.tpl < 0 || cv.tpl >= CV_NAMES.length) cv.tpl = 0;
+    cv.tpl = cvTplIdx(cv); cv.tk = CV_KEEP[cv.tpl];
     if (typeof cv.duplexPrinter !== 'boolean') cv.duplexPrinter = true;
     logo = load(K_CV_LOGO, null);
     presets = load(K_CV_PRESETS, []);
     if (!Array.isArray(presets)) presets = [];
+    presets.forEach(p => { if (p) { p.tpl = cvTplIdx(p); p.tk = CV_KEEP[p.tpl]; } });
   }
   const saveCv = () => save(K_CV_STATE, cv);
 
@@ -282,20 +232,7 @@ const Prints = (() => {
   }
 
   const CV_TPL = [
-    // 1 클래식
-    c => `<div class="frame"></div><div class="frame2"></div>
-      <div class="top">${c.logo}${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}</div>
-      <div class="mid">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        <div class="rule"></div>
-        ${w(c.v.book, `<div class="book fit">${c.v.book}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
-      </div>
-      <div class="eng">English</div>
-      ${nameBlock(c)}`,
-
-    // 2 블록
+    // 1 블록 (원래 2)
     c => `<div class="block">
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
         <div class="ttx">
@@ -310,7 +247,7 @@ const Prints = (() => {
         <div class="foot">${nameBlock(c)}${brand(c)}</div>
       </div>`,
 
-    // 3 노트
+    // 2 노트 (원래 3)
     c => `<div class="lines"></div><div class="mgn"></div>
       <div class="holes">${'<i></i>'.repeat(11)}</div>
       ${(c.logo || c.v.academy) ? `<div class="acad">${c.logo}${w(c.v.academy, `<span>${c.v.academy}</span>`)}</div>` : ''}
@@ -324,18 +261,7 @@ const Prints = (() => {
       </div>
       ${nameBlock(c)}`,
 
-    // 4 스위스
-    c => `<div class="grid"><i></i><i></i></div>
-      <div class="head">${brand(c) || '<span></span>'}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>
-      <div class="aa">Aa</div>
-      <div class="main">
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        ${w(c.v.school, `<div class="row"><span class="k">학교</span><span class="val">${c.v.school}</span></div>`)}
-        ${w(c.v.book, `<div class="row"><span class="k">범위</span><span class="val">${c.v.book}</span></div>`)}
-      </div>
-      ${nameBlock(c)}<div class="sq"></div>`,
-
-    // 5 아카데미
+    // 3 아카데미 (원래 5)
     c => `<div class="frame"></div><div class="frame2"></div>
       ${['tl', 'tr', 'bl', 'br'].map(p => `<i class="orn ${p}"></i>`).join('')}
       <div class="col">
@@ -350,7 +276,7 @@ const Prints = (() => {
       </div>
       ${nameBlock(c)}`,
 
-    // 6 사선
+    // 4 사선 (원래 6)
     c => `<div class="bands"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
       <div class="main">
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
@@ -360,7 +286,7 @@ const Prints = (() => {
       </div>
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
-    // 7 인덱스
+    // 5 인덱스 (원래 7)
     c => `<div class="side"><div class="vt fit-v">${c.v.type}</div><div class="sbrand">${c.logo}</div></div>
       <div class="tabx"><i></i><i></i><i></i></div>
       <div class="main">
@@ -371,7 +297,7 @@ const Prints = (() => {
       </div>
       ${nameBlock(c)}`,
 
-    // 8 도형
+    // 6 도형 (원래 8)
     c => `<div class="circ"><i class="c1"></i><i class="c2"></i><i class="c3"></i></div>
       <div class="main">
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
@@ -381,32 +307,8 @@ const Prints = (() => {
       </div>
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
-    // 9 시험지
-    c => `<div class="hd">
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        <div class="dbl"></div>
-        ${(c.v.school || c.showName) ? `<table class="tb"><tr>
-          ${w(c.v.school, `<th>학교</th><td>${c.v.school}</td>`)}
-          ${c.showName ? `<th>이름</th><td class="nm">${c.v.student}</td>` : ''}
-        </tr></table>` : ''}
-      </div>
-      <div class="cl"></div>
-      ${w(c.v.book, `<div class="box"><div class="bk">${c.v.book}</div></div>`)}
-      <div class="ft">${c.logo}${w(c.v.academy, `<span>${c.v.academy}</span>`)}</div>`,
-
-    // 10 사전
-    c => `<div class="run"><span>${c.v.academy}</span><span>${c.v.exam}</span></div>
-      <div class="idx">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<i class="${l === 'E' ? 'on' : ''}">${l}</i>`).join('')}</div>
-      <div class="entry">
-        ${w(c.v.type, `<div class="hw fit">${c.v.type}</div>`)}
-        <div class="meta">${w(c.v.school, `<span class="ph">[${c.v.school}]</span>`)}<span class="pos">n.</span></div>
-        ${c.v.book ? `<ol class="defs"><li>${c.v.book}</li></ol>` : ''}
-        <div class="ex">Practice makes perfect.</div>
-      </div>
-      <div class="foot">${c.logo || '<span></span>'}${nameBlock(c)}</div>`,
   ];
-  const cvPageHTML = (i, c) => `<div class="cv-page cv-t${i + 1}">${CV_TPL[i](c)}</div>`;
+  const cvPageHTML = (i, c) => `<div class="cv-page cv-t${CV_KEEP[i]}">${CV_TPL[i](c)}</div>`;
 
   // 긴 글자는 칸에 맞게 줄임 (원본과 같은 방식)
   function fitAll(root) {
@@ -612,7 +514,7 @@ const Prints = (() => {
   /* =========================================================
      화면
      ========================================================= */
-  let ro = null, galleryT = null;
+  let ro = null, roGal = null, galleryT = null, fitResizeOn = false;
   const fld = (k) => {
     const [label, ph] = CV_LABELS[k];
     return `<label class="pr-fld"><span>${label}</span><input type="text" data-cv="${k}" value="${esc(cv.fields[k] || '')}"${ph ? ` placeholder="${esc(ph)}"` : ''} autocomplete="off"></label>`;
@@ -649,10 +551,35 @@ const Prints = (() => {
       // 미리보기 크기를 화면에 맞춤
       if (!ro && window.ResizeObserver) ro = new ResizeObserver(() => this.scale());
       if (ro) { ro.disconnect(); ro.observe($('[data-stage]', main)); }
+      // 미리보기 틀 아래 끝을 왼쪽 사이드바 맨 아래 구분선(동기화 표시 위 선)에 맞춤
+      if (!roGal && window.ResizeObserver) roGal = new ResizeObserver(() => this.fitView());
+      if (roGal) { roGal.disconnect(); roGal.observe($('[data-gallery]', main)); }
+      if (!fitResizeOn) { fitResizeOn = true; window.addEventListener('resize', debounce(() => this.fitView(), 100)); }
+      this.fitView();
+    },
+
+    // 미리보기(큰 그림 + 아래 썸네일 줄) 전체 높이를 화면 아래 끝선에 맞춤. 왼쪽 설정이 길어져도 미리보기는 그대로
+    fitView() {
+      const main = $('#main');
+      if (App.page !== 'prints' || !main) return;
+      const wrap = $('.pr-wrap', main), view = $('.pr-view', main);
+      const stage = view && $('[data-stage]', view), gal = view && $('[data-gallery]', view);
+      if (!stage || !gal) return;
+      // 화면이 좁아 설정·미리보기가 위아래로 쌓이면 원래 높이(CSS) 그대로
+      if (getComputedStyle(wrap).gridTemplateColumns.trim().split(/\s+/).length < 2) { stage.style.height = ''; stage.style.minHeight = ''; return; }
+      let bottom = window.innerHeight;
+      const bar = $('#sync-bar');
+      if (bar) { const r = bar.getBoundingClientRect(); if (r.height && r.top > 0 && r.top < bottom) bottom = r.top; }
+      const top = view.getBoundingClientRect().top + main.scrollTop;      // 맨 위로 올렸을 때의 위치
+      const vb = parseFloat(getComputedStyle(view).borderTopWidth) + parseFloat(getComputedStyle(view).borderBottomWidth);
+      const h = Math.max(300, Math.floor(bottom - top - gal.offsetHeight - vb));
+      stage.style.minHeight = '0';
+      stage.style.height = h + 'px';
     },
 
     onLeave() {
       if (ro) ro.disconnect();
+      if (roGal) roGal.disconnect();
       clearTimeout(galleryT);
     },
 
@@ -685,7 +612,7 @@ const Prints = (() => {
       if (tb) { if (this.tab !== tb.dataset.tab) { this.tab = tb.dataset.tab; App.render(); } return; }
       const th = e.target.closest('.pr-thumb');
       if (th) {
-        if (this.tab === 'cover') { cv.tpl = +th.dataset.i; saveCv(); }
+        if (this.tab === 'cover') { cv.tpl = +th.dataset.i; cv.tk = CV_KEEP[cv.tpl]; saveCv(); }
         else pn.template = th.dataset.k;
         $$('.pr-thumb', main).forEach(t => {
           const on = t === th;
@@ -986,7 +913,7 @@ const Prints = (() => {
       const inp = $('[data-cv-preset-name]', main);
       const name = inp.value.trim();
       if (!name) { inp.focus(); return; }
-      const item = { name, tpl: cv.tpl, fields: Object.assign({}, cv.fields), nameBlank: !!cv.nameBlank };
+      const item = { name, tpl: cv.tpl, tk: CV_KEEP[cv.tpl], fields: Object.assign({}, cv.fields), nameBlank: !!cv.nameBlank };
       const idx = presets.findIndex(p => p.name === name);
       if (idx >= 0) {
         if (!await confirmDlg(`‘${name}’ 조합이 이미 있어요. 덮어쓸까요?`, '덮어쓰기')) return;
@@ -1000,7 +927,7 @@ const Prints = (() => {
     cvLoadPreset(i) {
       const p = presets[i];
       if (!p) return;
-      cv.tpl = (typeof p.tpl === 'number' && p.tpl >= 0 && p.tpl < CV_NAMES.length) ? p.tpl : 0;
+      cv.tpl = cvTplIdx(p); cv.tk = CV_KEEP[cv.tpl];
       cv.fields = Object.assign({}, CV_DEFAULT.fields, p.fields);
       cv.nameBlank = !!p.nameBlank;
       saveCv();
