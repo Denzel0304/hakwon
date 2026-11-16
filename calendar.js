@@ -424,8 +424,15 @@ const DayPage = {
     const end14 = addDaysStr(date, 14);
     const upcoming = Store.all('events').filter(ev => isYmd(ev.date) && ev.date > date && ev.date <= end14)
       .sort((a, b) => ko(a.date, b.date) || ko(a.start, b.start));
-    const evRow = (ev) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
-      <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
+    // 일정 첫날까지 남은 날 (오늘 기준): N일 전 / 오늘 / 진행 중 (이미 끝난 일정은 표시 안 함)
+    const dLeft = (ev) => {
+      const n = Math.round((parseYmd(ev.date) - parseYmd(today)) / 864e5);
+      if (n > 0) return ` <span class="badge gray">${n}일 전</span>`;
+      if (n === 0) return ' <span class="badge orange">오늘</span>';
+      return evEnd(ev) >= today ? ' <span class="badge orange">진행 중</span>' : '';
+    };
+    const evRow = (ev, dl) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
+      <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
 
     let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
       <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
@@ -438,10 +445,10 @@ const DayPage = {
     // 화면이 좁아 한 열이 되면 --o 순서(다가오는 일정 → 시험 일정 → 일정 → 수업 → 할일 → 밀린 할일)로 보인다.
     // 다가오는 일정 · 시험 일정 · 일정은 있을 때만 표시
     const tops = [];
-    if (o.exam.length) tops.push(`<div class="panel" style="--o:2"><h2>시험 일정</h2><div class="list">${o.exam.map(evRow).join('')}</div></div>`);
+    if (o.exam.length) tops.push(`<div class="panel" style="--o:2"><h2>시험 일정</h2><div class="list">${o.exam.map(ev => evRow(ev, true)).join('')}</div></div>`);
     if (evs.length) tops.push(`<div class="panel" style="--o:3"><h2>일정</h2><div class="list">${evs.map(evRow).join('')}</div></div>`);
     const upHtml = !upcoming.length ? '' : `<div class="panel" style="--o:1"><h2>다가오는 일정 <span class="sub">2주</span></h2><div class="list">${upcoming.map(ev => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : `${fmtMD(ev.date)} ${esc(ev.start || '')}`}</span>
-        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`;
+        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${dLeft(ev)}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`;
 
     const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
     const hol = Holidays.name(date);           // 공휴일: 수업 목록을 흐리게 + 안내 (일지는 눌러서 쓸 수 있음)
