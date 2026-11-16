@@ -557,9 +557,12 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .att-seg button.on.A { background: var(--danger); color: #fff; }
 .att-seg button.on.E { background: var(--early); color: #fff; }
 .att-seg button.on.M { background: #12898B; color: #fff; }
-.att-row:has(.att-mkpre) { flex-wrap: wrap; row-gap: 4px; }
-.att-mkpre { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
-.att-mkpre input[type=date] { padding: 2px 4px; font-size: 12.5px; }
+/* 선보강 날짜 칸이 열린 줄: 출결 버튼 여백을 줄여 이름·학교가 줄바꿈되지 않게 (그래도 좁으면 날짜 칸만 다음 줄로) */
+.att-row:has(.att-mkpre) { flex-wrap: wrap; row-gap: 4px; gap: 6px; }
+.att-row:has(.att-mkpre) .nm { min-width: max-content; }
+.att-row:has(.att-mkpre) .att-seg button { padding: 5px 7px; }
+.att-mkpre { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; white-space: nowrap; }
+.att-mkpre input[type=date] { padding: 2px 3px; font-size: 12.5px; }
 .att-sum { display: flex; gap: 12px; font-size: 13.5px; color: var(--ink-soft); }
 .lesson-field + .lesson-field { margin-top: 12px; }
 .lesson-field > label { display: block; font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
