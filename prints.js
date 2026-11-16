@@ -132,8 +132,14 @@ const Prints = (() => {
 /* 10. 사전 */
 /* ================= 일반 표지 (cv-t11 ~ cv-t15) ================= */
 .cv-page .ttl{font-family:'Black Han Sans',sans-serif;line-height:1.08}
+.cv-t11 .sub,.cv-t12 .sub,.cv-t13 .sub,.cv-t15 .sub{text-align:center}
+.cv-t11 .kind,.cv-t12 .kind,.cv-t13 .kind,.cv-t15 .kind{display:table !important;margin-left:auto;margin-right:auto}
 .cv-page .gfoot{position:absolute;left:22mm;right:22mm;bottom:22mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
-.cv-page .gfoot .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
+.cv-page .gfoot .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm;white-space:nowrap;min-width:0}
+.cv-page .gfoot .brand{flex:0 1 auto}
+.cv-page .gfoot .brand .bt{width:auto;min-width:0;overflow:hidden}
+.cv-page .gfoot .lg{flex:none}
+.cv-page .gfoot .name{flex:none}
 .cv-page .gfoot .lg{max-height:13mm;max-width:40mm}
 
 /* 1. 웨이브 */
@@ -443,7 +449,9 @@ const Prints = (() => {
   const gnText = (c) => `${w(c.v.title, `<div class="title ttl fit">${c.v.title}</div>`)}
         ${w(c.v.sub, `<div class="sub">${c.v.sub}</div>`)}
         ${w(c.v.kind, `<div class="kind">${c.v.kind}</div>`)}`;
-  const gnFoot = (c) => `<div class="gfoot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`;
+  // 학원명은 한 줄로. 길어서 이름 칸과 부딪히면 글자를 자동으로 줄임
+  const gnBrand = (c) => (c.logo || c.v.academy) ? `<div class="brand">${c.logo}${w(c.v.academy, `<span class="bt fit">${c.v.academy}</span>`)}</div>` : '';
+  const gnFoot = (c) => `<div class="gfoot">${gnBrand(c) || '<span></span>'}${nameBlock(c)}</div>`;
   const WAVE = `<svg class="wave" viewBox="0 0 210 44" preserveAspectRatio="none" aria-hidden="true">
       <path d="M0 14 C 38 0, 78 30, 118 16 S 186 2, 210 12 L210 44 L0 44Z" fill="rgba(255,255,255,.35)"/>
       <path d="M0 24 C 44 8, 86 38, 128 24 S 190 12, 210 22 L210 44 L0 44Z" fill="#fff"/></svg>`;
