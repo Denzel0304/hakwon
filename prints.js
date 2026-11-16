@@ -130,6 +130,89 @@ const Prints = (() => {
 /* 9. 시험지 */
 
 /* 10. 사전 */
+/* ================= 일반 표지 (cv-t11 ~ cv-t15) ================= */
+.cv-page .ttl{font-family:'Black Han Sans',sans-serif;line-height:1.08}
+.cv-page .gfoot{position:absolute;left:22mm;right:22mm;bottom:22mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
+.cv-page .gfoot .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
+.cv-page .gfoot .lg{max-height:13mm;max-width:40mm}
+
+/* 1. 웨이브 */
+.cv-t11 .sky{position:absolute;left:0;right:0;top:0;height:205mm;background:linear-gradient(160deg,#4338CA 0%,#6D5DF6 48%,#22B8CF 100%)}
+.cv-t11 .bub i{position:absolute;border-radius:50%;background:rgba(255,255,255,.13)}
+.cv-t11 .bub .a{width:92mm;height:92mm;top:-30mm;right:-26mm}
+.cv-t11 .bub .b{width:44mm;height:44mm;top:130mm;left:-14mm}
+.cv-t11 .bub .c{width:20mm;height:20mm;top:38mm;left:120mm;background:rgba(255,255,255,.2)}
+.cv-t11 .wave{position:absolute;left:0;top:176mm;width:210mm;height:44mm;display:block}
+.cv-t11 .main{position:absolute;top:66mm;left:22mm;right:22mm;color:#fff}
+.cv-t11 .title{font-size:30mm}
+.cv-t11 .sub{margin-top:6mm;font-size:11mm;font-weight:700}
+.cv-t11 .kind{display:inline-block;margin-top:8mm;font-size:8mm;font-weight:700;color:#4338CA;background:#fff;border-radius:10mm;padding:2mm 7mm}
+.cv-t11 .gfoot{color:#2A2F6B}
+.cv-t11 .bk{color:#4338CA}
+
+/* 2. 레트로 */
+.cv-t12{background:#F4ECDD}
+.cv-t12 .sun{position:absolute;top:96mm;left:118mm;width:84mm;height:84mm;border-radius:50%;background:#F29E38}
+.cv-t12 .stripes{position:absolute;left:0;right:0;top:150mm}
+.cv-t12 .stripes i{display:block;height:10mm;margin-bottom:3.5mm}
+.cv-t12 .stripes i:nth-child(1){background:#E85D2A}
+.cv-t12 .stripes i:nth-child(2){background:#F29E38}
+.cv-t12 .stripes i:nth-child(3){background:#F6C344}
+.cv-t12 .stripes i:nth-child(4){background:#3A7D7C}
+.cv-t12 .stripes i:nth-child(5){background:#234E52}
+.cv-t12 .main{position:absolute;top:36mm;left:22mm;right:22mm;color:#234E52}
+.cv-t12 .title{font-size:28mm}
+.cv-t12 .sub{margin-top:6mm;font-size:11mm;font-weight:700;color:#E85D2A}
+.cv-t12 .kind{display:inline-block;margin-top:8mm;font-size:8mm;font-weight:700;color:#F4ECDD;background:#234E52;padding:2mm 7mm}
+.cv-t12 .gfoot{color:#234E52}
+.cv-t12 .bk{color:#234E52}
+
+/* 3. 바우하우스 */
+.cv-t13{background:#F3EDE2}
+.cv-t13 .tiles{position:absolute;top:0;left:0;width:210mm;height:140mm;display:grid;grid-template-columns:repeat(3,70mm);grid-template-rows:repeat(2,70mm)}
+.cv-t13 .tiles i{position:relative;overflow:hidden;display:block}
+.cv-t13 .tiles b{position:absolute;display:block}
+.cv-t13 .k1{background:#2B4C9B}.cv-t13 .k1 b{left:0;top:0;width:70mm;height:70mm;border-radius:0 0 100% 0;background:#E9B23F}
+.cv-t13 .k2{background:#E9B23F}.cv-t13 .k2 b{left:10mm;top:10mm;width:50mm;height:50mm;border-radius:50%;background:#D9472B}
+.cv-t13 .k3{background:#1C1C1C}.cv-t13 .k3 b{inset:0;background:#F3EDE2;clip-path:polygon(0 100%,100% 100%,100% 0)}
+.cv-t13 .k4{background:#D9472B}.cv-t13 .k4 b{left:0;bottom:-35mm;width:70mm;height:70mm;border-radius:50%;background:#F3EDE2}
+.cv-t13 .k5{background:#F3EDE2}.cv-t13 .k5 b{right:0;bottom:0;width:70mm;height:70mm;border-radius:100% 0 0 0;background:#2B4C9B}
+.cv-t13 .k6{background:#E9B23F}.cv-t13 .k6 b{left:12mm;top:0;bottom:0;width:46mm;background:repeating-linear-gradient(90deg,#1C1C1C 0 6mm,transparent 6mm 14mm)}
+.cv-t13 .main{position:absolute;top:162mm;left:22mm;right:22mm;color:#1C1C1C}
+.cv-t13 .title{font-size:27mm}
+.cv-t13 .sub{margin-top:5mm;font-size:11mm;font-weight:700;color:#2B4C9B}
+.cv-t13 .kind{display:inline-block;margin-top:8mm;font-size:8mm;font-weight:700;color:#fff;background:#D9472B;padding:2mm 7mm}
+.cv-t13 .gfoot{color:#1C1C1C}
+.cv-t13 .bk{color:#1C1C1C}
+
+/* 4. 아치 */
+.cv-t14{background:#F6D8C4}
+.cv-t14 .floor{position:absolute;left:0;right:0;bottom:0;height:56mm;background:#E9BFA5}
+.cv-t14 .arch2{position:absolute;left:21mm;right:21mm;top:38mm;bottom:56mm;border:0.6mm solid #2E5E4E;border-bottom:0;border-radius:84mm 84mm 0 0}
+.cv-t14 .arch{position:absolute;left:28mm;right:28mm;top:46mm;bottom:56mm;background:#2E5E4E;border-radius:77mm 77mm 0 0}
+.cv-t14 .sun{position:absolute;top:18mm;right:20mm;width:30mm;height:30mm;border-radius:50%;background:#E9A23B}
+.cv-t14 .spk i{position:absolute;width:7mm;height:7mm;background:#F6D8C4;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%)}
+.cv-t14 .spk .a{top:76mm;left:58mm}.cv-t14 .spk .b{top:92mm;right:56mm;width:5mm;height:5mm}.cv-t14 .spk .c{top:206mm;left:46mm;width:5mm;height:5mm}
+.cv-t14 .main{position:absolute;top:116mm;left:38mm;right:38mm;text-align:center;color:#FFF4E6}
+.cv-t14 .title{font-size:24mm}
+.cv-t14 .sub{margin-top:6mm;font-size:10mm;font-weight:700;color:#F6D8C4}
+.cv-t14 .kind{display:inline-block;margin-top:8mm;font-size:7.5mm;font-weight:700;color:#2E5E4E;background:#E9A23B;border-radius:10mm;padding:2mm 7mm}
+.cv-t14 .gfoot{bottom:20mm;color:#2E5E4E}
+.cv-t14 .bk{bottom:18mm;color:#2E5E4E}
+
+/* 5. 도트 */
+.cv-t15{background:#111A3A}
+.cv-t15 .dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.16) 0.9mm,transparent 1.05mm);background-size:7mm 7mm}
+.cv-t15 .blk{position:absolute;top:30mm;left:-20mm;width:170mm;height:64mm;background:#3BE8B0;transform:skewY(-7deg)}
+.cv-t15 .blk2{position:absolute;top:100mm;left:-20mm;width:110mm;height:9mm;background:#FF4FA3;transform:skewY(-7deg)}
+.cv-t15 .ring{position:absolute;right:-34mm;top:-26mm;width:96mm;height:96mm;border-radius:50%;border:7mm solid #FF4FA3;opacity:.9}
+.cv-t15 .main{position:absolute;top:132mm;left:22mm;right:22mm;color:#fff}
+.cv-t15 .title{font-size:28mm}
+.cv-t15 .sub{margin-top:6mm;font-size:11mm;font-weight:700;color:#3BE8B0}
+.cv-t15 .kind{display:inline-block;margin-top:8mm;font-size:8mm;font-weight:700;color:#FF4FA3;border:0.6mm solid #FF4FA3;border-radius:10mm;padding:1.6mm 7mm}
+.cv-t15 .gfoot{color:#fff}
+.cv-t15 .bk{color:#fff}
+
 /* ================= 시험지·노트 (A4) ================= */
 .pn-sheet{
   --pn-line:#c4ced8; --pn-frame:#cfd6dc; --pn-tag-bg:#e7eee5; --pn-tag-ink:#4c5f4d; --pn-ink:#3d4950; --pn-ink-soft:#7d8a92;
@@ -181,14 +264,18 @@ const Prints = (() => {
   const CV_LABELS = {
     academy: ['학원명', ''], type: ['교재 종류', '예: 변형문제, 워크북'], school: ['학교 · 학년', '예: ○○고 2학년'],
     book: ['교재명 · 범위', '예: 천재(이재영) Lesson 3~4'], exam: ['시험 구분', '예: 1학기 중간고사'], student: ['학생 이름', ''],
+    // 일반 표지
+    title: ['제목', '예: 능률 VOCA, Solving Guide'], sub: ['부제', '예: 중등 고난도, 주장 요지'], kind: ['구분', '예: 단어 시험지, 실전편'],
   };
   // 남긴 표지: 원래 번호 2·5·6·7·8 (1 클래식·3 노트·4 스위스·9 시험지·10 사전은 삭제) → 화면에는 1~5 로 다시 번호
   const CV_KEEP = [2, 5, 6, 7, 8];                    // 원래 번호 (CSS 클래스 cv-t번호 와 저장값 tk 에 씀)
   const CV_NAMES = ['블록', '아카데미', '사선', '인덱스', '도형'];
-  // 저장값 → 지금 목록의 순번. tk(원래 번호)가 있으면 그걸로, 없으면 예전 순번(tpl, 10개 시절)으로 판단. 지운 표지면 첫 번째로
-  function cvTplIdx(o) {
-    const tk = (o && typeof o.tk === 'number') ? o.tk : (o && typeof o.tpl === 'number') ? o.tpl + 1 : 0;
-    const i = CV_KEEP.indexOf(tk);
+  // 저장값 → 지금 목록의 순번. tk(원래 번호)가 있으면 그걸로, 없으면 예전 순번(tpl)으로 판단. 지운 표지면 첫 번째로
+  // (내신 표지의 예전 순번은 10개 시절 기준 → +1 이 원래 번호. 일반 표지는 처음부터 tk 로 저장)
+  function cvTplIdx(o, keep = CV_KEEP) {
+    const tk = (o && typeof o.tk === 'number') ? o.tk
+      : (o && typeof o.tpl === 'number') ? (keep === CV_KEEP ? o.tpl + 1 : keep[o.tpl]) : 0;
+    const i = keep.indexOf(tk);
     return i < 0 ? 0 : i;
   }
   const CV_DEFAULT = {
@@ -199,25 +286,65 @@ const Prints = (() => {
     duplexPrinter: true,      // 양면 프린터 사용: 표지 뒤마다 빈 장을 넣어 앞면만 인쇄되게 (시험지·노트 설정과 따로 저장)
   };
 
+  // 일반 표지: 입력 글자만 다르고 로직·인쇄는 내신 표지와 같음 (디자인·저장값·저장한 조합은 따로, 학원명·로고는 함께)
+  const GN_FIELDS = ['academy', 'title', 'sub', 'kind', 'student'];
+  const GN_KEEP = [11, 12, 13, 14, 15];               // CSS 클래스 cv-t11 ~ cv-t15
+  const GN_NAMES = ['웨이브', '레트로', '바우하우스', '아치', '도트'];
+  const GN_DEFAULT = {
+    tpl: 0, tk: 11,
+    fields: { academy: '○○영어학원', title: 'Solving Guide', sub: '주장 요지', kind: '실전편', student: '' },
+    nameBlank: true,
+    copies: 1,
+    duplexPrinter: true,
+  };
+
+  // 표지 종류별 설정 (KD = 지금 보고 있는 종류). tpl·back 은 아래에서 디자인을 만든 뒤 채움
+  const KINDS = {
+    cover: { names: CV_NAMES, keep: CV_KEEP, fields: CV_FIELDS, order: ['school', 'exam', 'book', 'type', 'academy'],
+      def: CV_DEFAULT, stateKey: K_CV_STATE, presetKey: K_CV_PRESETS, file: '내신표지' },
+    general: { names: GN_NAMES, keep: GN_KEEP, fields: GN_FIELDS, order: ['title', 'sub', 'kind', 'academy'],
+      def: GN_DEFAULT, stateKey: 'mg77_gcover_state', presetKey: 'mg77_gcover_presets', file: '일반표지' },
+  };
+  let KD = KINDS.cover;
+  const isCvTab = (t) => t === 'cover' || t === 'general';
+
   let cv = null, logo = null, presets = [];
+  const store = {};                                    // 종류별 { st: 저장값, pr: 저장한 조합 }
+  function loadKind(k) {
+    const K = KINDS[k];
+    const st = load(K.stateKey, null) || JSON.parse(JSON.stringify(K.def));
+    st.fields = Object.assign({}, K.def.fields, st.fields || {});
+    st.tpl = cvTplIdx(st, K.keep); st.tk = K.keep[st.tpl];
+    if (typeof st.duplexPrinter !== 'boolean') st.duplexPrinter = true;
+    let pr = load(K.presetKey, []);
+    if (!Array.isArray(pr)) pr = [];
+    pr.forEach(p => { if (p) { p.tpl = cvTplIdx(p, K.keep); p.tk = K.keep[p.tpl]; } });
+    store[k] = { st, pr };
+  }
   function loadCv() {
     if (cv) return;
-    cv = load(K_CV_STATE, null) || JSON.parse(JSON.stringify(CV_DEFAULT));
-    cv.fields = Object.assign({}, CV_DEFAULT.fields, cv.fields || {});
-    cv.tpl = cvTplIdx(cv); cv.tk = CV_KEEP[cv.tpl];
-    if (typeof cv.duplexPrinter !== 'boolean') cv.duplexPrinter = true;
+    loadKind('cover'); loadKind('general');
+    store.general.st.fields.academy = store.cover.st.fields.academy;   // 학원명은 내신 표지 값을 함께 씀
     logo = load(K_CV_LOGO, null);
-    presets = load(K_CV_PRESETS, []);
-    if (!Array.isArray(presets)) presets = [];
-    presets.forEach(p => { if (p) { p.tpl = cvTplIdx(p); p.tk = CV_KEEP[p.tpl]; } });
+    useKind('cover');
   }
-  const saveCv = () => save(K_CV_STATE, cv);
+  // 보고 있는 표지 종류로 바꿈 (cv·presets 가 그 종류의 값을 가리키게)
+  function useKind(k) {
+    if (!KINDS[k]) return;
+    KD = KINDS[k]; cv = store[k].st; presets = store[k].pr;
+  }
+  const saveCv = () => save(KD.stateKey, cv);
+  const savePresets = () => save(KD.presetKey, presets);
+  // 학원명: 내신 표지·일반 표지·시험지·노트가 함께 씀
+  function setAcademy(v) {
+    ['cover', 'general'].forEach(k => { store[k].st.fields.academy = v; save(KINDS[k].stateKey, store[k].st); });
+  }
 
   const w = (cond, html) => cond ? html : '';
   // studentName: 반에서 고른 학생 이름으로 바꿔 그릴 때 (undefined 면 입력칸 값 그대로)
   function ctx(studentName) {
     const v = {};
-    CV_FIELDS.forEach(k => v[k] = esc((cv.fields[k] || '').trim()));
+    KD.fields.forEach(k => v[k] = esc((cv.fields[k] || '').trim()));
     if (studentName !== undefined) v.student = esc(String(studentName || '').trim());
     return {
       v,
@@ -292,7 +419,7 @@ const Prints = (() => {
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
   ];
-  const cvPageHTML = (i, c) => `<div class="cv-page cv-t${CV_KEEP[i]}">${CV_TPL[i](c)}</div>`;
+  const cvPageHTML = (i, c) => `<div class="cv-page cv-t${KD.keep[i]}">${KD.tpl[i](c)}</div>`;
 
   // 뒷표지: 앞표지(CV_TPL)와 같은 순서·같은 디자인에서 글자를 모두 빼고, 하단 가운데에 로고 + 학원명만
   const backAc = (c) => (c.logo || c.v.academy) ? `<div class="bk">${c.logo}${w(c.v.academy, `<span class="bt fit">${c.v.academy}</span>`)}</div>` : '';
@@ -309,7 +436,34 @@ const Prints = (() => {
     // 5 도형
     c => `<div class="circ"><i class="c1"></i><i class="c2"></i><i class="c3"></i></div>${backAc(c)}`,
   ];
-  const cvBackHTML = (i, c) => `<div class="cv-page cv-t${CV_KEEP[i]} cv-back">${CV_BACK[i](c)}</div>`;
+  const cvBackHTML = (i, c) => `<div class="cv-page cv-t${KD.keep[i]} cv-back">${KD.back[i](c)}</div>`;
+
+  /* ---------- 일반 표지 디자인 (앞·뒤) ---------- */
+  // 제목 → 부제 → 구분 순서로 읽힘. 아래는 학원명(로고)과 이름
+  const gnText = (c) => `${w(c.v.title, `<div class="title ttl fit">${c.v.title}</div>`)}
+        ${w(c.v.sub, `<div class="sub">${c.v.sub}</div>`)}
+        ${w(c.v.kind, `<div class="kind">${c.v.kind}</div>`)}`;
+  const gnFoot = (c) => `<div class="gfoot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`;
+  const WAVE = `<svg class="wave" viewBox="0 0 210 44" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 14 C 38 0, 78 30, 118 16 S 186 2, 210 12 L210 44 L0 44Z" fill="rgba(255,255,255,.35)"/>
+      <path d="M0 24 C 44 8, 86 38, 128 24 S 190 12, 210 22 L210 44 L0 44Z" fill="#fff"/></svg>`;
+  const GN_DECO = [
+    // 1 웨이브
+    () => `<div class="sky"></div><div class="bub"><i class="a"></i><i class="b"></i><i class="c"></i></div>${WAVE}`,
+    // 2 레트로
+    () => `<div class="sun"></div><div class="stripes"><i></i><i></i><i></i><i></i><i></i></div>`,
+    // 3 바우하우스
+    () => `<div class="tiles">${[1, 2, 3, 4, 5, 6].map(n => `<i class="k${n}"><b></b></i>`).join('')}</div>`,
+    // 4 아치
+    () => `<div class="floor"></div><div class="arch2"></div><div class="arch"></div><div class="sun"></div>
+      <div class="spk"><i class="a"></i><i class="b"></i><i class="c"></i></div>`,
+    // 5 도트
+    () => `<div class="dots"></div><div class="blk"></div><div class="blk2"></div><div class="ring"></div>`,
+  ];
+  const GN_TPL = GN_DECO.map(d => c => `${d()}<div class="main">${gnText(c)}</div>${gnFoot(c)}`);
+  const GN_BACK = GN_DECO.map(d => c => `${d()}${backAc(c)}`);
+  KINDS.cover.tpl = CV_TPL; KINDS.cover.back = CV_BACK;
+  KINDS.general.tpl = GN_TPL; KINDS.general.back = GN_BACK;
 
   // 긴 글자는 칸에 맞게 줄임 (원본과 같은 방식)
   function fitAll(root) {
@@ -381,7 +535,7 @@ const Prints = (() => {
     }
   }
   const savePn = () => save(K_PN, { gap: pn.gap, gridGap: pn.gridGap, duplexPrinter: pn.duplexPrinter });
-  const pnAcademy = () => cv.fields.academy || '';
+  const pnAcademy = () => (store.cover ? store.cover.st.fields.academy : '') || '';
 
   // 2026-11-16 → 2026. 11. 16.
   const pnDateText = (d) => isYmd(d) ? `${d.slice(0, 4)}. ${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '';
@@ -522,15 +676,17 @@ const Prints = (() => {
   };
 
   return {
-    tab: 'cover',            // cover | note
+    tab: 'cover',            // cover(내신 표지) | general(일반 표지) | note(시험지·노트)
 
     render(main) {
       ensureAssets();
       loadCv(); loadPn();
-      const cover = this.tab === 'cover';
+      const cover = isCvTab(this.tab);
+      if (cover) useKind(this.tab);
       main.innerHTML = `<div class="page-head"><h1>표지+양식</h1>
           <span class="sub">${cover ? '디자인을 고르고, 필요한 글자만 입력하세요. 비워 둔 항목은 표지에 나오지 않아요.' : '양식을 고르고 간격을 맞춘 뒤 출력하세요.'}</span></div>
-        <div class="tabs"><button data-tab="cover" class="${cover ? 'active' : ''}">내신 표지</button><button data-tab="note" class="${cover ? '' : 'active'}">시험지·노트</button></div>
+        <div class="tabs">${[['cover', '내신 표지'], ['general', '일반 표지'], ['note', '시험지·노트']].map(([k, nm]) =>
+          `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${nm}</button>`).join('')}</div>
         <div class="pr-wrap">
           <aside class="panel pr-side">${cover ? this.cvSideHtml() : this.pnSideHtml()}</aside>
           <section class="pr-view">
@@ -588,7 +744,7 @@ const Prints = (() => {
     refit() {
       const main = $('#main');
       if (App.page !== 'prints' || !main || !$('[data-stage]', main)) return;
-      if (this.tab === 'cover') { fitAll($('[data-scaler]', main)); fitAll($('[data-gallery]', main)); }
+      if (isCvTab(this.tab)) { fitAll($('[data-scaler]', main)); fitAll($('[data-gallery]', main)); }
       else this.pnRefill(main, true);
       this.scale();
     },
@@ -613,13 +769,13 @@ const Prints = (() => {
       if (tb) { if (this.tab !== tb.dataset.tab) { this.tab = tb.dataset.tab; App.render(); } return; }
       const th = e.target.closest('.pr-thumb');
       if (th) {
-        if (this.tab === 'cover') { cv.tpl = +th.dataset.i; cv.tk = CV_KEEP[cv.tpl]; saveCv(); }
+        if (isCvTab(this.tab)) { cv.tpl = +th.dataset.i; cv.tk = KD.keep[cv.tpl]; saveCv(); }
         else pn.template = th.dataset.k;
         $$('.pr-thumb', main).forEach(t => {
           const on = t === th;
           t.classList.toggle('on', on); t.setAttribute('aria-selected', on);
         });
-        if (this.tab === 'cover') this.cvPreview(main); else this.pnPreview(main);
+        if (isCvTab(this.tab)) this.cvPreview(main); else this.pnPreview(main);
         return;
       }
       const b = e.target.closest('[data-act]');
@@ -643,13 +799,14 @@ const Prints = (() => {
     onInput(e, main) {
       const t = e.target;
       if (t.matches('[data-cv]')) {
-        cv.fields[t.dataset.cv] = t.value; saveCv();
+        if (t.dataset.cv === 'academy') { cv.fields.academy = t.value; setAcademy(t.value); }   // 학원명은 모든 탭이 함께 씀
+        else { cv.fields[t.dataset.cv] = t.value; saveCv(); }
         this.cvUpdate(main, false);
       } else if (t.matches('[data-cv-copies]')) {
         cv.copies = cvCopies(main); saveCv();
         this.cvPrintLabel(main);
       } else if (t.matches('[data-pn-academy]')) {
-        cv.fields.academy = t.value; saveCv();          // 표지 탭의 학원명과 같은 값
+        setAcademy(t.value);                            // 내신·일반 표지 탭의 학원명과 같은 값
         const a = $('[data-scaler] .pn-academy', main);
         if (a) a.textContent = cv.fields.academy;
         this.pnGalleryLater(main);
@@ -713,7 +870,7 @@ const Prints = (() => {
         </div>`;
     },
     nmBodyHtml() {
-      const cover = this.tab === 'cover';
+      const cover = isCvTab(this.tab);
       if (!pkOn()) {
         return cover
           ? `${fld('student')}
@@ -761,7 +918,7 @@ const Prints = (() => {
       if (all) all.indeterminate = all.hasAttribute('data-indet');
       const p = $('[data-nm-picked]', main);
       if (p) p.innerHTML = this.nmPickedHtml();
-      if (this.tab === 'cover') { this.cvPrintLabel(main); this.cvUpdate(main, false); }
+      if (isCvTab(this.tab)) { this.cvPrintLabel(main); this.cvUpdate(main, false); }
       else { this.pnPrintLabel(main); this.pnNameUpdate(main); }
     },
     // 직접 입력 ↔ 반에서 선택
@@ -789,7 +946,7 @@ const Prints = (() => {
     /* ---------- 표지: 화면 ---------- */
     cvSideHtml() {
       return `<div class="pr-sec"><h2>글자</h2>
-          ${['school', 'exam', 'book', 'type', 'academy'].map(fld).join('')}
+          ${KD.order.map(fld).join('')}
         </div>
         ${this.nmSecHtml()}
         <div class="pr-sec"><h2>로고</h2>
@@ -842,7 +999,7 @@ const Prints = (() => {
     cvPreview(main) {
       const sc = $('[data-scaler]', main);
       sc.innerHTML = cvPageHTML(cv.tpl, this.cvCtx());
-      $('[data-stage-name]', main).textContent = `${cv.tpl + 1}. ${CV_NAMES[cv.tpl]}` + pkSuffix();
+      $('[data-stage-name]', main).textContent = `${cv.tpl + 1}. ${KD.names[cv.tpl]}` + pkSuffix();
       fitAll(sc);
       this.scale();
     },
@@ -850,7 +1007,7 @@ const Prints = (() => {
       const g = $('[data-gallery]', main);
       if (!g) return;
       const c = this.cvCtx();
-      g.innerHTML = CV_NAMES.map((nm, i) =>
+      g.innerHTML = KD.names.map((nm, i) =>
         `<button type="button" class="pr-thumb${i === cv.tpl ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${i === cv.tpl}">
           <div class="tw">${cvPageHTML(i, c)}</div><span class="tl">${i + 1}. ${nm}</span></button>`).join('');
       fitAll(g);
@@ -867,7 +1024,7 @@ const Prints = (() => {
       if (!ul) return;
       if (!presets.length) { ul.innerHTML = '<li class="none">아직 저장한 조합이 없어요.</li>'; return; }
       ul.innerHTML = presets.map((p, i) =>
-        `<li><span class="pn" title="${esc(p.name)}">${esc(p.name)} <small>· ${esc(CV_NAMES[p.tpl] || '')}</small></span>
+        `<li><span class="pn" title="${esc(p.name)}">${esc(p.name)} <small>· ${esc(KD.names[p.tpl] || '')}</small></span>
           <button type="button" class="btn sm" data-act="preset-load" data-i="${i}">불러오기</button>
           <button type="button" class="btn sm danger" data-act="preset-del" data-i="${i}">삭제</button></li>`).join('');
     },
@@ -905,7 +1062,7 @@ const Prints = (() => {
     // 로고가 바뀐 뒤 (다른 화면으로 옮겨 갔으면 다음에 들어올 때 반영됨)
     cvAfterLogo() {
       const main = $('#main');
-      if (App.page !== 'prints' || this.tab !== 'cover' || !$('[data-cv-logo-prev]', main)) return;
+      if (App.page !== 'prints' || !isCvTab(this.tab) || !$('[data-cv-logo-prev]', main)) return;
       $('[data-cv-logo-prev]', main).innerHTML = this.cvLogoPrevHtml();
       this.cvUpdate(main, true);
     },
@@ -915,13 +1072,13 @@ const Prints = (() => {
       const inp = $('[data-cv-preset-name]', main);
       const name = inp.value.trim();
       if (!name) { inp.focus(); return; }
-      const item = { name, tpl: cv.tpl, tk: CV_KEEP[cv.tpl], fields: Object.assign({}, cv.fields), nameBlank: !!cv.nameBlank };
+      const item = { name, tpl: cv.tpl, tk: KD.keep[cv.tpl], fields: Object.assign({}, cv.fields), nameBlank: !!cv.nameBlank };
       const idx = presets.findIndex(p => p.name === name);
       if (idx >= 0) {
         if (!await confirmDlg(`‘${name}’ 조합이 이미 있어요. 덮어쓸까요?`, '덮어쓰기')) return;
         presets[idx] = item;
       } else presets.unshift(item);
-      save(K_CV_PRESETS, presets);
+      savePresets();
       inp.value = '';
       this.cvPresets(main);
       toast('조합을 저장했습니다');
@@ -929,8 +1086,9 @@ const Prints = (() => {
     cvLoadPreset(i) {
       const p = presets[i];
       if (!p) return;
-      cv.tpl = cvTplIdx(p); cv.tk = CV_KEEP[cv.tpl];
-      cv.fields = Object.assign({}, CV_DEFAULT.fields, p.fields);
+      cv.tpl = cvTplIdx(p, KD.keep); cv.tk = KD.keep[cv.tpl];
+      cv.fields = Object.assign({}, KD.def.fields, p.fields);
+      setAcademy(cv.fields.academy || '');            // 학원명은 모든 탭이 함께 씀
       cv.nameBlank = !!p.nameBlank;
       saveCv();
       App.render();                                   // 입력칸까지 새 값으로 다시 그림
@@ -940,7 +1098,7 @@ const Prints = (() => {
       if (!p) return;
       if (!await confirmDlg(`‘${p.name}’ 조합을 삭제할까요?`, '삭제', true)) return;
       presets.splice(i, 1);
-      save(K_CV_PRESETS, presets);
+      savePresets();
       this.cvPresets(main);
     },
 
@@ -969,7 +1127,7 @@ const Prints = (() => {
       box.remove();
       // 표지는 항상 단면: 양면 프린터면 표지마다 뒤에 빈 장을 넣어 뒷면이 비게 함
       const blank = '<div class="cv-page"></div>';
-      printPaper(pages.map(pg => cv.duplexPrinter ? pg + blank : pg).join(''), `표지_${CV_NAMES[cv.tpl]}`);
+      printPaper(pages.map(pg => cv.duplexPrinter ? pg + blank : pg).join(''), `${KD.file}_${KD.names[cv.tpl]}`);
     },
 
     /* ---------- 시험지·노트: 화면 ---------- */
