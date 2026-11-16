@@ -28,15 +28,15 @@ const Prints = (() => {
 /* 1. 클래식 */
 
 /* 2. 블록 */
-.cv-t2 .block{position:absolute;left:0;right:0;top:0;height:178mm;background:#F5C518;padding:22mm 20mm 18mm;display:flex;flex-direction:column}
+.cv-t2 .block{position:absolute;left:0;right:0;top:0;height:205mm;background:#F5C518;padding:22mm 20mm 18mm;display:flex;flex-direction:column}
 .cv-t2 .school{align-self:flex-start;font-weight:700;font-size:10.5mm;border:0.6mm solid #111;padding:1.6mm 4.5mm}
 .cv-t2 .ttx{margin-top:auto;padding-right:16mm}
 .cv-t2 .exam{font-weight:700;font-size:12.3mm;margin-bottom:3mm}
 .cv-t2 .title{font-family:'Black Han Sans',sans-serif;font-size:34.5mm;line-height:1;color:#111}
 .cv-t2 .deco{position:absolute;right:9mm;top:20mm;writing-mode:vertical-rl;font-family:'Archivo Black',sans-serif;font-size:15mm;color:transparent;-webkit-text-stroke:0.35mm #111;letter-spacing:1mm}
-.cv-t2 .bar{position:absolute;left:0;right:0;top:178mm;height:4mm;background:#111}
-.cv-t2 .lower{position:absolute;top:182mm;left:20mm;right:20mm;bottom:20mm;display:flex;flex-direction:column;padding-top:16mm}
-.cv-t2 .book{font-weight:700;font-size:10mm;line-height:1.35;border-left:2.2mm solid #111;padding-left:5mm}
+.cv-t2 .bar{position:absolute;left:0;right:0;top:205mm;height:4mm;background:#111}
+.cv-t2 .lower{position:absolute;top:209mm;left:20mm;right:20mm;bottom:20mm;display:flex;flex-direction:column;padding-top:16mm}
+.cv-t2 .book{font-weight:700;font-size:10mm;line-height:1.35;border-left:2.2mm solid #111;padding-left:5mm;margin-bottom:6mm}
 .cv-t2 .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
 .cv-t2 .brand{margin-left:auto;display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
 .cv-t2 .lg{max-height:13mm;max-width:40mm}
@@ -48,12 +48,12 @@ const Prints = (() => {
 .cv-t3 .holes i{display:block;width:6.5mm;height:6.5mm;border-radius:50%;background:#DDE3EA;box-shadow:inset 0.5mm 0.6mm 0.8mm rgba(0,0,0,.25)}
 .cv-t3 .acad{position:absolute;top:16mm;right:18mm;display:flex;align-items:center;gap:3mm;font-family:'Gowun Dodum',sans-serif;font-size:9.5mm;color:#2C3E66;background:#fff;padding:1mm 2mm}
 .cv-t3 .lg{max-height:11mm;max-width:36mm}
-.cv-t3 .tape{position:absolute;top:58mm;left:44mm;right:20mm;background:#FFE587;padding:11mm 10mm 9mm;transform:rotate(-2deg);box-shadow:0 1.2mm 2.5mm rgba(0,0,0,.14)}
+.cv-t3 .tape{position:absolute;top:150mm;left:44mm;right:20mm;background:#FFE587;padding:11mm 10mm 9mm;transform:rotate(-2deg);box-shadow:0 1.2mm 2.5mm rgba(0,0,0,.14)}
 .cv-t3 .tape::before{content:"";position:absolute;top:-4mm;left:50%;width:30mm;height:9mm;margin-left:-15mm;background:rgba(255,255,255,.6);transform:rotate(3deg)}
-.cv-t3 .school{font-family:'Gowun Dodum',sans-serif;font-size:10.4mm;color:#5A4A12;margin-bottom:2mm}
+.cv-t3 .school{font-size:10.4mm;line-height:18mm;color:#1E2B48}
 .cv-t3 .title{font-family:'Nanum Pen Script',cursive;font-size:27mm;line-height:1;color:#1E3A8A}
-.cv-t3 .body{position:absolute;top:148mm;left:44mm;right:20mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48}
-.cv-t3 .book{font-size:8mm;line-height:18mm}
+.cv-t3 .body{position:absolute;top:49mm;left:44mm;right:20mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48}
+.cv-t3 .book{font-size:9mm;line-height:18mm}
 .cv-t3 .exam{font-family:'Nanum Pen Script',cursive;font-size:16.8mm;line-height:25.2mm;color:#C2362B}
 .cv-t3 .name{position:absolute;bottom:28mm;left:44mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48;background:#fff;padding:1mm 2mm}
 
@@ -70,13 +70,13 @@ const Prints = (() => {
 .cv-t5 .lgw{margin-bottom:6mm}
 .cv-t5 .lgw .lg{max-width:40mm;max-height:24mm}
 .cv-t5 .academy{font-family:'Noto Serif KR',serif;font-weight:700;font-size:9.5mm;letter-spacing:1.2mm}
-.cv-t5 .title{margin-top:24mm;font-family:'Noto Serif KR',serif;font-weight:900;font-size:18mm;line-height:1.15}
+.cv-t5 .title{font-family:'Noto Serif KR',serif;font-weight:900;font-size:18mm;line-height:1.15}
 .cv-t5 .rule{display:flex;align-items:center;gap:3mm;margin:9mm 0;width:60mm}
 .cv-t5 .rule::before,.cv-t5 .rule::after{content:"";flex:1;height:0.25mm;background:#C8A55A}
 .cv-t5 .rule b{width:2.6mm;height:2.6mm;background:#C8A55A;transform:rotate(45deg)}
-.cv-t5 .book{font-family:'Noto Serif KR',serif;font-weight:700;font-size:7.5mm}
-.cv-t5 .school{margin-top:5mm;font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
-.cv-t5 .exam{margin-top:7mm;font-size:6.4mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
+.cv-t5 .book{margin-top:7mm;font-family:'Noto Serif KR',serif;font-weight:700;font-size:7.5mm}
+.cv-t5 .school{margin-top:24mm;font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
+.cv-t5 .exam{margin-top:6mm;font-size:6.4mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
 .cv-t5 .name{position:absolute;bottom:30mm;left:0;right:0;justify-content:center}
 
 /* 6. 사선 */
@@ -84,18 +84,18 @@ const Prints = (() => {
 .cv-t6 .b1{top:16mm;right:-170mm;height:52mm;background:#13294B}
 .cv-t6 .b2{top:70mm;right:-160mm;height:11mm;background:#FF6B57}
 .cv-t6 .b3{top:86mm;right:-150mm;height:4mm;background:#7FB7E8}
-.cv-t6 .main{position:absolute;top:132mm;left:20mm;right:20mm}
-.cv-t6 .school{display:inline-block;background:#FF6B57;color:#fff;font-weight:700;font-size:10.3mm;padding:1.8mm 5mm;margin-bottom:6mm}
-.cv-t6 .title{font-family:'Do Hyeon',sans-serif;font-size:31.5mm;line-height:1.05;color:#13294B}
-.cv-t6 .book{margin-top:8mm;font-weight:700;font-size:9mm;line-height:1.35;color:#13294B}
-.cv-t6 .exam{margin-top:5mm;font-size:10.3mm;color:#4C5D7D}
+.cv-t6 .main{position:absolute;top:128mm;left:20mm;right:20mm}
+.cv-t6 .school{display:inline-block;background:#FF6B57;color:#fff;font-weight:700;font-size:10.3mm;padding:1.8mm 5mm;margin-bottom:5mm}
+.cv-t6 .title{margin-top:7mm;font-family:'Do Hyeon',sans-serif;font-size:31.5mm;line-height:1.05;color:#13294B}
+.cv-t6 .book{margin-top:3mm;font-weight:700;font-size:9mm;line-height:1.35;color:#13294B}
+.cv-t6 .exam{font-weight:700;font-size:10.3mm;color:#4C5D7D}
 .cv-t6 .foot{position:absolute;left:20mm;right:20mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;color:#13294B}
 .cv-t6 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
 .cv-t6 .lg{max-height:13mm;max-width:40mm}
 
 /* 7. 인덱스 */
 .cv-t7 .side{position:absolute;top:0;bottom:0;left:0;width:48mm;background:#0F6E6B;display:flex;flex-direction:column;align-items:center;padding:24mm 0 18mm}
-.cv-t7 .vt{writing-mode:vertical-rl;height:200mm;white-space:nowrap;font-family:'Black Han Sans',sans-serif;font-size:22.5mm;color:#fff;letter-spacing:2mm;text-align:start}
+.cv-t7 .vt{writing-mode:vertical-rl;white-space:nowrap;font-family:'Archivo Black',sans-serif;font-size:15mm;color:transparent;-webkit-text-stroke:0.35mm #fff;letter-spacing:2mm}
 .cv-t7 .sbrand{margin-top:auto;background:#fff;border-radius:3mm;padding:2.5mm;display:flex}
 .cv-t7 .sbrand:empty{display:none}
 .cv-t7 .lg{max-width:30mm;max-height:16mm}
@@ -105,9 +105,11 @@ const Prints = (() => {
 .cv-t7 .tabx i:nth-child(3){background:#A7D3D1}
 .cv-t7 .main{position:absolute;top:30mm;left:64mm;right:22mm;bottom:50mm;display:flex;flex-direction:column}
 .cv-t7 .academy{font-weight:700;font-size:9.9mm;color:#0F6E6B;padding-bottom:5mm;border-bottom:0.4mm solid #0F6E6B}
-.cv-t7 .exam{margin-top:auto;font-size:7.6mm;color:#0F6E6B;font-weight:700}
-.cv-t7 .school{margin-top:3mm;font-size:8.4mm;color:#444}
-.cv-t7 .book{margin-top:6mm;font-weight:700;font-size:15mm;line-height:1.2;letter-spacing:-0.4mm;color:#14171F;word-break:keep-all}
+.cv-t7 .grp{margin-top:auto}
+.cv-t7 .exam{margin-top:3mm;font-size:8.4mm;color:#0F6E6B;font-weight:700}
+.cv-t7 .school{font-size:8.4mm;color:#444}
+.cv-t7 .book{margin-top:3mm;font-weight:700;font-size:9mm;line-height:1.35;color:#14171F;word-break:keep-all}
+.cv-t7 .title{margin-top:8mm;font-family:'Black Han Sans',sans-serif;font-size:24mm;line-height:1.05;color:#0F6E6B;white-space:nowrap}
 .cv-t7 .name{position:absolute;bottom:24mm;left:64mm}
 
 /* 8. 도형 */
@@ -115,11 +117,11 @@ const Prints = (() => {
 .cv-t8 .c1{width:128mm;height:128mm;top:-26mm;left:-22mm;background:#7B5CF5}
 .cv-t8 .c2{width:104mm;height:104mm;top:36mm;left:70mm;background:#FF9147}
 .cv-t8 .c3{width:82mm;height:82mm;top:-6mm;left:142mm;background:#22B8A7}
-.cv-t8 .main{position:absolute;top:166mm;left:20mm;right:20mm}
+.cv-t8 .main{position:absolute;top:158mm;left:20mm;right:20mm}
 .cv-t8 .school{font-size:10.5mm;color:#555;margin-bottom:4mm}
-.cv-t8 .title{font-weight:700;font-size:21mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
-.cv-t8 .book{margin-top:8mm;font-weight:500;font-size:8.5mm;line-height:1.35;color:#1A1A2E}
-.cv-t8 .exam{display:inline-block;margin-top:6mm;font-size:6.7mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
+.cv-t8 .title{margin-top:6mm;font-weight:700;font-size:21mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
+.cv-t8 .book{margin-top:4mm;font-weight:500;font-size:8.5mm;line-height:1.35;color:#1A1A2E}
+.cv-t8 .exam{display:inline-block;font-size:6.7mm;font-weight:700;color:#7B5CF5;border:0.4mm solid #7B5CF5;border-radius:6mm;padding:1.4mm 5mm}
 .cv-t8 .foot{position:absolute;left:20mm;right:20mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm}
 .cv-t8 .brand{display:flex;align-items:center;gap:3mm;font-weight:700;font-size:9.9mm}
 .cv-t8 .lg{max-height:13mm;max-width:40mm}
@@ -235,13 +237,13 @@ const Prints = (() => {
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
         <div class="ttx">
           ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+          ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
           ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
         </div>
         <div class="deco">ENGLISH</div>
       </div>
       <div class="bar"></div>
       <div class="lower">
-        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
         <div class="foot">${nameBlock(c)}${brand(c)}</div>
       </div>`,
 
@@ -249,14 +251,12 @@ const Prints = (() => {
     c => `<div class="lines"></div><div class="mgn"></div>
       <div class="holes">${'<i></i>'.repeat(11)}</div>
       ${(c.logo || c.v.academy) ? `<div class="acad">${c.logo}${w(c.v.academy, `<span>${c.v.academy}</span>`)}</div>` : ''}
-      <div class="tape">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-      </div>
       <div class="body">
-        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
+        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
         ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
       </div>
+      ${w(c.v.type, `<div class="tape"><div class="title fit">${c.v.type}</div></div>`)}
       ${nameBlock(c)}`,
 
     // 3 아카데미 (원래 5)
@@ -265,11 +265,11 @@ const Prints = (() => {
       <div class="col">
         ${c.logo ? `<div class="lgw">${c.logo}</div>` : ''}
         ${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        <div class="rule"><b></b></div>
-        ${w(c.v.book, `<div class="book fit">${c.v.book}</div>`)}
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
         ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${w(c.v.book, `<div class="book fit">${c.v.book}</div>`)}
+        <div class="rule"><b></b></div>
+        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
       </div>
       ${nameBlock(c)}`,
 
@@ -277,20 +277,23 @@ const Prints = (() => {
     c => `<div class="bands"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
       <div class="main">
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
         ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
+        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
       </div>
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
     // 5 인덱스 (원래 7)
-    c => `<div class="side"><div class="vt fit-v">${c.v.type}</div><div class="sbrand">${c.logo}</div></div>
+    c => `<div class="side"><div class="vt">ENGLISH</div><div class="sbrand">${c.logo}</div></div>
       <div class="tabx"><i></i><i></i><i></i></div>
       <div class="main">
         ${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
+        <div class="grp">
+          ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
+          ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+          ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
+          ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
+        </div>
       </div>
       ${nameBlock(c)}`,
 
@@ -298,9 +301,9 @@ const Prints = (() => {
     c => `<div class="circ"><i class="c1"></i><i class="c2"></i><i class="c3"></i></div>
       <div class="main">
         ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
-        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
         ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
+        ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
       </div>
       <div class="foot">${brand(c) || '<span></span>'}${nameBlock(c)}</div>`,
 
