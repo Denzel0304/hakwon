@@ -458,7 +458,7 @@ const DayPage = {
       const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
       return `<div class="list-item click" data-class="${c.id}"><span class="when">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>
         <div class="what">${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span>
-        ${les ? '<span class="badge green">작성 완료</span>' : sk ? Lessons.skipBadge(c.id, date) : hol ? '<span class="badge gray">공휴일</span>' : '<span class="badge gray">일지 작성 전</span>'}
+        ${les ? (checked >= roster.length ? '<span class="badge green">작성 완료</span>' : '<span class="badge orange">작성 중</span>') : sk ? Lessons.skipBadge(c.id, date) : hol ? '<span class="badge gray">공휴일</span>' : '<span class="badge gray">일지 작성 전</span>'}
         ${les && checked ? `<span class="badge">출석 ${came}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div>
         ${les || (hol && !sk) ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';

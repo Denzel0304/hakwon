@@ -305,10 +305,56 @@
     els.beerLiquid.setAttribute('transform', `translate(0,${top.toFixed(2)})`);
     els.liqClipRect.setAttribute('y', (top + 6).toFixed(2));
   }
+  /* 모래시계 유리는 높이마다 폭이 달라서, 모래 높이를 '부피(면적)' 기준으로 환산한다.
+     위 칸: 남은 모래 면적 = 전체 × (1 - p) / 아래 칸: 쌓인 모래 면적 = 전체 × p */
+  const SAND = (function () {
+    const Y0 = 26, Y1 = 274, ST = 0.25, NECK = 150, TOP_FULL = 32;
+    const pts = [];
+    const bez = (p0, p1, p2) => {
+      for (let i = 0; i <= 400; i++) {
+        const t = i / 400, u = 1 - t;
+        pts.push([u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1],
+                  u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0] - 100]);   // [y, 반폭]
+      }
+    };
+    bez([154, 26], [154, 96], [106, 146]);      // 위 칸 오른쪽 곡선
+    pts.push([150, 6]);                          // 목 부분 (폭 12)
+    bez([106, 154], [154, 204], [154, 274]);    // 아래 칸 오른쪽 곡선
+    const n = Math.round((Y1 - Y0) / ST);
+    const cum = new Float64Array(n + 1);         // cum[i] = Y0 ~ (Y0 + i·ST) 사이 면적
+    let j = 0, prev = 0;
+    for (let i = 0; i <= n; i++) {
+      const y = Y0 + i * ST;
+      while (j < pts.length - 2 && pts[j + 1][0] < y) j++;
+      const a = pts[j], b = pts[j + 1];
+      const f = b[0] > a[0] ? Math.min(1, Math.max(0, (y - a[0]) / (b[0] - a[0]))) : 0;
+      const hw = a[1] + (b[1] - a[1]) * f;
+      if (i) cum[i] = cum[i - 1] + (prev + hw) * ST;   // 폭 = 2 × 반폭 → 사다리꼴 면적
+      prev = hw;
+    }
+    const areaTo = y => {
+      const k = Math.min(n, Math.max(0, (y - Y0) / ST));
+      const i = Math.min(n - 1, Math.floor(k));
+      return cum[i] + (cum[i + 1] - cum[i]) * (k - i);
+    };
+    const yOf = A => {
+      let lo = 0, hi = n;
+      if (A <= 0) return Y0;
+      if (A >= cum[n]) return Y1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] < A) lo = m; else hi = m; }
+      return Y0 + (lo + (A - cum[lo]) / (cum[hi] - cum[lo])) * ST;
+    };
+    const neckA = areaTo(NECK), total = neckA - areaTo(TOP_FULL), bottomA = areaTo(Y1);
+    return {
+      top: a => yOf(neckA - total * a),           // 위 칸 모래 윗면 y
+      bot: p => yOf(bottomA - total * p)          // 아래 칸 모래 윗면 y
+    };
+  })();
+
   function drawSand(p, running) {
     const a = 1 - p / 100;
     if (a > 0) {
-      const sy = 150 - 118 * a;
+      const sy = SAND.top(a);
       const dip = 2 + 6 * a;
       els.sandTop.setAttribute('d', `M0 ${sy.toFixed(2)} L100 ${(sy + dip).toFixed(2)} L200 ${sy.toFixed(2)} L200 160 L0 160 Z`);
     } else {
@@ -316,8 +362,8 @@
     }
     let peak = 274;
     if (p > 0) {
-      const h = 116 * (p / 100);
-      const sy = 274 - h;
+      const sy = SAND.bot(p / 100);
+      const h = 274 - sy;
       const mound = Math.min(14, h * 0.6);
       peak = sy - mound / 2;
       els.sandBot.setAttribute('d', `M0 300 L0 ${(sy + mound / 2).toFixed(2)} L100 ${peak.toFixed(2)} L200 ${(sy + mound / 2).toFixed(2)} L200 300 Z`);
@@ -632,7 +678,11 @@
     confettiParts = [];
   }
 
-  els.celebrate.addEventListener('click', () => { endCelebrate(); tick(); });
+  // 축하 화면은 클릭을 막지 않는다 → 축포 중에도 누른 탭·버튼이 바로 동작하고, 축하 연출만 닫힌다
+  els.celebrate.style.pointerEvents = 'none';
+  document.addEventListener('pointerdown', () => {
+    if (celebrateUntil) { endCelebrate(); tick(); }
+  }, true);
 
   /* ===== 모드 전환 ===== */
   document.querySelectorAll('#sn-root .sn-modes button').forEach(b => {
