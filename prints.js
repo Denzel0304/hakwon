@@ -1,6 +1,6 @@
 /* =========================================================
    prints.js — 학생 > 표지+양식
-   · 표지 탭: 표지 디자인 10종을 고르고 글자·로고를 넣어 인쇄 (원본: covers.html)
+   · 내신 표지 탭: 표지 디자인 5종을 고르고 글자·로고를 넣어 인쇄 (원본: covers.html)
    · 시험지·노트 탭: 독해/문법 시험지, 줄/모눈 노트 인쇄 (원본: notes.html)
    화면(설정 상자·미리보기 틀·썸네일)은 style.css 의 테마 변수만 써서 설정 > 테마를 따라간다.
    종이(표지·시험지) 색과 모양은 아래 PAPER_CSS 에 고정 → 테마와 상관없이 원본과 똑같이 인쇄된다.
@@ -530,7 +530,7 @@ const Prints = (() => {
       const cover = this.tab === 'cover';
       main.innerHTML = `<div class="page-head"><h1>표지+양식</h1>
           <span class="sub">${cover ? '디자인을 고르고, 필요한 글자만 입력하세요. 비워 둔 항목은 표지에 나오지 않아요.' : '양식을 고르고 간격을 맞춘 뒤 출력하세요.'}</span></div>
-        <div class="tabs"><button data-tab="cover" class="${cover ? 'active' : ''}">표지</button><button data-tab="note" class="${cover ? '' : 'active'}">시험지·노트</button></div>
+        <div class="tabs"><button data-tab="cover" class="${cover ? 'active' : ''}">내신 표지</button><button data-tab="note" class="${cover ? '' : 'active'}">시험지·노트</button></div>
         <div class="pr-wrap">
           <aside class="panel pr-side">${cover ? this.cvSideHtml() : this.pnSideHtml()}</aside>
           <section class="pr-view">
@@ -789,7 +789,7 @@ const Prints = (() => {
     /* ---------- 표지: 화면 ---------- */
     cvSideHtml() {
       return `<div class="pr-sec"><h2>글자</h2>
-          ${CV_FIELDS.filter(k => k !== 'student').map(fld).join('')}
+          ${['school', 'exam', 'book', 'type', 'academy'].map(fld).join('')}
         </div>
         ${this.nmSecHtml()}
         <div class="pr-sec"><h2>로고</h2>
@@ -976,7 +976,7 @@ const Prints = (() => {
     pnSideHtml() {
       return `<div class="pr-sec"><h2>글자</h2>
           <label class="pr-fld"><span>학원명</span><input type="text" data-pn-academy value="${esc(pnAcademy())}" placeholder="학원명을 입력하세요" maxlength="40" autocomplete="off"></label>
-          <p class="pr-hint">표지 탭의 학원명과 같은 값이에요.</p>
+          <p class="pr-hint">내신 표지 탭의 학원명과 같은 값이에요.</p>
           <label class="pr-fld"><span>날짜 (선택)</span>
             <div class="pr-inline"><input type="date" data-pn-date value="${esc(pn.date)}" aria-label="날짜"><button type="button" class="btn sm" data-act="pn-date-clear">지우기</button></div></label>
           <p class="pr-hint">비워 두면 날짜 칸이 빈 줄로 나와요.</p>
