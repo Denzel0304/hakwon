@@ -11,7 +11,8 @@
    결석 예정 할일 템플릿(meta): id ABT_…, { kind:'abs_tpl', text, off(결석일 기준 며칠 뒤), importance, memo, remind, checklist, time, createdAt }
    결석 예정 할일의 날짜는 결석일 기준 (숙제 안내 = 결석일 당일, 그 날 수업이 끝나는 시각)
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
-   결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, createdAt }
+   결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, date(처음 정한 할일 날짜), auto(자동 완료함), createdAt }
+   결석 예정 할일 자동 완료 기록(meta): id = PA_결석예정키, { kind:'pre_auto', absKey, todoIds, createdAt } — 출석·선보강 등으로 바뀌면 완료, 다시 결석이면 되돌림
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴', M: '선보강' };
 const ATT_SHORT = { P: '출', L: '지', A: '결', E: '조', M: '보' };
@@ -1085,7 +1086,7 @@ const Lessons = {
       return;
     }
     Store.put('lessons', rec);
-    const preN = this.preDone(f.classId, f.date, rec.att);           // 결석 예정 → 선보강: 남은 결석 예정 할일 완료
+    const preN = Makeups.preSync(true).done;                          // 결석 예정이던 학생이 출석·선보강 등으로 바뀜 → 남은 결석 예정 할일 완료
     if (this.isSkipped(f.classId, f.date)) Store.del('meta', this.skipId(f.classId, f.date));   // 일지를 쓰면 건너뛰기 표시는 없앤다
     const now = Date.now();
     const todos = f.todos.filter(d => d.text.trim());
@@ -1106,27 +1107,6 @@ const Lessons = {
     Object.keys(mkpre || {}).forEach(sid => { if ((att || {})[sid] === 'M' && isYmd(mkpre[sid])) out[sid] = mkpre[sid]; });
     return out;
   },
-  // 결석 예정이던 학생을 선보강으로 저장하면: 그 날 결석 예정이 걸린 모든 수업이 선보강이 되었을 때
-  // 그 결석 예정에 연결된 아직 안 한 할일(숙제 안내 등)을 완료로 체크한다 (지우지 않음 → 결석 예정이었다는 기록은 남음). 완료한 개수를 돌려준다
-  preDone(classId, date, att) {
-    let n = 0;
-    const iso = new Date().toISOString();
-    Object.keys(att || {}).forEach(sid => {
-      if (att[sid] !== 'M') return;
-      const pr = Makeups.preRec(classId, date, sid);
-      if (!pr || !pr.absKey) return;
-      const all = Store.where('makeups', m => m.pre && m.absKey === pr.absKey && m.status !== 'skip');
-      const allM = all.every(m => { const l = Store.get('lessons', m.lessonId); return !!(l && l.att && l.att[sid] === 'M'); });
-      if (!allM) return;                                   // 같은 날 다른 수업은 아직 결석(또는 미기록)
-      Makeups.linkedTodos(pr.absKey).filter(t => !t.done).forEach(t => {
-        const cl = (Array.isArray(t.checklist) ? t.checklist : []).map(x => Object.assign({}, x, { d: true }));
-        Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso }, cl.length ? { checklist: cl } : {}));
-        n++;
-      });
-    });
-    return n;
-  },
-
   // 수업일지 할일 저장용 레코드 (상세 값은 할일 창과 같은 규칙 · 체크리스트가 있으면 모두 체크해야 완료)
   newTodo(d, i, now, lessonId, classId, ldate) {
     const v = TodoX.detailVals(d);
@@ -1154,7 +1134,7 @@ const Lessons = {
     if (np.gp.length) rec.gp = np.gp; else delete rec.gp;
     const mp = this.mkpreOf(f.att, f.mkpre); if (Object.keys(mp).length) rec.mkpre = mp; else delete rec.mkpre;   // 선보강한 날
     Store.put('lessons', rec);
-    const preN = this.preDone(f.classId, f.date, rec.att);           // 결석 예정 → 선보강: 남은 결석 예정 할일 완료
+    const preN = Makeups.preSync(true).done;                          // 결석 예정이던 학생이 출석·선보강 등으로 바뀜 → 남은 결석 예정 할일 완료
     // 할일: 폼에 남은 기존 할일은 고치고, 빠진 기존 할일은 지우고, 새 칸은 추가
     const keep = new Set(f.todos.filter(d => d.id && d.text.trim()).map(d => d.id));
     Store.where('todos', t => t.lessonId === id && !keep.has(t.id)).forEach(t => Store.del('todos', t.id));
@@ -1995,42 +1975,116 @@ const Makeups = {
   _rtT: null,
   retKey(sid, date) { return sid + '_' + compactDate(date); },
   retText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) 후 첫 등원 - 결석부분 처리 요망`; },
+  // 그 날 이 학생이 실제로 오는 수업 (결석·결석 예정·선보강인 수업은 뺀다)
+  comeOn(sid, d, today) {
+    return this.classesFor(sid, d, d >= today).filter(c => {
+      const l = Store.get('lessons', Lessons.lessonId(c.id, d));
+      const a = l && l.att ? l.att[sid] || '' : '';
+      return a ? a !== 'A' && a !== 'M' : !this.preRec(c.id, d, sid);     // 선보강인 날은 그 수업에 오지 않음
+    });
+  },
   // 첫 등원일 { date, time(그 날 가장 빠른 수업 시작) } (찾지 못하면 null)
   retDay(sid, date, hol, today) {
     for (let i = 1; i <= this.RET_DAYS; i++) {
       const d = addDaysStr(date, i);
       if (Holidays.has(d, hol)) continue;
-      const come = this.classesFor(sid, d, d >= today).filter(c => {
-        const l = Store.get('lessons', Lessons.lessonId(c.id, d));
-        const a = l && l.att ? l.att[sid] || '' : '';
-        return a ? a !== 'A' && a !== 'M' : !this.preRec(c.id, d, sid);     // 선보강인 날은 그 수업에 오지 않음
-      });
+      const come = this.comeOn(sid, d, today);
       if (!come.length) continue;
       const dw = dowOf(d);
       return { date: d, time: come.map(c => Classes.stuTimeOn(c, sid, dw).start || '').filter(Boolean).sort()[0] || '' };   // 금요일 개인 시간 반영
     }
     return null;
   },
-  // 결석 기록을 보고 할일을 만들기 · 완료 · 삭제 (서버 내용을 처음 받은 뒤에만). 바뀐 개수를 돌려준다
+
+  /* ---------- 결석 예정 할일 자동 정리 ----------
+     결석 예정(학생·날짜)에 걸린 그 날 모든 수업의 출결이 기록되었고 결석이 하나도 없으면 (출석·지각·조퇴·선보강)
+       → 아직 안 한 결석 예정 할일(숙제 안내 등)을 완료로 체크하고, 무엇을 자동 완료했는지 meta PA_결석예정키 { kind:'pre_auto', absKey, todoIds } 에 남긴다
+     다시 결석(또는 출결 지움)이 되면 → 자동 완료했던 할일만 미완료로 되돌리고(체크리스트도 원래대로) PA 기록 삭제. 직접 체크한 할일은 건드리지 않는다
+     결석 예정 기록이 모두 없어진 할일(일지 완전 삭제·학생 삭제 등) → 아직 안 한 것은 삭제 (만든 지 10분 안 된 것은 다른 기기 동기화를 기다림)
+     silent: 토스트 없이 (수업일지 저장 때 저장 토스트에 합쳐 보여줌). → { done, undone, del } */
+  preSync(silent) {
+    const r = { done: 0, undone: 0, del: 0 };
+    if (!Store.firstPullDone || !Auth.key()) return r;
+    const iso = new Date().toISOString();
+    const groups = {};
+    Store.where('makeups', m => m.pre && m.absKey).forEach(m => { (groups[m.absKey] = groups[m.absKey] || []).push(m); });
+    Object.keys(groups).forEach(k => {
+      const recs = groups[k], sid = recs[0].studentId, pid = 'PA_' + k;
+      const came = recs.every(m => { const l = Store.get('lessons', m.lessonId); const a = l && l.att ? l.att[sid] || '' : ''; return !!a && a !== 'A'; });
+      const pa = Store.get('meta', pid);
+      if (came && !pa) {
+        const ids = [];
+        this.linkedTodos(k).filter(t => !t.done).forEach(t => {
+          const cl = Array.isArray(t.checklist) ? t.checklist : [];
+          Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, preCl: JSON.parse(JSON.stringify(cl)) }, cl.length ? { checklist: cl.map(x => Object.assign({}, x, { d: true })) } : {}));
+          ids.push(t.id); r.done++;
+        });
+        Store.put('meta', { id: pid, kind: 'pre_auto', absKey: k, todoIds: ids, createdAt: iso });
+      } else if (!came && pa) {
+        (pa.todoIds || []).forEach(id => {
+          const t = Store.get('todos', id);
+          if (!t || !t.done || !('preCl' in t)) return;        // 그 사이 직접 고친 할일은 그대로
+          const back = Object.assign({}, t, { done: false, doneAt: '', checklist: Array.isArray(t.preCl) ? t.preCl : [] });
+          delete back.preCl;
+          Store.put('todos', back); r.undone++;
+        });
+        Store.del('meta', pid);
+      }
+    });
+    // 결석 예정 기록이 없어진 할일 · 자동 완료 기록
+    const old = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    Store.where('todos', t => t.absKey && !t.done && !groups[t.absKey] && String(t.createdAt || '') < old).forEach(t => { Store.del('todos', t.id); r.del++; });
+    Store.where('meta', m => m.kind === 'pre_auto' && !groups[m.absKey]).forEach(m => Store.del('meta', m.id));
+    if (!silent) {
+      const msg = [r.done ? `결석 예정 할일 ${r.done}개 완료 처리` : '', r.undone ? `결석 예정 할일 ${r.undone}개를 다시 미완료로` : ''].filter(Boolean).join(' · ');
+      if (msg) toast(msg);
+    }
+    return r;
+  },
+
+  // 결석 기록을 보고 할일을 만들기 · 완료 · 되돌리기 · 날짜 옮기기 · 삭제 (서버 내용을 처음 받은 뒤에만). 바뀐 개수를 돌려준다
+  // 첫 등원 할일: 그 날 결석이 모두 안내 완료·보강 완료 → 자동 완료(retAuto 표시, meta.auto) / 다시 미지정·예정이 되면 자동 완료한 것만 되돌림
+  //              아직 안 한 할일인데 그 날 학생이 오지 않게 되면(결석·결석 예정·선보강) 다음 등원일로 옮김 (직접 날짜를 바꾼 할일은 그대로)
   retSync() {
     if (!Store.firstPullDone || !Auth.key()) return 0;
+    const ps = this.preSync();
     const today = todayStr(), hol = Holidays.map(), iso = new Date().toISOString();
     const groups = {};
     this.collect().forEach(o => {
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
-    let add = 0, chg = 0;
+    let add = 0, chg = ps.done + ps.undone + ps.del;
     Object.keys(groups).forEach(k => {
       const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
-      if (Store.get('meta', mid)) {
-        if (t && !t.done && g.st.every(mkDone)) { Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso })); chg++; }
+      const meta = Store.get('meta', mid);
+      if (meta) {
+        const allDone = g.st.every(mkDone);
+        if (allDone && !meta.auto) {                                  // 보강 처리 끝 → 자동 완료 (한 번만: 직접 다시 풀어도 또 체크하지 않음)
+          if (t && !t.done) Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, retAuto: true }));
+          Store.put('meta', Object.assign({}, meta, { auto: true }));
+          chg++;
+        } else if (!allDone && meta.auto) {                           // 다시 미지정·예정 → 자동 완료했던 것만 되돌림
+          if (t && t.done && t.retAuto) { const b = Object.assign({}, t, { done: false, doneAt: '' }); delete b.retAuto; Store.put('todos', b); }
+          Store.put('meta', Object.assign({}, meta, { auto: false }));
+          chg++;
+        }
+        // 아직 안 한 할일인데 그 날 학생이 오지 않게 됨 → 다음 등원일로 (만들 때 정한 날짜 그대로일 때만)
+        const t2 = Store.get('todos', 'TDR_' + k);
+        if (t2 && !t2.done && meta.date && t2.date === meta.date && (Holidays.has(t2.date, hol) || !this.comeOn(g.s.id, t2.date, today).length)) {
+          const r = this.retDay(g.s.id, g.date, hol, today);
+          if (r && r.date !== t2.date) {
+            Store.put('todos', Object.assign({}, t2, { date: r.date, order: TodoX.maxOrder(r.date) + 1, remindDone: false }, TodoX.detailVals(Object.assign({}, t2, { time: r.time }))));
+            Store.put('meta', Object.assign({}, Store.get('meta', mid), { date: r.date }));
+            chg++;
+          }
+        }
         return;
       }
       if (!g.st.includes('none')) return;
       const r = this.retDay(g.s.id, g.date, hol, today);
       if (!r) return;
-      Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, createdAt: iso });
+      Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, date: r.date, createdAt: iso });
       if (!t) {
         Store.put('todos', Object.assign({ id: 'TDR_' + k, lessonId: '', classId: '', date: r.date, text: this.retText(g.s, g.date), done: false, createdAt: iso,
           order: TodoX.maxOrder(r.date) + 1, doneAt: '', remindDone: false, retKey: k }, TodoX.detailVals({ importance: 3, time: r.time })));
