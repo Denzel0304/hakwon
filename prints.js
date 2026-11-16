@@ -22,6 +22,8 @@ const Prints = (() => {
 .cv-page *{box-sizing:border-box}
 .cv-page .fit{white-space:nowrap;width:100%}
 .cv-page .lg{display:block;object-fit:contain}
+.cv-page .se{display:flex;align-items:center;flex-wrap:wrap;gap:2mm 5mm}
+.cv-page .se > *{margin:0 !important}
 .cv-page .name{font-size:5mm;display:flex;align-items:flex-end;gap:3mm}
 .cv-page .name .nv{display:inline-block;min-width:55mm;border-bottom:0.35mm solid currentColor;padding:0 2mm 0.8mm;font-weight:700}
 
@@ -29,7 +31,8 @@ const Prints = (() => {
 
 /* 2. 블록 */
 .cv-t2 .block{position:absolute;left:0;right:0;top:0;height:205mm;background:#F5C518;padding:22mm 20mm 18mm;display:flex;flex-direction:column}
-.cv-t2 .school{align-self:flex-start;font-weight:700;font-size:10.5mm;border:0.6mm solid #111;padding:1.6mm 4.5mm}
+.cv-t2 .se{align-self:flex-start}
+.cv-t2 .school{font-weight:700;font-size:10.5mm;border:0.6mm solid #111;padding:1.6mm 4.5mm}
 .cv-t2 .ttx{margin-top:auto;padding-right:16mm}
 .cv-t2 .exam{font-weight:700;font-size:12.3mm;margin-bottom:3mm}
 .cv-t2 .title{font-family:'Black Han Sans',sans-serif;font-size:34.5mm;line-height:1;color:#111}
@@ -54,7 +57,8 @@ const Prints = (() => {
 .cv-t3 .title{font-family:'Nanum Pen Script',cursive;font-size:27mm;line-height:1;color:#1E3A8A}
 .cv-t3 .body{position:absolute;top:49mm;left:44mm;right:20mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48}
 .cv-t3 .book{font-size:9mm;line-height:18mm}
-.cv-t3 .exam{font-family:'Nanum Pen Script',cursive;font-size:16.8mm;line-height:25.2mm;color:#C2362B}
+.cv-t3 .se{flex-wrap:nowrap;align-items:baseline;white-space:nowrap}
+.cv-t3 .exam{font-family:'Nanum Pen Script',cursive;font-size:15mm;line-height:18mm;color:#C2362B}
 .cv-t3 .name{position:absolute;bottom:28mm;left:44mm;font-family:'Gowun Dodum',sans-serif;color:#1E2B48;background:#fff;padding:1mm 2mm}
 
 /* 4. 스위스 */
@@ -75,7 +79,8 @@ const Prints = (() => {
 .cv-t5 .rule::before,.cv-t5 .rule::after{content:"";flex:1;height:0.25mm;background:#C8A55A}
 .cv-t5 .rule b{width:2.6mm;height:2.6mm;background:#C8A55A;transform:rotate(45deg)}
 .cv-t5 .book{margin-top:7mm;font-family:'Noto Serif KR',serif;font-weight:700;font-size:7.5mm}
-.cv-t5 .school{margin-top:24mm;font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
+.cv-t5 .se{margin-top:24mm;justify-content:center}
+.cv-t5 .school{font-size:6.7mm;letter-spacing:0.5mm;color:#D9CBA6}
 .cv-t5 .exam{margin-top:6mm;font-size:6.4mm;border-top:0.25mm solid #C8A55A;border-bottom:0.25mm solid #C8A55A;padding:1.6mm 6mm;color:#C8A55A}
 .cv-t5 .name{position:absolute;bottom:30mm;left:0;right:0;justify-content:center}
 
@@ -85,6 +90,7 @@ const Prints = (() => {
 .cv-t6 .b2{top:70mm;right:-160mm;height:11mm;background:#FF6B57}
 .cv-t6 .b3{top:86mm;right:-150mm;height:4mm;background:#7FB7E8}
 .cv-t6 .main{position:absolute;top:128mm;left:20mm;right:20mm}
+.cv-t6 .se{margin-bottom:3mm}
 .cv-t6 .school{display:inline-block;background:#FF6B57;color:#fff;font-weight:700;font-size:10.3mm;padding:1.8mm 5mm;margin-bottom:5mm}
 .cv-t6 .title{margin-top:7mm;font-family:'Do Hyeon',sans-serif;font-size:31.5mm;line-height:1.05;color:#13294B}
 .cv-t6 .book{margin-top:3mm;font-weight:700;font-size:9mm;line-height:1.35;color:#13294B}
@@ -118,6 +124,7 @@ const Prints = (() => {
 .cv-t8 .c2{width:104mm;height:104mm;top:36mm;left:70mm;background:#FF9147}
 .cv-t8 .c3{width:82mm;height:82mm;top:-6mm;left:142mm;background:#22B8A7}
 .cv-t8 .main{position:absolute;top:158mm;left:20mm;right:20mm}
+.cv-t8 .se{margin-bottom:0}
 .cv-t8 .school{font-size:10.5mm;color:#555;margin-bottom:4mm}
 .cv-t8 .title{margin-top:6mm;font-weight:700;font-size:21mm;line-height:1.1;letter-spacing:-0.8mm;color:#1A1A2E}
 .cv-t8 .book{margin-top:4mm;font-weight:500;font-size:8.5mm;line-height:1.35;color:#1A1A2E}
@@ -234,9 +241,8 @@ const Prints = (() => {
   const CV_TPL = [
     // 1 블록 (원래 2)
     c => `<div class="block">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
+        ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
         <div class="ttx">
-          ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
           ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
           ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
         </div>
@@ -252,8 +258,7 @@ const Prints = (() => {
       <div class="holes">${'<i></i>'.repeat(11)}</div>
       ${(c.logo || c.v.academy) ? `<div class="acad">${c.logo}${w(c.v.academy, `<span>${c.v.academy}</span>`)}</div>` : ''}
       <div class="body">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
         ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
       </div>
       ${w(c.v.type, `<div class="tape"><div class="title fit">${c.v.type}</div></div>`)}
@@ -265,8 +270,7 @@ const Prints = (() => {
       <div class="col">
         ${c.logo ? `<div class="lgw">${c.logo}</div>` : ''}
         ${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
         ${w(c.v.book, `<div class="book fit">${c.v.book}</div>`)}
         <div class="rule"><b></b></div>
         ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
@@ -276,8 +280,7 @@ const Prints = (() => {
     // 4 사선 (원래 6)
     c => `<div class="bands"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
       <div class="main">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
         ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
         ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
       </div>
@@ -289,8 +292,7 @@ const Prints = (() => {
       <div class="main">
         ${w(c.v.academy, `<div class="academy">${c.v.academy}</div>`)}
         <div class="grp">
-          ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-          ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+          ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
           ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
           ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
         </div>
@@ -300,8 +302,7 @@ const Prints = (() => {
     // 6 도형 (원래 8)
     c => `<div class="circ"><i class="c1"></i><i class="c2"></i><i class="c3"></i></div>
       <div class="main">
-        ${w(c.v.school, `<div class="school">${c.v.school}</div>`)}
-        ${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}
+        ${(c.v.school || c.v.exam) ? `<div class="se">${w(c.v.school, `<div class="school">${c.v.school}</div>`)}${w(c.v.exam, `<div class="exam">${c.v.exam}</div>`)}</div>` : ''}
         ${w(c.v.book, `<div class="book">${c.v.book}</div>`)}
         ${w(c.v.type, `<div class="title fit">${c.v.type}</div>`)}
       </div>
