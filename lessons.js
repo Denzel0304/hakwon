@@ -1352,7 +1352,11 @@ const AttBook = {
       td.hol { background: #e4e7eb; color: #888; font-size: 6.5pt; }
       td.A { color: #c62828; font-weight: bold; } td.L { color: #c77700; } td.E { color: #1f5fbf; } td.M { color: #12898b; font-weight: bold; }
       td.A.mk { font-size: 6.5pt; }
-    </style></head><body><h1>${Y}년 ${M}월 출석부<small>출력일 ${todayStr()}</small></h1>${body}</body></html>`;
+      .legend { margin-top: 1mm; padding: 1.5mm 2mm; border: 0.5pt solid #c5ccd4; border-radius: 1.5mm; background: #f6f8fa; font-size: 8pt; color: #333; break-inside: avoid; page-break-inside: avoid; }
+      .legend b { margin-left: 3mm; } .legend b:first-child { margin-left: 0; }
+      .legend .A { color: #c62828; } .legend .L { color: #c77700; } .legend .E { color: #1f5fbf; } .legend .M { color: #12898b; }
+    </style></head><body><h1>${Y}년 ${M}월 출석부<small>출력일 ${todayStr()}</small></h1>${body}
+    <div class="legend"><b>출</b> 출석 <b class="L">지</b> 지각 <b class="A">결</b> 결석 <b class="E">조</b> 조퇴 <b class="M">보</b> 보강 <b class="A">결✓</b> 결석 후 보강이 이루어짐</div></body></html>`;
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(fr);

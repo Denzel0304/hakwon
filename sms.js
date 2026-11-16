@@ -105,7 +105,7 @@ const SmsPage = {
         <div class="sx7-list" id="sx7-list">${this.listHtml(all, cmap)}</div>
         <div id="sx7-selbox" class="sx7-selbox">${this.selHtml(all)}</div>
       </div>
-      <div class="panel">
+      <div class="panel sx7-compose">
         <h2>내용</h2>
         <div class="sx7-row"><span class="soft small sx7-lb">받는 사람</span>
           ${[['parent', '부모님'], ['student', '학생'], ['both', '둘 다']].map(([k, t]) => `<label class="chk"><input type="radio" name="sx7-to" data-to="${k}" ${this.to === k ? 'checked' : ''}> ${t}</label>`).join('')}
@@ -526,7 +526,9 @@ const SmsPage = {
   const st = document.createElement('style');
   st.id = 'mg77-sx7-style';
   st.textContent = `
-.sx7-grid { align-items: start; }
+.sx7-grid { align-items: stretch; }
+.sx7-compose { display: flex; flex-direction: column; }
+.sx7-compose textarea[data-text] { flex: 1 1 auto; }
 .sx7-list { max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; }
 .sx7-st { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px dashed var(--line); cursor: pointer; user-select: none; }
 .sx7-st:last-child { border-bottom: 0; }
