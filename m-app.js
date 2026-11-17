@@ -358,7 +358,7 @@ const MMakeups = {
    ========================================================= */
 const MEvents = {
   mode: 'cal',            // 'cal' | 'list'
-  type: 'exam',           // 종류 필터 ('' = 전체) — 처음에는 시험 일정
+  type: '',               // 종류 필터 ('' = 전체) — 처음에는 전체
   q: '', hidePast: true,
   month: '',              // 'YYYY-MM'
   sel: '',                // 달력에서 고른 날짜
@@ -387,6 +387,20 @@ const MEvents = {
 
   okType(ev) { return !this.type || evType(ev) === this.type; },
 
+  // 달력에 쓰는 이름 (PC 큰 달력과 같은 규칙): 직전 보강·영어 시험·기타 일정은 종류 이름을 빼고 대상·제목만
+  //   대상·제목이 모두 없으면 종류 이름을 그대로 쓴다
+  calText(ev) {
+    const t = evType(ev);
+    if (t !== 'pre' && t !== 'weekend' && t !== 'etc') return eventShort(ev);
+    return [eventTarget(ev), ev.title].filter(Boolean).join(' · ') || EVENT_TYPES[t].label;
+  },
+  // 목록 배지·글자 (PC 날짜 요약과 같은 규칙): 기타 일정 → 배지 '기타', 글자 앞의 '기타 일정'은 뺀다
+  tagLabel(ev) { return evType(ev) === 'etc' ? '기타' : EVENT_TYPES[evType(ev)].label; },
+  rowText(ev) {
+    const t = eventShort(ev), lb = EVENT_TYPES.etc.label;
+    return evType(ev) === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t;
+  },
+
   moveMonth(n) {
     const [Y, M] = this.month.split('-').map(Number);
     const d = new Date(Y, M - 1 + n, 1);
@@ -398,8 +412,8 @@ const MEvents = {
   evRow(ev, showDate) {
     const t = eventTime(ev);
     return `<button type="button" class="m-ev ${evEnd(ev) < todayStr() ? 'past' : ''}" data-ev="${ev.id}">
-      <span class="badge ${this.TCLS[evType(ev)]}">${EVENT_TYPES[evType(ev)].label}</span>
-      <span class="m-ev-b"><b>${esc(eventShort(ev))}</b>
+      <span class="badge ${this.TCLS[evType(ev)]}">${this.tagLabel(ev)}</span>
+      <span class="m-ev-b"><b>${esc(this.rowText(ev))}</b>
         <span class="small soft">${[showDate || isRange(ev) ? eventRangeLabel(ev) : '', t].filter(Boolean).map(esc).join(' ')}</span>
         ${ev.memo ? `<span class="small muted m-ev-memo">${esc(firstLine(ev.memo))}</span>` : ''}</span></button>`;
   },
@@ -443,11 +457,11 @@ const MEvents = {
         if (k === today) cls.push('today');
         if (k === this.sel) cls.push('sel');
         const items = singles.filter(ev => ev.date === k).sort((a, b) => ko(a.start, b.start))
-          .map(ev => `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}">${esc(eventShort(ev))}</span>`).join('');
+          .map(ev => `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}">${esc(this.calText(ev))}</span>`).join('');
         h += `<div class="${cls.join(' ')}" data-d="${k}"><span class="n">${d.getDate()}</span><div class="m-bc-items">${items}</div></div>`;
       });
       segs.forEach(sg => {
-        const label = (sg.contL ? '→ ' : '') + eventShort(sg.ev) + (sg.contR ? ' →' : '');
+        const label = (sg.contL ? '→ ' : '') + this.calText(sg.ev) + (sg.contR ? ' →' : '');
         h += `<div class="m-bc-bar ${sg.contL ? 'cont-l' : 'tl'} ${sg.contR ? 'cont-r' : 'tr'}" data-ev="${sg.ev.id}"
           style="left:calc(${sg.c0 / 7 * 100}% + 2px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 4px);top:calc(var(--bt) + ${sg.ln} * var(--bh));background:${colors[barKey(sg.ev)]}">${esc(label)}</div>`;
       });
