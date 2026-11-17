@@ -295,6 +295,14 @@ const BigCal = {
     const evs = Store.all('events').filter(ev => isYmd(ev.date) && f[evType(ev)]);
     const ranges = evs.filter(isRange).sort((a, b) => ko(a.date, b.date) || ko(evEnd(b), evEnd(a)));
     const singles = evs.filter(ev => !isRange(ev));
+    // 달력에 쓰는 이름: 직전 보강·영어 시험·기타 일정은 종류 이름('기타 일정' 등)을 빼고 대상·제목만 (색으로 구분)
+    //   대상·제목이 모두 없으면 종류 이름을 그대로 쓴다
+    const calText = (ev) => {
+      const t = evType(ev);
+      if (t !== 'pre' && t !== 'weekend' && t !== 'etc') return eventShort(ev);
+      const tg = eventTarget(ev);
+      return [tg, ev.title].filter(Boolean).join(' · ') || EVENT_TYPES[t].label;
+    };
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
     let h = `<div class="page-head">
@@ -329,14 +337,15 @@ const BigCal = {
         if (i === 6) cls.push('sat');
         if (k === today) cls.push('today');
         const items = singles.filter(ev => ev.date === k).sort((a, b) => ko(a.start, b.start)).map(ev => {
-          const txt = (ev.start ? ev.start + ' ' : '') + eventShort(ev);
-          return `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}" title="${esc(txt)}">${esc(txt)}</span>`;
+          const txt = (ev.start ? ev.start + ' ' : '') + calText(ev);
+          const tip = (ev.start ? ev.start + ' ' : '') + eventShort(ev);       // 마우스를 올리면 종류까지 전체 이름
+          return `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}" title="${esc(tip)}">${esc(txt)}</span>`;
         }).join('');
         h += `<div class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><div class="bc2-items">${items}</div></div>`;
       });
       segs.forEach(sg => {
         const col = colors[barKey(sg.ev)];
-        const label = (sg.contL ? '→ ' : '') + eventShort(sg.ev) + (sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : '');
+        const label = (sg.contL ? '→ ' : '') + calText(sg.ev) + (sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : '');
         h += `<div class="bc2-bar ${sg.contL ? 'cont-l' : 'tl'} ${sg.contR ? 'cont-r' : 'tr'}" data-ev="${sg.ev.id}"
           style="left:calc(${sg.c0 / 7 * 100}% + 3px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 6px);top:calc(var(--bar-top) + ${sg.ln} * var(--bar-h));background:${col}"
           title="${esc(eventShort(sg.ev) + ' (' + eventRangeLabel(sg.ev) + ')')}">${esc(label)}</div>`;
