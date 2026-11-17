@@ -871,8 +871,7 @@ const Reports = {
 .rp-cfg-h:first-child { padding-top: 0; }
 .rp-cls { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .rp-cls .chk { display: inline-flex; align-items: center; }
-.rp-grp .rp-xbtn { margin-left: auto; visibility: hidden; }
-.rp-grp:hover .rp-xbtn { visibility: visible; }
+.rp-grp .rp-xbtn { margin-left: auto; }
 .rp-xbtn { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft); font-size: 11.5px; font-weight: 600; padding: 0 7px; line-height: 19px; border-radius: 6px; cursor: pointer; }
 .rp-xbtn:hover { border-color: var(--danger); color: var(--danger); }
 .rp-xbtn.in:hover { border-color: var(--ok); color: var(--ok); }
