@@ -318,6 +318,7 @@ function studentChoices(filter) {
   list.forEach(s => {
     let label = s.name + (stTag(s) ? ' (' + stTag(s) + ')' : '');
     if (s.status === 'left') label += ' [퇴원]';
+    else if (s.status === 'pause') label += ' [휴원]';
     if (used[label]) label += ' #' + s.id.slice(-4);
     used[label] = 1;
     map[label] = s.id;

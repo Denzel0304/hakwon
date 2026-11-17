@@ -1839,7 +1839,7 @@ const Makeups = {
       st.rows = [r];
     }
     // 학생 목록: 학생 탭 기본 순서 (학년 → 학교 → 이름)
-    const map0 = studentChoices(s => s.status !== 'left'), map = {};
+    const map0 = studentChoices(s => (s.status || 'active') === 'active'), map = {};     // 재원만 (휴원·퇴원 제외)
     Object.keys(map0).sort((a, b) => Students.sortFn(Store.get('students', map0[a]), Store.get('students', map0[b])) || ko(a, b)).forEach(k => { map[k] = map0[k]; });
     const body = `<div class="form ab-form">
       <label class="req">학생</label>${edit ? `<div><b>${esc(g0.s.name)}</b> <span class="tag">${esc(stTag(g0.s))}</span></div>` : `<div>${studentInputHtml('dl-absst', '')}</div>`}

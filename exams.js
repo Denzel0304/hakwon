@@ -932,9 +932,9 @@ const Scores = {
     }
     return out;
   },
-  // 대상 학생: 재원·휴원 중·고등, 반별로 (반 순서·학생 순서는 출석부와 같음)
+  // 대상 학생: 재원 중·고등 (휴원·퇴원 제외), 반별로 (반 순서·학생 순서는 출석부와 같음)
   groups() {
-    const list = Store.where('students', s => (s.status === 'active' || s.status === 'pause') && +s.grade >= 7 && (s.name || '').trim());
+    const list = Store.where('students', s => (s.status || 'active') === 'active' && +s.grade >= 7 && (s.name || '').trim());   // 휴원·퇴원 제외
     return Books.groupByClass(list).map(g => ({ c: g.c, list: g.list.slice().sort((a, b) => Students.sortFn(a, b)) })).filter(g => g.list.length);
   },
   lvShort(lv) { if (!lv) return ''; const [sys, n] = String(lv).split('-'); return n + '등급' + (sys === '5' ? '(5)' : ''); },

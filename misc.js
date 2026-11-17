@@ -126,7 +126,7 @@ const Promo = {
   running: false,
 
   pendingStudents() {
-    return Store.where('students', s => s.status !== 'left' && s.schoolPending).sort((a, b) => Students.sortFn(a, b));
+    return Store.where('students', s => (s.status || 'active') === 'active' && s.schoolPending).sort((a, b) => Students.sortFn(a, b));   // 휴원·퇴원 제외 (복귀하면 다시 나옴)
   },
 
   noticeDate(y) {
