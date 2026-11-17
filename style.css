@@ -1323,3 +1323,70 @@ body.theme-gray {
 .pl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 12px; }
 .pl-bar .sub { color: var(--ink-soft); font-size: 14.5px; }
 .pl-bar .grow { flex: 1; }
+
+/* =========================================================
+   성적 (exams.js Scores) — 반별 추이표
+   ========================================================= */
+.page-head .sc-tabs { margin: 0 0 0 8px; border-bottom: 0; }
+.sc-start { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.sc-start select { font-weight: 700; color: var(--accent-ink); }
+.sc-sec { padding: 14px 16px 10px; }
+.sc-sec-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sc-sec-h h2 { margin: 0; display: flex; align-items: center; gap: 4px; }
+.sc-sec-h .grow { flex: 1; }
+.sc-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.sc-tbl { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; min-width: 100%; font-size: 14px; }
+.sc-tbl col.sc-c-nm { width: 168px; } .sc-tbl col.sc-c-t { width: 92px; } .sc-tbl col.sc-c-tr { width: 128px; }
+.sc-tbl th, .sc-tbl td { border-bottom: 1px solid var(--line); padding: 0 6px; height: 40px; text-align: center; white-space: nowrap; background: var(--surface); }
+.sc-tbl tbody tr:last-child td { border-bottom: 0; }
+.sc-tbl tbody tr:hover td { background: var(--tint-2); }
+.sc-tbl thead th { background: var(--tint-strong); color: var(--ink-soft); font-size: 13px; font-weight: 700; height: 44px; line-height: 1.25; }
+.sc-tbl thead tr.sc-yr th { height: 24px; font-size: 12px; color: var(--accent-ink); font-weight: 800; background: var(--tint); border-bottom: 1px solid var(--line); }
+.sc-tbl th small { display: block; font-size: 11px; font-weight: 500; color: var(--ink-mute); }
+.sc-tbl .sc-ys { border-left: 2px solid var(--line-strong); }
+.sc-tbl .sc-nm { position: sticky; left: 0; z-index: 2; text-align: left; border-right: 1px solid var(--line-strong); }
+.sc-tbl .sc-tr { border-left: 1px solid var(--line-strong); }
+.sc-name { border: 0; background: none; padding: 0; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; font: inherit; color: var(--ink); max-width: 150px; overflow: hidden; }
+.sc-name b { font-size: 14.5px; }
+.sc-name span { font-size: 12px; color: var(--ink-mute); }
+.sc-name:hover b { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.sc-th { cursor: pointer; }
+.sc-th:hover { color: var(--accent-ink); background: var(--accent-soft) !important; }
+.sc-th small { visibility: hidden; }
+.sc-th:hover small { visibility: visible; }
+.sc-th.on { background: var(--accent) !important; color: #fff; }
+.sc-th.on small { visibility: visible; color: var(--on-accent-mute); }
+.sc-tbl td[data-sc], .sc-tbl td[data-mc] { cursor: pointer; }
+.sc-tbl td[data-sc]:hover, .sc-tbl td[data-mc]:hover { box-shadow: inset 0 0 0 2px var(--accent-line); }
+.sc-v b { font-size: 16px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sc-v small { display: block; font-size: 11px; line-height: 1.1; color: var(--ink-soft); font-weight: 600; margin-top: -1px; }
+.sc-v { line-height: 1.15; }
+.sc-v i { font-style: normal; font-size: 10.5px; font-weight: 700; margin-left: 3px; vertical-align: 2px; }
+.sc-up { color: var(--ok); } .sc-dn { color: var(--danger); } .sc-eq { color: var(--ink-mute); }
+.sc-e:hover::after { content: '+'; color: var(--accent); font-weight: 700; }
+.sc-na { color: var(--line-strong); }
+.sc-q { padding: 3px 4px !important; white-space: normal !important; }
+.sc-q input, .sc-q select { display: block; box-sizing: border-box; width: 100% !important; min-width: 0; }
+.sc-q input { padding: 2px 4px; text-align: center; font-weight: 700; height: 26px; }
+.sc-q select { font-size: 11.5px; padding: 0 2px; height: 22px; margin-top: 2px; }
+.sc-q.saved input { border-color: var(--ok); background: var(--ok-soft); }
+.sc-tbl tr:has(.sc-q) td { height: 58px; }
+.sc-spark { display: block; margin: 0 auto; }
+.sc-spark .sc-mid { stroke: var(--line); stroke-dasharray: 2 3; }
+.sc-erows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; margin-top: 12px; max-height: 50vh; overflow: auto; }
+.sc-erow { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.sc-erow input { width: 76px; margin-left: auto; text-align: center; font-weight: 700; }
+.sc-stat { padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.sc-stat-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sc-big { display: block; max-height: 320px; }
+.sc-big .sc-grid { stroke: var(--line); }
+.sc-big .sc-ax { font-size: 12px; fill: var(--ink-mute); }
+.sc-big .sc-pt { font-size: 12px; font-weight: 700; }
+.sc-legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; }
+.sc-legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.sc-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sc-list { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.sc-list > b { display: block; margin-bottom: 6px; }
+.sc-list > div { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+.sc-list > div span { flex: 1; color: var(--ink-soft); }
+.sc-list > div small { color: var(--ink-mute); width: 52px; text-align: right; }
