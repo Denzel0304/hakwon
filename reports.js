@@ -21,7 +21,7 @@ const RP_DEF = {
   academy: '',
   logo: '',
   title: '{년}년 {월}월 월간 리포트',
-  sub: '{이름} 학생 · {학교}',
+  sub: '{이름} · {학교}',
   file: '리포트_{년}년{월}월_{이름}',
   wtitle: '{월}월 {주}주차 주간 테스트',
   wfile: '주간테스트_{년}년{월}월{주}주차_{이름}',
@@ -84,7 +84,8 @@ const Reports = {
       academy: r.academy || RP_DEF.academy,
       logo: r.logo || '',
       title: String(r.title || '').trim() || RP_DEF.title,
-      sub: r.sub != null ? r.sub : RP_DEF.sub,
+      // 예전 기본 문구('{이름} 학생 · {학교}')로 저장돼 있으면 새 기본 문구로 ('학생' 글자 빼기)
+      sub: r.sub != null && r.sub !== '{이름} 학생 · {학교}' ? r.sub : RP_DEF.sub,
       file: String(r.file || '').trim() || RP_DEF.file,
       labels,
       wtitle: String(r.wtitle || '').trim() || RP_DEF.wtitle,
@@ -202,7 +203,7 @@ const Reports = {
         <h2><span class="rp-kind">${wk ? '주간 테스트' : '월간 리포트'}</span>${esc(s.name)}<span class="sub">${esc(stTag(s))} · ${when}</span></h2>
         <div class="muted small" style="margin:-6px 0 12px">입력한 영역만 ${wk ? '주간 테스트' : '리포트'}에 실립니다. 입력하면 바로 저장됩니다.</div>
         ${RP_AREAS.map(([k]) => `<div class="rp-area"><label>${esc(labels[k])}</label><textarea data-k="${k}" rows="4">${esc(r[k] || '')}</textarea></div>`).join('')}
-        <div class="rp-acts"><button class="btn" data-rp="pv">미리보기</button>
+        <div class="rp-acts"><button class="btn" data-rp="pv">미리보기</button><button class="btn rp-reset" data-rp="reset" title="이 학생의 이 칸들을 모두 비웁니다">초기화</button>
           <button class="btn primary" data-rp="jpg">JPG 저장</button>
           <button class="btn" data-rp="copy" title="카톡 대화창에 Ctrl+V로 붙여넣기 (1장씩)">이미지 복사</button></div></div>`;
     }
@@ -341,6 +342,16 @@ const Reports = {
       if (a === 'cfg') { this.flushSave(); this.openCfg(); return; }
       if (a === 'sum') { this.flushSave(); this.view = this.view === 'sum' ? 'edit' : 'sum'; App.render(); return; }
       if (a === 'pdf') { this.pdf(); return; }
+      if (a === 'reset') {          // 이 학생의 지금 탭(월간 / 그 주차) 입력칸을 모두 비움 → 기록 삭제
+        const s = Store.get('students', this.sid);
+        confirmDlg(`${s ? s.name : ''} 학생의 ${this.tab === 'week' ? this.curWeek() + '주차 주간 테스트' : '월간 리포트'} 내용을 모두 지울까요?`, '초기화', true).then(ok => {
+          if (!ok) return;
+          $$('#main [data-rp-ed] textarea[data-k]').forEach(ta => { ta.value = ''; });
+          this.flushSave();
+          toast('초기화했습니다');
+        });
+        return;
+      }
       this.flushSave();
       const wk = this.tabWeek();
       if (a === 'pv') this.preview(this.sid, this.month, wk);
@@ -829,6 +840,8 @@ const Reports = {
 /* 상단 버튼: 월별 요약(켜면 진하게) · PDF 저장 (출석부와 같은 모양) */
 .rp-sumbtn { min-width: 84px; }
 .rp-sumbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.rp-reset { background: var(--danger-soft); border-color: #F0C6C8; color: var(--danger); }
+.rp-reset:hover { background: #F9DADB; border-color: var(--danger); color: var(--danger); }
 .rp-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 /* 탭 · 주차 */
 .rp-tabs { margin-bottom: 12px; }
