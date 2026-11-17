@@ -281,14 +281,18 @@ const NP = {
     if (!exams.length) return st;
     const ws = exams.map(e => this.window(e));
     const from = ws.map(w => w.from).sort()[0], to = ws.map(w => w.to).sort().pop();
-    const slot = (o, mid) => (o[mid] = o[mid] || { nums: new Set(), units: new Set(), unums: {}, last: {}, parts: new Set() });
+    // ndate·udate·undate: 처음 끝낸 수업일지 날짜 (수업일지 잠금 안내에 씀)
+    const slot = (o, mid) => (o[mid] = o[mid] || { nums: new Set(), units: new Set(), unums: {}, last: {}, parts: new Set(), ndate: {}, udate: {}, undate: {} });
     Store.where('lessons', l => l.classId === classId && l.id !== exclude && l.date >= from && l.date <= to)
       .sort((a, b) => ko(a.date, b.date)).forEach(l => {
         (l.np || []).forEach(en => {
           const s = slot(st.mats, en.matId);
-          if (!en.unitId) { (en.nums || []).forEach(n => s.nums.add(+n)); return; }
-          if (en.done) s.units.add(en.unitId);
-          if (en.nums && en.nums.length) { const u = s.unums[en.unitId] = s.unums[en.unitId] || new Set(); en.nums.forEach(n => u.add(+n)); }
+          if (!en.unitId) { (en.nums || []).forEach(n => { s.nums.add(+n); if (!s.ndate[+n]) s.ndate[+n] = l.date; }); return; }
+          if (en.done) { s.units.add(en.unitId); if (!s.udate[en.unitId]) s.udate[en.unitId] = l.date; }
+          if (en.nums && en.nums.length) {
+            const u = s.unums[en.unitId] = s.unums[en.unitId] || new Set(), ud = s.undate[en.unitId] = s.undate[en.unitId] || {};
+            en.nums.forEach(n => { u.add(+n); if (!ud[+n]) ud[+n] = l.date; });
+          }
           if (en.text && en.text.trim()) s.last[en.unitId] = { date: l.date, text: en.text.trim() };
         });
         (l.dist || []).forEach(d => st.dist.push(Object.assign({ date: l.date, lessonId: l.id }, d)));
@@ -332,14 +336,23 @@ const NP = {
     return '';
   },
   lastText(st, mid, uid) { const a = st.mats[mid]; return a && a.last[uid] ? a.last[uid] : null; },
+  // 수업일지로 끝낸 날 (처음 끝낸 날 · 번호로 나뉜 과는 마지막 번호까지 다 나간 날)
+  numDate(st, mid, n) { const a = st.mats[mid]; return (a && a.ndate[n]) || ''; },
+  unumDate(st, mid, uid, n) { const a = st.mats[mid]; return a ? ((a.undate[uid] || {})[n] || a.udate[uid] || '') : ''; },
+  unitDate(st, mid, ru) {
+    const a = st.mats[mid]; if (!a) return '';
+    if (a.udate[ru.id]) return a.udate[ru.id];
+    if (ru.nums && ru.nums.length) { const ds = ru.nums.map(n => this.unumDate(st, mid, ru.id, n)); return ds.every(Boolean) ? ds.sort().pop() : ''; }
+    return '';
+  },
   // 비내신: 이 반이 일반 교재로 나간 진도 (exclude: 지금 고치는 수업일지는 빼고 계산)
   genProgress(classId, exclude) {
-    const st = { done: new Set(), any: new Set(), last: {} };
+    const st = { done: new Set(), any: new Set(), last: {}, ddate: {} };
     Store.where('lessons', l => l.classId === classId && l.id !== exclude).sort((a, b) => ko(a.date, b.date)).forEach(l => {
       (l.gp || []).forEach(en => {
         const k = this.key(en.matId, en.unitId);
         st.any.add(k);
-        if (en.done) st.done.add(k);
+        if (en.done) { st.done.add(k); if (!st.ddate[k]) st.ddate[k] = l.date; }     // 처음 완결한 날
         if (en.text && en.text.trim()) st.last[k] = { date: l.date, text: en.text.trim() };
       });
     });
@@ -435,9 +448,12 @@ const NP = {
 
   chipCls(s) { return s === 'les' ? 'done' : s === 'man' ? 'done man' : s === 'part' ? 'part' : s === 'mpart' ? 'part man' : ''; },
   // 수업일지 입력: 이미 완료된 칸(다른 일지로 완료 'les' / 요약에서 완료 처리 'man')은 잠금 — 이 일지에서 고른 칸은 그대로 누를 수 있음
-  lockAttr(s, on) {
+  //   date: 처음 끝낸 수업일지 날짜 / gen: 비내신이면 true (안내 문구의 요약 이름)
+  lockAttr(s, on, date, gen) {
     if (on || (s !== 'les' && s !== 'man')) return '';
-    return ` data-np-lock="${s}" title="${s === 'les' ? '이전 수업일지에서 완료한 진도입니다' : '요약에서 완료 처리한 진도입니다'}"`;
+    const sum = gen ? '비내신 요약' : '내신 요약';
+    const tip = s === 'les' ? (isYmd(date) ? `${fmtMD(date)} 수업일지에서 완료한 진도입니다` : '이전 수업일지에서 완료한 진도입니다') : `${sum}에서 완료 처리한 진도입니다`;
+    return ` data-np-lock="${s}" data-np-ldate="${isYmd(date) ? date : ''}" data-np-lsum="${sum}" title="${tip}"`;
   },
   // 색 안내 (요약 위 · 입력 아래)
   legendHtml(withPrep, withToday) {
@@ -490,13 +506,13 @@ const NP = {
       h += `<div class="np-mat${cardOf[ri] ? ' np-school' : ''}">${cardOf[ri] ? `<div class="np-school-h">${esc(cardOf[ri])}</div>` : ''}<div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
       if (m.type === 'mock') {
         const en = st.items[mid];
-        h += '<div class="np-chips">' + r.nums.map(n => { const s = this.numSt(prog, mid, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-num="${mid}|${n}"${this.lockAttr(s, on)}>${n}</button>`; }).join('') + '</div>';
+        h += '<div class="np-chips">' + r.nums.map(n => { const s = this.numSt(prog, mid, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-num="${mid}|${n}"${this.lockAttr(s, on, this.numDate(prog, mid, n))}>${n}</button>`; }).join('') + '</div>';
       } else {
         const whole = r.units.filter(u => !u.nums), numbered = r.units.filter(u => u.nums);
-        if (whole.length) h += '<div class="np-chips">' + whole.map(u => { const s = this.unitSt(prog, mid, u), on = !!st.items[this.key(mid, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unit="${mid}|${u.id}"${this.lockAttr(s, on) || ` title="${esc(u.notes.join(' · '))}"`}>${esc(u.name)}${u.notes.length ? '<i>일부</i>' : ''}</button>`; }).join('') + '</div>';
+        if (whole.length) h += '<div class="np-chips">' + whole.map(u => { const s = this.unitSt(prog, mid, u), on = !!st.items[this.key(mid, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unit="${mid}|${u.id}"${this.lockAttr(s, on, this.unitDate(prog, mid, u)) || ` title="${esc(u.notes.join(' · '))}"`}>${esc(u.name)}${u.notes.length ? '<i>일부</i>' : ''}</button>`; }).join('') + '</div>';
         numbered.forEach(u => {
           const en = st.items[this.key(mid, u.id)];
-          h += `<div class="np-chips"><span class="np-ul">${esc(u.name)}</span>` + u.nums.map(n => { const s = this.unumSt(prog, mid, u.id, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unum="${mid}|${u.id}|${n}"${this.lockAttr(s, on)}>${n}</button>`; }).join('')
+          h += `<div class="np-chips"><span class="np-ul">${esc(u.name)}</span>` + u.nums.map(n => { const s = this.unumSt(prog, mid, u.id, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unum="${mid}|${u.id}|${n}"${this.lockAttr(s, on, this.unumDate(prog, mid, u.id, n))}>${n}</button>`; }).join('')
             + (u.notes.length ? `<span class="small soft">${esc(u.notes.join(' · '))}</span>` : '') + '</div>';
         });
         // 고른 과·강마다 메모 + 완결
@@ -540,7 +556,7 @@ const NP = {
     mats.forEach(m => {
       const units = m.units || [];
       h += `<div class="np-mat"><div class="np-mhead"><span class="np-tag">일반</span><b>${esc(m.name)}</b></div>`;
-      h += '<div class="np-chips">' + (units.map(u => { const s = this.genSt(gpr, m.id, u.id), on = !!st.gitems[this.key(m.id, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-gunit="${m.id}|${u.id}"${this.lockAttr(s, on)}>${esc(u.name)}</button>`; }).join('')
+      h += '<div class="np-chips">' + (units.map(u => { const s = this.genSt(gpr, m.id, u.id), on = !!st.gitems[this.key(m.id, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-gunit="${m.id}|${u.id}"${this.lockAttr(s, on, gpr.ddate[this.key(m.id, u.id)], true)}>${esc(u.name)}</button>`; }).join('')
         || '<span class="small muted">이 교재에 단위가 없습니다.</span>') + '</div>';
       units.filter(u => st.gitems[this.key(m.id, u.id)]).forEach(u => {
         const k = this.key(m.id, u.id), en = st.gitems[k], last = gpr.last[k];
@@ -573,8 +589,10 @@ const NP = {
     let x;
     // 잠긴 칸 (이미 완료된 진도): 누르지 않고 안내만
     if ((x = b('[data-np-lock]'))) {
-      toast(x.dataset.npLock === 'les' ? '이미 이전 수업에서 완료한 진도입니다. 해제하려면 처음 완료한 날의 수업일지에서 하세요'
-        : '요약에서 완료 처리한 진도입니다. 해제하려면 진도 탭의 내신·비내신 요약에서 완료 처리를 취소하세요');
+      const d = x.dataset.npLdate ? fmtMD(x.dataset.npLdate) : '';
+      toast(x.dataset.npLock === 'les'
+        ? (d ? `이미 ${d} 수업에서 완료한 진도입니다. 해제하려면 ${d} 수업일지에서 하세요` : '이미 이전 수업에서 완료한 진도입니다. 해제하려면 처음 완료한 날의 수업일지에서 하세요')
+        : `${x.dataset.npLsum}에서 완료 처리한 진도입니다. 해제하려면 진도+일지 › 진도 탭의 ${x.dataset.npLsum}에서 완료 처리를 취소하세요`);
       return true;
     }
     if ((x = b('[data-np-ex]'))) {
