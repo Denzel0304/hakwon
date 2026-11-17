@@ -396,7 +396,8 @@ const NP = {
         + (e.text && e.text.trim() ? ' ' + e.text.trim() : '') + (e.done ? '(완결)' : '')).join(', ');
     }).join(' / ');
   },
-  distText(d) { return (d.name || '자료') + ': ' + (d.refs || []).map(r => this.refLabel(r)).join(', ') + (d.memo ? ' ' + d.memo : ''); },
+  // 배부 자료 한 줄: "변형문제: 1과, 2과 31-42번" (교재 연결이 없으면 "단어 시험지 2회분")
+  distText(d) { const rf = (d.refs || []).map(r => this.refLabel(r)).join(', '); return (d.name || '자료') + (rf ? ': ' + rf : '') + (d.memo ? ' ' + d.memo : ''); },
   distNames() {
     const set = new Set();
     Store.all('lessons').forEach(l => (l.dist || []).forEach(d => { if (d.name && d.name.trim()) set.add(d.name.trim()); }));
