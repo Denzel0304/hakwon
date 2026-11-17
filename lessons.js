@@ -2057,14 +2057,14 @@ const Makeups = {
 
   /* ---------- 결석 후 첫 등원 할일 ----------
      학생·결석일마다 하나. 그 날 결석 중 보강 '미지정'이 있으면, 결석 뒤 처음 오는 날의 가장 빠른 수업 시작 시각으로
-     "홍길동 결석(11/12 수) 후 첫 등원 - 결석부분 처리 요망"(중요도 높음)을 한 번만 만든다.
+     "홍길동 결석(11/12 수) 후 첫 등원(숙제검사 및 자료배부 등 처리 요망)"(중요도 높음)을 한 번만 만든다.
      · 만든 기록(meta RT_…)이 있으면 다시 만들지 않음 (직접 삭제·날짜 변경해도 그대로) · id가 정해져 있어 PC·모바일 중복 없음
      · 그 날 결석이 모두 보강 완료 → 할일 완료 / 결석이 없어짐(결석 예정 취소·출석으로 바꿈·보강 안 함) → 미완료 할일 삭제 + 기록 삭제
      · 첫 등원일: 결석 다음 날부터. 공휴일, 그 날 모든 수업이 결석(출석부 결석·결석 예정)인 날은 건너뜀 */
   RET_DAYS: 120,                  // 첫 등원일을 찾는 범위 (결석 뒤 며칠까지)
   _rtT: null,
   retKey(sid, date) { return sid + '_' + compactDate(date); },
-  retText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) 후 첫 등원 - 결석부분 처리 요망`; },
+  retText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) 후 첫 등원(숙제검사 및 자료배부 등 처리 요망)`; },
   // 그 날 이 학생이 실제로 오는 수업 (결석·결석 예정·선보강인 수업은 뺀다)
   comeOn(sid, d, today) {
     return this.classesFor(sid, d, d >= today).filter(c => {
