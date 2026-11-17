@@ -543,9 +543,9 @@ const MEvents = {
         this.sel = todayStr(); this.month = this.sel.slice(0, 7);
         App.render(); return;
       }
-      // 띠·일정 글자를 누르면 상세 (달력 안이면 누른 날짜로도 이동 → 달력 아래에 그날 일정이 보임)
+      // 달력 안(칸·일정 글자·기간 띠)을 누르면 날짜 이동만 → 달력 아래에 그날 일정이 보임 (상세 창은 띄우지 않음)
       const ev = e.target.closest('[data-ev]');
-      if (ev) {
+      if (ev && ev.closest('.m-cal')) {
         let d = '';
         const cell = ev.closest('[data-d]');
         if (cell) d = cell.dataset.d;                                   // 칸 안의 하루 일정
@@ -558,9 +558,9 @@ const MEvents = {
           }
         }
         if (d) this.pickDay(d);
-        this.openEv(ev.dataset.ev);
         return;
       }
+      if (ev) { this.openEv(ev.dataset.ev); return; }                    // 달력 아래 목록 · 목록 보기의 일정을 누르면 상세
       const dd = e.target.closest('[data-d]');
       if (dd) this.pickDay(dd.dataset.d);
     };
