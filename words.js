@@ -184,8 +184,7 @@ const WordBook = {
     if (!this.month) this.month = App.selDate.slice(0, 7);
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>단어 기록</h1>
-      <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      ${NavBar.month(this.month)}<button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
     h += `<div class="toolbar small soft"><span>학생마다 한 줄, 그 학생이 오는 날만 칸으로 나옵니다 (여러 반에 다니면 앞선 반에 한 번만). 칸을 누르면 범위 · 합격/불합격/결시 · 점수 · 메모를 기록합니다. 결과를 고르지 않으면 ‘예정’으로 저장되니, 미리 범위를 적어 두고 시험 뒤에 결과를 고르세요. 재시험은 같은 칸의 “+ 재시험”, 다른 날은 불합격 옆 “다른 날 재시험”(또는 그 날짜 칸에서 “+ 재시험”)으로 넣습니다. 수업 없는 날은 이름 아래 “+ 날짜”로 칸을 만듭니다. 출석부에서 결석인 날은 회색입니다.</span></div>`;
@@ -205,6 +204,7 @@ const WordBook = {
 
   bind(main) {
     main.onclick = (e) => {
+      if (e.target.closest('[data-mpick]')) { NavBar.pickMonth(this.month).then(v => { if (v && v !== this.month) { this.month = v; App.render(); } }); return; }
       const m = e.target.closest('[data-m]');
       if (m) {
         if (m.dataset.m === '0') this.month = todayStr().slice(0, 7);
@@ -273,7 +273,8 @@ const WordBook = {
     const last = tries.filter(t => this.hasRange(t)).pop();
     return last ? { from: last.from, to: last.to, of: '' } : { from: '', to: '', of: '' };
   },
-  newTry(kind, r) { return { kind, of: (r && r.of) || '', from: r ? r.from : '', to: r ? r.to : '', res: '', score: '', total: '', memo: '' }; },
+  // 만점은 50이 기본 (바꾸면 그 값으로 저장)
+  newTry(kind, r) { return { kind, of: (r && r.of) || '', from: r ? r.from : '', to: r ? r.to : '', res: '', score: '', total: 50, memo: '' }; },
 
   // preset: 다른 날짜에서 잡은 재시험 { kind:'re', of, from, to } — 이 칸에 미리 채워 연다
   openCell(cid, sid, d, preset) {
@@ -292,7 +293,7 @@ const WordBook = {
     const mat = NP.mat(matId);
     const tries = JSON.parse(JSON.stringify((r && r.tries) || [])).map((t, i) => Object.assign({ of: '' }, t, { kind: this.kindOf(t, i) }));
     if (preset) tries.push(this.newTry('re', preset));
-    else if (!tries.length) tries.push(this.newTry('new', this.defNew(sid, d, [])));
+    else if (!tries.length) tries.push(this.newTry('new', null));          // 범위는 빈칸으로 시작 (직접 입력)
     const body = `<div class="wt-modal">
       <div class="wt-mhead small"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? '' : ' <span class="muted">(삭제된 교재)</span>'}</span>
         <span class="muted">결과를 고르지 않으면 ‘예정’으로 저장됩니다. 시험을 본 뒤 다시 열어 결과를 고르세요.</span></div>
@@ -363,7 +364,8 @@ const WordBook = {
           const ad = e.target.closest('[data-tadd]');
           if (ad) {
             const k = ad.dataset.tadd;
-            tries.push(this.newTry(k, k === 're' ? this.defRe(sid, d, tries) : this.defNew(sid, d, tries)));
+            // 범위는 빈칸으로 시작 (직접 입력). 재시험은 어느 날 불합격의 재시험인지(of)만 그대로 이어 받는다
+            tries.push(this.newTry(k, k === 're' ? { from: '', to: '', of: this.defRe(sid, d, tries).of } : null));
             draw(); return;
           }
           const kb = e.target.closest('[data-tkind]');

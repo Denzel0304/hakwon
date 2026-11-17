@@ -100,8 +100,7 @@ const Reports = {
     if (this.sid && !ids.has(this.sid)) this.sid = '';
 
     let h = `<div class="rp-page"><div class="page-head"><h1>Report</h1>
-      <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button><span class="grow"></span>
+      ${NavBar.month(this.month)}<span class="grow"></span>
       <button class="btn sm" data-rp="cfg">⚙ 설정</button></div>`;
     if (!cfg.academy.trim()) h += `<div class="toolbar small soft"><span class="muted">⚙ 설정에서 학원 이름·로고·제목 문구를 넣으면 리포트 이미지 맨 위에 표시됩니다.</span></div>`;
 
@@ -140,6 +139,7 @@ const Reports = {
 
   bind(main) {
     main.onclick = (e) => {
+      if (e.target.closest('[data-mpick]')) { NavBar.pickMonth(this.month).then(v => { if (v && v !== this.month) { this.flushSave(); this.month = v; App.render(); } }); return; }
       const m = e.target.closest('[data-m]');
       if (m) {
         this.flushSave();

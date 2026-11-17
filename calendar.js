@@ -298,10 +298,8 @@ const BigCal = {
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
     let h = `<div class="page-head">
-      <h1><button type="button" class="ym-btn ym-h" data-ympick title="년·월 이동">${y}년 ${m + 1}월 ▾</button></h1>
-      <button class="btn sm" data-a="prev">‹ 이전 달</button>
-      <button class="btn sm" data-a="this" style="background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink)">이번 달</button>
-      <button class="btn sm" data-a="next">다음 달 ›</button>
+      <h1>큰 달력</h1>
+      ${NavBar.month(mKey, { prev: 'data-a="prev"', next: 'data-a="next"', now: 'data-a="this"', pick: 'data-ympick' })}
       <button class="btn primary" data-a="add">+ 일정 추가</button>
       <span class="grow"></span>
       ${Object.keys(EVENT_TYPES).map(k => `<label class="chk"><input type="checkbox" data-f="${k}" ${f[k] ? 'checked' : ''}>${EVENT_TYPES[k].label}</label>`).join('')}
@@ -431,12 +429,14 @@ const DayPage = {
       if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
       return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
     };
+    // 종류 배지: 시험 → '시험', 기타 일정 → '기타' (기타는 글자 앞의 '기타 일정'을 빼고 배지로)
+    const evTag = (ev) => evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : evType(ev) === 'etc' ? '<span class="badge purple">기타</span> ' : '';
+    const evText = (ev) => { const t = eventShort(ev), lb = EVENT_TYPES.etc.label; return evType(ev) === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t; };
     const evRow = (ev, dl) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
-      <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
+      <div class="what">${evTag(ev)}<b>${esc(evText(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
 
-    let h = `<div class="page-head"><h1>${isToday ? '오늘' : fmtDate(date)}</h1>${isToday ? `<span class="sub">${fmtDate(date)}</span>` : ''}
-      <button class="btn sm" data-a="prev">‹ 전날</button><button class="btn sm" data-a="next">다음날 ›</button>
-      ${isToday ? '' : '<button class="btn sm" data-a="today">오늘</button>'}
+    let h = `<div class="page-head"><h1 class="dnav-h1">${isToday ? '오늘' : '날짜'}</h1>
+      ${NavBar.day(date)}
       <button class="btn primary" data-a="addtodo">+ 할일 추가</button></div>`;
     if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
     // 카드 배치: 왼쪽 열(수업 → 다가오는 일정 → 시험 일정 → 일정) / 오른쪽 열(할일 → 밀린 할일)
@@ -448,7 +448,7 @@ const DayPage = {
     if (o.exam.length) tops.push(`<div class="panel" style="--o:2"><h2>시험 일정</h2><div class="list">${o.exam.map(ev => evRow(ev, true)).join('')}</div></div>`);
     if (evs.length) tops.push(`<div class="panel" style="--o:3"><h2>일정</h2><div class="list">${evs.map(evRow).join('')}</div></div>`);
     const upHtml = !upcoming.length ? '' : `<div class="panel" style="--o:1"><h2>다가오는 일정 <span class="sub">2주</span></h2><div class="list">${upcoming.map(ev => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : `${fmtMD(ev.date)} ${esc(ev.start || '')}`}</span>
-        <div class="what">${evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : ''}<b>${esc(eventShort(ev))}</b>${dLeft(ev)}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`;
+        <div class="what">${evTag(ev)}<b>${esc(evText(ev))}</b>${dLeft(ev)}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}</div></div>`).join('')}</div></div>`;
 
     const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
     const hol = Holidays.name(date);           // 공휴일: 수업 목록을 흐리게 + 안내 (일지는 눌러서 쓸 수 있음)
@@ -477,6 +477,7 @@ const DayPage = {
     main.innerHTML = h;
     TodoX.mount(main);
     main.onclick = (e) => {
+      if (e.target.closest('[data-dpick]')) { DatePicker.open(date, '날짜 이동').then(d => { if (d && d !== date) App.pickDate(d); }); return; }
       const a = e.target.closest('[data-a]');
       if (a) {
         const act = a.dataset.a;
@@ -601,6 +602,37 @@ const DatePicker = {
   },
 };
 
+
+/* ---------- 날짜 이동 줄 (모든 화면 공통) ----------
+   월: [‹][2026년 11월 ▾][›][이번 달]   일: [‹][2026년 11월 17일 (화) ▾][›][오늘]
+   폭이 고정된 한 묶음이라 달·날짜가 바뀌어도 버튼 위치·순서가 절대 바뀌지 않는다.
+   '이번 달'·'오늘'은 이미 그 달·그 날이면 흐리게 남는다(사라지지 않음).
+   a: 각 버튼에 붙일 data 속성 문자열 { prev, next, now, pick } — 화면마다 쓰던 클릭 처리를 그대로 쓴다 */
+const NavBar = {
+  month(ym, a = {}) {
+    const [y, m] = String(ym).split('-').map(Number);
+    const cur = todayStr().slice(0, 7) === y + '-' + pad(m);
+    return `<div class="dnav dnav-m">
+      <button type="button" class="dnav-arr" ${a.prev || 'data-m="-1"'} title="이전 달" aria-label="이전 달">‹</button>
+      <button type="button" class="dnav-ttl" ${a.pick || 'data-mpick'} title="년·월 고르기">${y}년 ${m}월<i>▾</i></button>
+      <button type="button" class="dnav-arr" ${a.next || 'data-m="1"'} title="다음 달" aria-label="다음 달">›</button>
+      <button type="button" class="dnav-now${cur ? ' is-cur' : ''}" ${a.now || 'data-m="0"'} ${cur ? 'disabled' : ''} title="이번 달로">이번 달</button></div>`;
+  },
+  day(date, a = {}) {
+    const d = parseYmd(date);
+    const cur = date === todayStr();
+    return `<div class="dnav dnav-d">
+      <button type="button" class="dnav-arr" ${a.prev || 'data-a="prev"'} title="전날" aria-label="전날">‹</button>
+      <button type="button" class="dnav-ttl" ${a.pick || 'data-dpick'} title="날짜 고르기">${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 <span class="dnav-dow${d.getDay() === 0 ? ' sun' : d.getDay() === 6 ? ' sat' : ''}">(${DOW[d.getDay()]})</span><i>▾</i></button>
+      <button type="button" class="dnav-arr" ${a.next || 'data-a="next"'} title="다음날" aria-label="다음날">›</button>
+      <button type="button" class="dnav-now${cur ? ' is-cur' : ''}" ${a.now || 'data-a="today"'} ${cur ? 'disabled' : ''} title="오늘로">오늘</button></div>`;
+  },
+  // 월 고르기 → 'YYYY-MM' (취소하면 null)
+  pickMonth(ym) {
+    const [y, m] = String(ym).split('-').map(Number);
+    return MonthPick.open(y, m).then(r => (r ? r.y + '-' + pad(r.m) : null));
+  },
+};
 
 /* ---------- 일정 입력 모달 ---------- */
 const EventModal = {

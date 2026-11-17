@@ -898,9 +898,7 @@ const Lessons = {
     // 취소 버튼: 저장된 일지 수정 중이거나, 날짜 요약에서 들어왔을 때
     const canCancel = isEdit || !!(classId && this.ret && this.ret.date === date && this.ret.classId === classId);
 
-    let h = `<div class="page-narrow">${PL.head('lessons', `${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
-      <button class="btn sm" data-a="prev">‹</button><input type="date" data-date value="${date}"><button class="btn sm" data-a="next">›</button>
-      <button class="btn sm" data-a="today">오늘</button><span class="sub">${DOW[dowOf(date)]}요일</span>
+    let h = `<div class="page-narrow">${PL.head('lessons', `${NavBar.day(date)}${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
       <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + (canCancel ? '<button class="btn" data-cancel>취소</button>' : '') + '<button class="btn primary" data-save>저장</button>' : ''}`)}
       <div class="toolbar"><span style="display:inline-flex;align-items:center">${Classes.selDot(classId ? Store.get('classes', classId) : null)}<select data-cls style="min-width:260px">
         ${classId ? '' : `<option value="" selected>${allDone ? '모두 작성되었습니다' : '입력할 반을 선택하세요'}</option>`}
@@ -987,6 +985,7 @@ const Lessons = {
     main.onclick = (e) => {
       if (PL.click(e)) return;
       if (npDo(e, 'click')) return;
+      if (e.target.closest('[data-dpick]')) { DatePicker.open(date, '일지 날짜 이동').then(d => { if (d && d !== date) go(d, null); }); return; }
       const a = e.target.closest('[data-a]');
       if (a) {
         if (a.dataset.a === 'today') go(todayStr(), null);
@@ -1376,8 +1375,7 @@ const AttBook = {
     if (!this.month) this.month = App.selDate.slice(0, 7);
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
-      <button class="btn sm" data-m="-1">‹</button><input type="month" data-month value="${this.month}"><button class="btn sm" data-m="1">›</button>
-      <button class="btn sm" data-m="0">이번 달</button><button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      ${NavBar.month(this.month)}<button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     this._mv = {};
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
@@ -1398,6 +1396,7 @@ const AttBook = {
 
   bind(main) {
     main.onclick = (e) => {
+      if (e.target.closest('[data-mpick]')) { NavBar.pickMonth(this.month).then(v => { if (v && v !== this.month) { this.month = v; App.render(); } }); return; }
       const m = e.target.closest('[data-m]');
       if (m) {
         if (m.dataset.m === '0') this.month = todayStr().slice(0, 7);

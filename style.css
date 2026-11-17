@@ -193,6 +193,34 @@ body.app-on #mg-app { display: flex; }
 .page-head h1 { margin: 0 6px 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.6px; color: var(--ink); }
 .page-head .sub { color: var(--ink-soft); font-size: 14.5px; }
 .page-head .grow { flex: 1; }
+/* 날짜 이동 줄 (calendar.js NavBar) — [‹][년·월 ▾][›][이번 달]
+   칸 폭이 모두 고정이라 달·날짜가 바뀌어도 버튼 위치가 움직이지 않음 */
+.dnav {
+  display: inline-flex; align-items: stretch; flex: none; height: 36px;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface);
+  overflow: hidden; box-shadow: 0 1px 2px rgba(30, 50, 67, .06);
+}
+.dnav > button {
+  border: 0; margin: 0; background: transparent; color: var(--ink); font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.dnav > button + button { border-left: 1px solid var(--line); }
+.dnav > button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+.dnav > button:active:not(:disabled) { background: var(--accent-line); }
+.dnav-arr { width: 36px; padding: 0 0 2px; font-size: 22px; line-height: 1; color: var(--ink-soft) !important; }
+.dnav-arr:hover { color: var(--accent-ink) !important; }
+.dnav-ttl { gap: 6px; padding: 0 10px; font-size: 15.5px; font-weight: 800; letter-spacing: -0.2px; color: var(--accent-ink) !important; font-variant-numeric: tabular-nums; }
+.dnav-m .dnav-ttl { width: 138px; }
+.dnav-d .dnav-ttl { width: 210px; gap: 4px; }
+.dnav-ttl i { font-style: normal; font-size: 10px; color: var(--ink-mute); margin-left: 2px; }
+.dnav-dow { font-weight: 700; color: var(--ink-soft); }
+.dnav-dow.sun { color: var(--danger); } .dnav-dow.sat { color: var(--sat); }
+.dnav-now { width: 70px; font-size: 13.5px; font-weight: 700; color: var(--accent-ink) !important; background: var(--accent-soft) !important; }
+.dnav-now:hover:not(:disabled) { background: var(--accent) !important; color: #fff !important; }
+.dnav-now:disabled { cursor: default; background: transparent !important; color: var(--ink-mute) !important; font-weight: 600; }
+/* 홈 제목('오늘'/'날짜')은 폭 고정 → 옆 이동 줄이 움직이지 않음 */
+.page-head h1.dnav-h1 { width: 64px; flex: none; }
 /* 화면 제목줄: 아래 연한 구분선 + 내용이 길어 스크롤해도 위에 고정 (큰 달력은 제외)
    margin-top/padding-top -26px/26px = #main 위 여백만큼 끌어올려, 고정됐을 때 뒤 내용이 비치지 않게 함 */
 #main:not([data-page="calendar"]) > .page-head,
@@ -654,12 +682,22 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .bc2-cell.today .n { background: var(--accent); color: #fff !important; border-radius: 14px; padding: 0 8px; }
 .bc2-items { margin-top: calc(var(--lanes) * var(--bar-h) + 4px); }
 .bc2-items .bc-item { font-size: 13px; padding: 2px 6px; margin-top: 3px; }
+/* 큰 달력 하루 일정: 왼쪽 색 띠 + 연한 바탕 + 진한 굵은 글씨 (가독성) */
+.bc2 .bc2-items .bc-item { --c: var(--ink-soft); font-weight: 700; padding: 3px 7px 3px 6px; border-left: 4px solid var(--c); border-radius: 4px;
+  background: color-mix(in srgb, var(--c) 15%, var(--surface)); color: color-mix(in srgb, var(--c) 55%, #10202E); }
+.bc2 .bc2-items .bc-item:hover { background: color-mix(in srgb, var(--c) 25%, var(--surface)); }
+.bc2 .bc2-items .bc-item.exam { --c: var(--exam); }
+.bc2 .bc2-items .bc-item.pre { --c: var(--pre); }
+.bc2 .bc2-items .bc-item.weekend { --c: var(--weekend); }
+.bc2 .bc2-items .bc-item.etc { --c: var(--etc); }
+.bc2 .bc2-items .bc-item.holiday { --c: var(--danger); }
 .bc2-bar {
   position: absolute; height: calc(var(--bar-h) - 4px); line-height: calc(var(--bar-h) - 4px);
   color: #fff; font-size: 12.5px; font-weight: 700; padding: 0 20px; border-radius: 5px; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; z-index: 2;
 }
 .bc2-bar:hover { filter: brightness(1.08); }
+.bc2-bar { font-size: 13px; letter-spacing: -0.1px; text-shadow: 0 1px 1px rgba(0, 0, 0, .28); }
 /* 시작·끝 뾰족하게 (다음 주로 이어지는 쪽은 평평하게) */
 .bc2-bar { border-radius: 0; }
 .bc2-bar.tl { padding-left: 20px; }
