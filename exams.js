@@ -959,11 +959,17 @@ const Scores = {
     vals.forEach((v, i) => { if (v != null) h += `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${color}"/>`; });
     return `<svg class="sc-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><line x1="0" y1="${y(50)}" x2="${W}" y2="${y(50)}" class="sc-mid"/>${h}</svg>`;
   },
-  // 시작 시험 고르기 (최근 5년)
+  // 시작 시험 고르기 — 고정된 연도 없이, 실제 기록(내신 점수·모의고사 시행일)이 있는 가장 이른 해 ~ 올해
+  //   (기록이 없으면 올해만, 지금 고른 시작 해는 항상 포함)
+  dataMinYear() {
+    const ys = Store.all('scores').map(x => +x.year).filter(Boolean)
+      .concat(Store.all('mock_scores').map(x => +this.msDate(x).slice(0, 4)).filter(Boolean));
+    return ys.length ? Math.min(...ys) : this.curTerm().y;
+  },
   startSelect() {
     const st = this.start(), cur = this.curTerm();
     let o = '';
-    for (let y = Math.min(st.y, cur.y - 4); y <= cur.y; y++) for (const s of [1, 2]) for (const k of ['mid', 'final']) {
+    for (let y = Math.min(st.y, this.dataMinYear(), cur.y); y <= cur.y; y++) for (const s of [1, 2]) for (const k of ['mid', 'final']) {
       const v = `${y}|${s}|${k}`;
       o += `<option value="${v}" ${st.y === y && +st.s === s && st.k === k ? 'selected' : ''}>${y}년 ${s}학기 ${k === 'final' ? '기말' : '중간'}</option>`;
     }
@@ -973,12 +979,11 @@ const Scores = {
   render(main) {
     let h = `<div class="page-head"><h1>성적</h1>
       <div class="tabs sc-tabs"><button data-tab="school" class="${this.tab === 'school' ? 'active' : ''}">내신</button><button data-tab="mock" class="${this.tab === 'mock' ? 'active' : ''}">모의고사</button></div>
-      <span class="grow"></span>${this.startSelect()}${this.tab === 'mock' ? '<button class="btn sm" data-mocks>회차 관리</button>' : ''}</div><div data-body></div>`;
+      <span class="grow"></span>${this.startSelect()}</div><div data-body></div>`;
     main.innerHTML = h;
     const body = $('[data-body]', main);
     main.onclick = (e) => {
       const tb = e.target.closest('[data-tab]'); if (tb) { this.tab = tb.dataset.tab; this.edit = ''; App.render(); return; }
-      if (e.target.closest('[data-mocks]')) { this.openMockList(); return; }
       const nm = e.target.closest('[data-stu]'); if (nm) { this.openStudent(nm.dataset.stu); return; }
       if (this.tab === 'school') this.clickSchool(e); else this.clickMock(e);
     };
@@ -1102,8 +1107,11 @@ const Scores = {
   renderMock(el) {
     const groups = this.groups();
     if (!groups.length) { el.innerHTML = '<div class="panel"><div class="empty">중·고등 학생이 없습니다.</div></div>'; return; }
-    let h = `<div class="toolbar small soft"><span>열은 시행일 순서입니다 (그 해 그 학년 시험은 “6월 모고”, 지난·다른 학년 시험지는 “24년 6월 고1”). 반마다 “+ 모의고사 입력”으로 회차·시행일을 고르고 원점수를 한꺼번에 넣습니다. 칸을 누르면 원점수·틀린 번호·시행일을 고칩니다. 등급은 영어 절대평가 기준으로 자동 표시됩니다.</span></div>`;
+    let h = `<div class="toolbar small soft"><span>고등 반은 시행일로 열을 맞추고(“6월 모고”), 중등 반은 학생마다 푼 순서대로 칸이 쌓입니다(“24년 6월 고1”). “+ 모의고사 입력”은 같은 시험지를 여럿이 함께 푼 경우, 중등의 줄 끝 “+ 추가”는 그 학생만 넣을 때 씁니다. 칸을 누르면 원점수·틀린 번호·시행일을 고칩니다. 등급은 영어 절대평가 기준으로 자동 표시됩니다.</span></div>`;
     groups.forEach(g => {
+      // 표 모양: 고등 반(학생 절반 이상이 고등) = 날짜 맞춤 / 중등 반 = 학생별 순서
+      g._per = g.list.filter(s => isHigh(s.grade)).length * 2 < g.list.length;
+      if (g._per) { h += this.perHtml(g); return; }
       const cols = this.mockCols(g.list);
       const years = []; cols.forEach(c => { const y = +c.date.slice(0, 4), l = years[years.length - 1]; if (l && l.y === y) l.n++; else years.push({ y, n: 1 }); });
       h += `<div class="panel sc-sec"><div class="sc-sec-h"><h2>${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}<span class="sub">${g.list.length}명</span></h2><span class="grow"></span>
@@ -1133,6 +1141,55 @@ const Scores = {
     el.innerHTML = h;
     this._mg = groups;                      // 칸 클릭 때 쓸 열 정보
   },
+  // 학생별 순서 표 (중등): 학생마다 푼 순서대로 왼쪽부터, 칸 = 시험지 · 시행일 · 점수
+  perList(st) {
+    const from = this.start().y + '-01-01';
+    return Store.where('mock_scores', x => x.studentId === st.id && Store.get('mocks', x.mockId) && x.raw !== '' && x.raw != null)
+      .map(x => ({ x, d: this.msDate(x), mk: Store.get('mocks', x.mockId) })).filter(o => o.d >= from)
+      .sort((a, b) => ko(a.d, b.d) || ko(a.x.mockId, b.x.mockId));
+  },
+  perHtml(g) {
+    const rows = g.list.map(st => ({ st, list: this.perList(st) }));
+    const n = Math.max(0, ...rows.map(r => r.list.length)) + 1;          // + 추가 칸 하나
+    let h = `<div class="panel sc-sec"><div class="sc-sec-h"><h2>${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}<span class="sub">${g.list.length}명 · 학생별 순서</span></h2><span class="grow"></span>
+      <button class="btn sm primary" data-madd="${g.c ? g.c.id : ''}">+ 모의고사 입력</button></div>
+      <div class="sc-wrap"><table class="sc-tbl sc-per"><colgroup><col class="sc-c-nm">${Array.from({ length: n }, () => '<col class="sc-c-p">').join('')}<col class="sc-c-tr"></colgroup>
+      <thead><tr><th class="sc-nm">이름</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}회</th>`).join('')}<th class="sc-tr">추이</th></tr></thead><tbody>`;
+    rows.forEach(({ st, list }) => {
+      let prev = null;
+      const cells = Array.from({ length: n }, (_, i) => {
+        const o = list[i];
+        if (!o) return i === list.length ? `<td class="sc-padd"><button type="button" class="sc-addbtn" data-padd="${st.id}">+ 추가</button></td>` : '<td class="sc-e0"></td>';
+        const v = +o.x.raw, d = this.delta(v, prev); prev = v;
+        const lb = this.isReal(o.mk, st, o.d) ? `${o.mk.month}월 모고` : this.mockShort(o.mk);
+        return `<td class="sc-v sc-pc" data-pc="${o.x.id}" title="${esc(this.mockTitle(o.mk))} · ${esc(fmtDate(o.d))}${(o.x.wrong || []).length ? ' · 틀린 번호 ' + esc(this.compressNums(o.x.wrong)) : ''}"><em>${esc(lb)}</em><b>${v}</b>${d}<small>${this.mockLevel(v)}등급 · ${fmtMD(o.d)}</small></td>`;
+      }).join('');
+      h += `<tr><td class="sc-nm"><button type="button" class="sc-name" data-stu="${st.id}"><b>${esc(st.name)}</b><span>${esc(stTag(st))}</span></button></td>${cells}<td class="sc-tr">${this.spark(list.map(o => +o.x.raw), '#1F8F78')}</td></tr>`;
+    });
+    return h + '</tbody></table></div></div>';
+  },
+  // 한 학생만 추가: 시험지 · 시행일 고르고 → 원점수·틀린 번호 입력 창
+  openStudentMock(sid) {
+    const st = Store.get('students', sid);
+    const opts = (sel) => Store.all('mocks').sort((a, b) => b.year - a.year || b.month - a.month || a.grade - b.grade)
+      .map(mk => `<option value="${mk.id}" ${mk.id === sel ? 'selected' : ''}>${esc(this.mockTitle(mk))}</option>`).join('');
+    Modal.open({
+      title: `${st.name} · 모의고사 추가`, autofocus: false,
+      body: `<div class="form"><label class="req">시험지</label><div class="row" style="flex-wrap:nowrap"><select name="mock" style="flex:1;min-width:0">${opts('') || '<option value="">회차가 없습니다</option>'}</select><button type="button" class="btn sm" data-newmk>+ 새 회차</button></div>
+        <label class="req">시행일</label><input type="date" name="date" value="${todayStr()}" style="width:170px"></div>`,
+      onMount: (b) => { $('[data-newmk]', b).addEventListener('click', () => this.openMockModal(null, (rec) => { $('[name=mock]', b).innerHTML = opts(rec.id); })); },
+      buttons: [
+        { text: '취소' },
+        { text: '다음', cls: 'primary', primary: true, onClick: (m) => {
+          const mid = $('[name=mock]', m.body).value, date = $('[name=date]', m.body).value;
+          if (!mid) { toast('시험지를 고르세요'); return false; }
+          if (!isYmd(date)) { toast('시행일을 입력하세요'); return false; }
+          if (Store.get('mock_scores', 'MS_' + mid + '_' + sid)) toast('이미 푼 시험지입니다. 기존 기록을 고칩니다');
+          setTimeout(() => this.openWrongModal(Store.get('mocks', mid), sid, date), 0);
+        } },
+      ],
+    });
+  },
   colOf(td) {
     const sec = td.closest('.sc-sec'), secs = $$('#main .sc-sec');
     const g = this._mg[secs.indexOf(sec)];
@@ -1141,6 +1198,10 @@ const Scores = {
   clickMock(e) {
     const ad = e.target.closest('[data-madd]');
     if (ad) { const g = this._mg.find(x => (x.c ? x.c.id : '') === ad.dataset.madd); if (g) this.openMockEntry(g); return; }
+    const pa = e.target.closest('[data-padd]');
+    if (pa) { this.openStudentMock(pa.dataset.padd); return; }
+    const pc = e.target.closest('[data-pc]');
+    if (pc) { const x = Store.get('mock_scores', pc.dataset.pc); if (x) this.openWrongModal(Store.get('mocks', x.mockId), x.studentId); return; }
     const mc = e.target.closest('[data-mcol]');
     if (mc) { const c = this.colOf(mc)[+mc.dataset.mcol]; if (c) this.openMockStats(c); return; }
     const td = e.target.closest('td[data-mc]');
@@ -1216,19 +1277,6 @@ const Scores = {
       buttons: [{ text: '닫기', primary: true }],
     });
   },
-  // 회차 관리 (목록 · 추가 · 수정)
-  openMockList() {
-    const list = () => Store.all('mocks').sort((a, b) => b.year - a.year || b.month - a.month || a.grade - b.grade).map(mk => {
-      const n = Store.where('mock_scores', x => x.mockId === mk.id).length;
-      return `<div class="list-item"><div class="what"><b>${esc(this.mockTitle(mk))}</b> <span class="small muted">${n}명 입력</span>${mk.memo ? `<div class="small soft">${esc(mk.memo)}</div>` : ''}</div><button type="button" class="btn sm" data-edmk="${mk.id}">수정</button></div>`;
-    }).join('') || '<div class="empty">회차가 없습니다.</div>';
-    Modal.open({
-      title: '모의고사 회차 관리', size: 'lg', body: `<div class="list" data-ml>${list()}</div>`,
-      onMount: (b, m) => b.addEventListener('click', (e) => { const x = e.target.closest('[data-edmk]'); if (x) { m.close(); this.openMockModal(x.dataset.edmk); } }),
-      buttons: [{ text: '+ 회차 추가', left: true, onClick: () => { this.openMockModal(null); } }, { text: '닫기', primary: true }],
-    });
-  },
-
   /* ---------- 학생 상세: 내신 · 모의고사 추이 그래프 ---------- */
   openStudent(sid) {
     const st = Store.get('students', sid); if (!st) return;

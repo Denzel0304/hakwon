@@ -1390,3 +1390,10 @@ body.theme-gray {
 .sc-list > div { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; }
 .sc-list > div span { flex: 1; color: var(--ink-soft); }
 .sc-list > div small { color: var(--ink-mute); width: 52px; text-align: right; }
+/* 모의고사 학생별 순서 표 (중등) */
+.sc-tbl col.sc-c-p { width: 118px; }
+.sc-per .sc-pc { line-height: 1.15; padding: 4px 6px; height: 54px; }
+.sc-per .sc-pc em { display: block; font-style: normal; font-size: 11px; font-weight: 700; color: #1F7A67; background: #E6F3F0; border-radius: 5px; padding: 0 5px; margin: 0 auto 2px; width: fit-content; }
+.sc-per .sc-pc small { white-space: nowrap; }
+.sc-addbtn { border: 1px dashed var(--line-strong); background: var(--surface); color: var(--accent-ink); border-radius: 7px; font-size: 12.5px; font-weight: 700; padding: 4px 10px; cursor: pointer; }
+.sc-addbtn:hover { border-color: var(--accent); background: var(--accent-soft); }
