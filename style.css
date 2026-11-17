@@ -1397,3 +1397,7 @@ body.theme-gray {
 .sc-per .sc-pc small { white-space: nowrap; }
 .sc-addbtn { border: 1px dashed var(--line-strong); background: var(--surface); color: var(--accent-ink); border-radius: 7px; font-size: 12.5px; font-weight: 700; padding: 4px 10px; cursor: pointer; }
 .sc-addbtn:hover { border-color: var(--accent); background: var(--accent-soft); }
+/* 모의고사 결과 칸: 마우스를 올리면 살짝 색이 바뀜 (눌러서 세부 정보) */
+.sc-tbl td[data-mc], .sc-tbl td[data-pc] { transition: background-color .12s; }
+.sc-tbl td[data-mc]:hover, .sc-tbl td[data-pc]:hover { background: var(--accent-soft); }
+.sc-tbl td.sc-v[data-mc]:hover b, .sc-tbl td[data-pc]:hover b { color: var(--accent-ink); }

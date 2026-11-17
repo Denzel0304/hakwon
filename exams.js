@@ -896,7 +896,7 @@ const Scores = {
 
   /* =========================================================
      성적 화면 — 반별 추이표 (출석부처럼 반마다 패널, 학생 한 줄, 시험은 시간순 열)
-     설정(meta): { id 'SC_CFG', kind:'sccfg', start:{ y, s, k } }  ← 시작 시험 (내신은 이 시험부터, 모의고사는 이 해 1월부터)
+     설정(meta): { id 'SC_CFG', kind:'sccfg', start:{ y, s, k } }  ← 내신 시작 시험 (모의고사는 시작 없이 입력한 기록 전체)
      모의고사 점수 mock_score에 date(시행일) 추가 — 없으면 회차 달 1일로 본다. 열 = 시행일
      ========================================================= */
   CFG_ID: 'SC_CFG',
@@ -959,11 +959,10 @@ const Scores = {
     vals.forEach((v, i) => { if (v != null) h += `<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${color}"/>`; });
     return `<svg class="sc-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><line x1="0" y1="${y(50)}" x2="${W}" y2="${y(50)}" class="sc-mid"/>${h}</svg>`;
   },
-  // 시작 시험 고르기 — 고정된 연도 없이, 실제 기록(내신 점수·모의고사 시행일)이 있는 가장 이른 해 ~ 올해
+  // 시작 시험 고르기 (내신 탭만) — 고정된 연도 없이, 내신 점수가 있는 가장 이른 해 ~ 올해
   //   (기록이 없으면 올해만, 지금 고른 시작 해는 항상 포함)
   dataMinYear() {
-    const ys = Store.all('scores').map(x => +x.year).filter(Boolean)
-      .concat(Store.all('mock_scores').map(x => +this.msDate(x).slice(0, 4)).filter(Boolean));
+    const ys = Store.all('scores').map(x => +x.year).filter(Boolean);
     return ys.length ? Math.min(...ys) : this.curTerm().y;
   },
   startSelect() {
@@ -979,7 +978,7 @@ const Scores = {
   render(main) {
     let h = `<div class="page-head"><h1>성적</h1>
       <div class="tabs sc-tabs"><button data-tab="school" class="${this.tab === 'school' ? 'active' : ''}">내신</button><button data-tab="mock" class="${this.tab === 'mock' ? 'active' : ''}">모의고사</button></div>
-      <span class="grow"></span>${this.startSelect()}</div><div data-body></div>`;
+      <span class="grow"></span>${this.tab === 'school' ? this.startSelect() : ''}</div><div data-body></div>`;
     main.innerHTML = h;
     const body = $('[data-body]', main);
     main.onclick = (e) => {
@@ -1089,11 +1088,10 @@ const Scores = {
   mockShort(mk) { return `${String(mk.year).slice(-2)}년 ${mk.month}월 ${gradeLabel(mk.grade)}`; },
   // 이 반의 열: 시행일마다 하나 (시작 해 1월부터)
   mockCols(list) {
-    const from = this.start().y + '-01-01';
     const ids = new Set(list.map(s => s.id));
     const byDate = {};
     Store.where('mock_scores', x => ids.has(x.studentId) && Store.get('mocks', x.mockId)).forEach(x => {
-      const d = this.msDate(x); if (!d || d < from) return;
+      const d = this.msDate(x); if (!d) return;
       (byDate[d] = byDate[d] || []).push(x);
     });
     return Object.keys(byDate).sort().map(d => {
@@ -1116,7 +1114,7 @@ const Scores = {
       const years = []; cols.forEach(c => { const y = +c.date.slice(0, 4), l = years[years.length - 1]; if (l && l.y === y) l.n++; else years.push({ y, n: 1 }); });
       h += `<div class="panel sc-sec"><div class="sc-sec-h"><h2>${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}<span class="sub">${g.list.length}명</span></h2><span class="grow"></span>
         <button class="btn sm primary" data-madd="${g.c ? g.c.id : ''}">+ 모의고사 입력</button></div>`;
-      if (!cols.length) { h += `<div class="empty small">${this.start().y}년 이후 모의고사 기록이 없습니다.</div></div>`; return; }
+      if (!cols.length) { h += `<div class="empty small">모의고사 기록이 없습니다. “+ 모의고사 입력”으로 넣으세요.</div></div>`; return; }
       const cg = `<colgroup><col class="sc-c-nm">${cols.map(() => '<col class="sc-c-t">').join('')}<col class="sc-c-tr"></colgroup>`;
       let firstY = {};
       h += `<div class="sc-wrap"><table class="sc-tbl">${cg}<thead><tr class="sc-yr"><th class="sc-nm"></th>${years.map(o => `<th colspan="${o.n}" class="sc-ys">${o.y}</th>`).join('')}<th></th></tr>
@@ -1143,9 +1141,8 @@ const Scores = {
   },
   // 학생별 순서 표 (중등): 학생마다 푼 순서대로 왼쪽부터, 칸 = 시험지 · 시행일 · 점수
   perList(st) {
-    const from = this.start().y + '-01-01';
     return Store.where('mock_scores', x => x.studentId === st.id && Store.get('mocks', x.mockId) && x.raw !== '' && x.raw != null)
-      .map(x => ({ x, d: this.msDate(x), mk: Store.get('mocks', x.mockId) })).filter(o => o.d >= from)
+      .map(x => ({ x, d: this.msDate(x), mk: Store.get('mocks', x.mockId) })).filter(o => o.d)
       .sort((a, b) => ko(a.d, b.d) || ko(a.x.mockId, b.x.mockId));
   },
   perHtml(g) {
@@ -1286,7 +1283,7 @@ const Scores = {
       .filter(p => p.d >= from).sort((a, b) => ko(a.d, b.d));
     const mok = Store.where('mock_scores', x => x.studentId === sid && x.raw !== '' && x.raw != null && Store.get('mocks', x.mockId))
       .map(x => { const mk = Store.get('mocks', x.mockId), d = this.msDate(x); return { d, v: +x.raw, t: (this.isReal(mk, st, d) ? `${mk.month}월 모고` : this.mockShort(mk)) + ' · ' + d.slice(2, 4) + '년 ' + fmtMD(d), lv: this.mockLevel(x.raw) + '등급' }; })
-      .filter(p => p.d >= from).sort((a, b) => ko(a.d, b.d));
+      .filter(p => p.d).sort((a, b) => ko(a.d, b.d));      // 모의고사는 기록 전체
     const all = sch.concat(mok);
     let chart = '<div class="empty">시작 시험 이후 기록이 없습니다.</div>';
     if (all.length) {
