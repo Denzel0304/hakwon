@@ -414,36 +414,48 @@ const NP = {
     (l.np || []).forEach(en => { st.items[this.key(en.matId, en.unitId)] = JSON.parse(JSON.stringify(en)); });
     st.dist = JSON.parse(JSON.stringify(l.dist || []));
     st.exams = l.npExams && l.npExams.length ? l.npExams.slice() : null;
-    st.on = !!((l.np && l.np.length) || st.dist.length || (l.npExams && l.npExams.length));
     (l.gp || []).forEach(en => { st.gitems[this.key(en.matId, en.unitId)] = JSON.parse(JSON.stringify(en)); });
-    st.gen = !st.on && !!(l.gp && l.gp.length);
+    // 진도 방식: 저장된 npMode('on' 내신 / 'gen' 비내신 / '' 체크 안 함) — 예전 기록은 내용으로 짐작
+    if (l.npMode === 'on' || l.npMode === 'gen' || l.npMode === '') { st.on = l.npMode === 'on'; st.gen = l.npMode === 'gen'; }
+    else {
+      st.on = !!((l.np && l.np.length) || st.dist.length || (l.npExams && l.npExams.length));
+      st.gen = !st.on && !!(l.gp && l.gp.length);
+    }
     return st;
   },
   selExams(st, ctx) {
     const ids = st.exams || this.autoExams(ctx.classId, ctx.date).map(e => e.id);
     return ids.map(id => Store.get('exams', id)).filter(Boolean);
   },
-  // 수업일지에 저장할 값 (내신을 끄면 모두 비움)
+  // 배부 자료 저장값: 내신 = 시험 교재 연결(학교별 grp 유지) / 비내신 = 일반 교재 과·강 연결(학교 구분 없음) / 체크 안 함 = 이름·메모만
+  distOut(st, mode) {
+    const isGen = (rf) => { const m = this.mat(String(rf).split(':')[0]); return !!m && m.type === 'gen'; };
+    return st.dist.map(d => {
+      const refs = mode === 'on' ? (d.refs || []).filter(rf => !isGen(rf)) : mode === 'gen' ? (d.refs || []).filter(isGen) : [];
+      return Object.assign({ name: stripZws(d.name || '').trim(), refs, memo: stripZws(d.memo || '').trim() }, mode === 'on' && d.grp ? { grp: d.grp } : {});
+    }).filter(d => d.name || d.refs.length || d.memo);
+  },
+  // 수업일지에 저장할 값 — mode: 'on' 내신 / 'gen' 비내신 / '' 체크 안 함 (세 방식 모두 공통 배부 자료는 저장)
   toLesson(st, ctx) {
-    if (st.gen) {   // 비내신: 일반 교재 진도만
+    if (st.gen) {   // 비내신: 일반 교재 진도 + 배부 자료
       const gp = Object.values(st.gitems).filter(en => { const m = this.mat(en.matId); return m && (m.units || []).some(u => u.id === en.unitId); })
         .map(en => ({ matId: en.matId, unitId: en.unitId, text: stripZws(en.text || '').trim(), done: !!en.done }));
-      return { np: [], npExams: [], dist: [], gp };
+      return { np: [], npExams: [], dist: this.distOut(st, 'gen'), gp, mode: 'gen' };
     }
-    if (!st.on) return { np: [], npExams: [], dist: [], gp: [] };
+    if (!st.on) return { np: [], npExams: [], dist: this.distOut(st, ''), gp: [], mode: '' };
     const np = Object.values(st.items).map(en => {
       const e = { matId: en.matId };
       if (en.unitId) { e.unitId = en.unitId; e.nums = (en.nums || []).slice(); e.text = stripZws(en.text || '').trim(); e.done = !!en.done; }
       else e.nums = (en.nums || []).slice();
       return e;
     }).filter(e => (e.nums && e.nums.length) || e.text || e.done || e.unitId);
-    const dist = st.dist.map(d => Object.assign({ name: (d.name || '').trim(), refs: (d.refs || []).slice(), memo: (d.memo || '').trim() }, d.grp ? { grp: d.grp } : {}))
-      .filter(d => d.name || d.refs.length || d.memo);
-    return { np, npExams: this.selExams(st, ctx).map(e => e.id), dist, gp: [] };
+    return { np, npExams: this.selExams(st, ctx).map(e => e.id), dist: this.distOut(st, 'on'), gp: [], mode: 'on' };
   },
   hasInput(st) {
-    if (st && st.gen) return Object.keys(st.gitems).length > 0;
-    return !!(st && st.on && (Object.keys(st.items).length || st.dist.some(d => (d.name || '').trim() || (d.refs || []).length)));
+    if (!st) return false;
+    const dist = st.dist.some(d => (d.name || '').trim() || (d.memo || '').trim() || (d.refs || []).length);
+    if (st.gen) return Object.keys(st.gitems).length > 0 || dist;
+    return dist || !!(st.on && Object.keys(st.items).length);
   },
 
   chipCls(s) { return s === 'les' ? 'done' : s === 'man' ? 'done man' : s === 'part' ? 'part' : s === 'mpart' ? 'part man' : ''; },
@@ -458,6 +470,35 @@ const NP = {
   // 색 안내 (요약 위 · 입력 아래)
   legendHtml(withPrep, withToday) {
     return `<div class="np-legend small soft"><span class="np-c done">수업 완료</span><span class="np-c done man">직접 완료</span><span class="np-c part">진행 중</span><span class="np-c part man">직접 진행 중</span>${withPrep ? '<span class="np-c prep">수업 준비</span>' : ''}${withToday ? '<span class="np-c on">오늘</span>' : ''}<span class="np-c">미진행</span></div>`;
+  },
+  // 시험 범위 한 교재에서 배부 자료로 고를 수 있는 것 (모의고사 = 교재 전체, 교과서·부교재 = 과마다)
+  refsOfR(r) { return r.mat.type === 'mock' ? [r.mat.id] : r.units.map(u => r.mat.id + ':' + u.id); },
+  // 배부 자료 한 줄 (i: st.dist 안의 번호, refs: 고를 수 있는 교재·단위 — 비어 있으면 이름·메모만)
+  distRow(d, i, refs) {
+    return `<div class="np-drow"><input type="text" list="dl-npdist" data-np-dname="${i}" value="${esc(d.name || '')}" placeholder="자료 이름 (예: 변형문제)">
+      <button type="button" class="icon-btn" data-np-ddel="${i}" title="삭제">✕</button>
+      ${refs.length ? `<div class="np-chips">${refs.map(rf => `<button type="button" class="np-c sm ${(d.refs || []).includes(rf) ? 'on' : ''}" data-np-dref="${i}|${rf}">${esc(this.refLabel(rf))}</button>`).join('')}</div>` : ''}
+      <input type="text" data-np-dmemo="${i}" value="${esc(d.memo || '')}" placeholder="메모 (선택, 예: 31-42번 / 2회분)"></div>`;
+  },
+  // 공통 배부 자료 (세 방식 모두 · editorHtml 다음에 같은 ctx로 부름 — 학교 카드에 들어간 개별 배부는 뺌)
+  //   내신: 시험 교재·과 선택 / 비내신: 이 반 일반 교재의 오늘 고른 과·강 선택 / 체크 안 함: 이름·메모만
+  commonDistHtml(st, ctx) {
+    let refs = [];
+    if (st.on) {
+      const sel = this.selExams(st, ctx);
+      this.rangeOf(sel).forEach(r => refs.push(...this.refsOfR(r)));
+    } else if (st.gen) {
+      const ks = Object.keys(st.gitems);
+      st.dist.forEach(d => (d.refs || []).forEach(rf => { const m = this.mat(String(rf).split(':')[0]); if (m && m.type === 'gen' && !ks.includes(rf)) ks.push(rf); }));
+      refs = ks;
+    }
+    const placed = ctx.hwPlaced || new Set();
+    const rows = st.dist.map((d, i) => [d, i]).filter(([d]) => !(st.on && d.grp && placed.has(d.grp)));
+    const hint = st.gen ? (refs.length ? '' : '<div class="small muted">위에서 오늘 나간 과·강을 고르면 배부 자료에 연결할 수 있습니다. 이름·메모만 써도 됩니다.</div>')
+      : !st.on ? '<div class="small muted">자료 이름과 메모를 적어 두세요.</div>' : '';
+    return `<div class="np-dist np-cdist">${rows.map(([d, i]) => (st.on && d.grp ? `<div class="small soft" style="margin-top:4px">[${esc(d.grp)}]</div>` : '') + this.distRow(d, i, refs)).join('')}
+      ${rows.length ? '' : hint}<div class="todo-actions"><button type="button" class="btn sm" data-np-dadd>+ 배부 추가</button></div>
+      <datalist id="dl-npdist">${this.distNames().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist></div>`;
   },
   editorHtml(st, ctx) {
     let h = `<div style="display:flex;gap:16px;flex-wrap:wrap"><label class="chk np-on"><input type="checkbox" data-np-on ${st.on ? 'checked' : ''}>내신</label>
@@ -479,12 +520,8 @@ const NP = {
     const hwAt = {}, own = {}, cardOf = {};      // cardOf[교재 순번] = 이 교재부터 시작하는 학교 카드 이름
     ctx.hwPlaced = new Set();
     const legend = this.legendHtml(false, true);
-    // 배부 자료 한 줄 (i: st.dist 안의 번호, refs: 고를 수 있는 교재·단위)
-    const refsOfR = (r) => r.mat.type === 'mock' ? [r.mat.id] : r.units.map(u => r.mat.id + ':' + u.id);
-    const drow = (d, i, refs) => `<div class="np-drow"><input type="text" list="dl-npdist" data-np-dname="${i}" value="${esc(d.name || '')}" placeholder="자료 이름 (예: 변형문제)">
-      <button type="button" class="icon-btn" data-np-ddel="${i}" title="삭제">✕</button>
-      <div class="np-chips">${refs.map(rf => `<button type="button" class="np-c sm ${(d.refs || []).includes(rf) ? 'on' : ''}" data-np-dref="${i}|${rf}">${esc(this.refLabel(rf))}</button>`).join('')}</div>
-      <input type="text" data-np-dmemo="${i}" value="${esc(d.memo || '')}" placeholder="메모 (선택, 예: 31-42번 / 2회분)"></div>`;
+    const refsOfR = (r) => this.refsOfR(r);
+    const drow = (d, i, refs) => this.distRow(d, i, refs);
     if (ctx.hw) {
       const lbOf = (e) => this.sch(e.school) + gradeNum(e.grade);
       const lbs = [];
@@ -523,26 +560,19 @@ const NP = {
         });
       }
       (hwAt[ri] || []).forEach(lb => {
-        h += `<div class="hw-row np-hw"><span class="hw-lb">${esc(lb)} 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(ctx.hw.by[lb] || '')}</textarea></div>`;
+        h += `<div class="hw-row np-hw"><span class="hw-lb">${esc(lb)} 개별 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(ctx.hw.by[lb] || '')}</textarea></div>`;
         // 그 학교 배부 자료 (그 학교 교재만 고를 수 있음)
         const lbRefs = [];
         range.forEach(x => { if ((own[x.mat.id] || new Set()).has(lb)) lbRefs.push(...refsOfR(x)); });
-        h += `<div class="np-sdist"><div class="np-mhead"><b>${esc(lb)} 배부 자료</b><button type="button" class="btn sm" data-np-dadd="${esc(lb)}">+ 배부 추가</button></div>`
+        h += `<div class="np-sdist"><div class="np-mhead"><b>${esc(lb)} 개별 배부 자료</b><button type="button" class="btn sm" data-np-dadd="${esc(lb)}">+ 배부 추가</button></div>`
           + st.dist.map((d, i) => d.grp === lb ? drow(d, i, lbRefs) : '').join('') + '</div>';
+        if (ctx.todoBlock) h += ctx.todoBlock(lb);           // 그 학교 개별 할일 (수업일지 화면이 그려 줌)
         h += legend;                                       // 학교마다 그 학교 카드 맨 아래에 범례
       });
       h += '</div>';
     });
-    // 배부 자료
-    const refs = [];
-    range.forEach(r => refs.push(...refsOfR(r)));
+    // 공통 배부 자료는 commonDistHtml (수업 내용의 '공통 배부 자료' 칸)
     const split = ctx.hwPlaced.size > 0;                  // 학교별로 나눠 붙였는지
-    const rest = st.dist.map((d, i) => [d, i]).filter(([d]) => !split || !(d.grp && ctx.hwPlaced.has(d.grp)));
-    if (!split || rest.length) {
-      h += `<div class="np-dist"><div class="np-mhead"><b>${split ? '배부 자료 (학교 지정 안 됨)' : '배부 자료'}</b>${split ? '' : '<button type="button" class="btn sm" data-np-dadd>+ 배부 추가</button>'}</div>`;
-      h += rest.map(([d, i]) => drow(d, i, refs)).join('') + '</div>';
-    }
-    h += `<datalist id="dl-npdist">${this.distNames().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`;
     if (!split) h += legend;                              // 학교별 카드가 없으면 맨 아래 한 번
     h += '</div>';
     return h;
@@ -932,17 +962,37 @@ const Lessons = {
   cancel() {
     const f = this.form;
     const date = f ? f.date : App.selDate;
-    const back = !!(f && this.ret && this.ret.date === f.date && this.ret.classId === f.classId);
-    this.form = null; this.ret = null;
-    if (back) App.pickDate(date);
-    else App.go('lessons', { date });
+    this.form = null;
+    this.goBack(date, f ? f.classId : '', date);
+  },
+  // 저장·취소 뒤 돌아갈 곳: 진도 탭에서 열었으면 진도 탭 / 날짜 요약에서 열었으면 요약 / 아니면 수업일지 탭
+  //   (nd: 날짜를 옮겼으면 새 날짜)
+  goBack(date, classId, nd) {
+    const r = this.ret;
+    this.ret = null;
+    const mine = r && r.date === date && r.classId === classId;
+    if (mine && r.page === 'progress') { App.go('progress', { classId, date: nd }); return; }
+    if (mine) { App.pickDate(nd); return; }
+    App.go('lessons', { date: nd });
+  },
+  // 저장된 일지 완전 삭제 (출석·진도·숙제·메모·할일·보강 기록)
+  async deleteLesson(f) {
+    if (!f || !f.editId) return;
+    if (!await confirmHard('이 수업일지를 삭제할까요?\n출석, 진도·숙제·메모, 할일, 보강 기록이 함께 삭제됩니다.')) return;
+    const id = f.editId;
+    Store.delWhere('todos', t => t.lessonId === id);
+    Store.delWhere('makeups', m => m.lessonId === id);
+    Store.del('lessons', id);
+    this.form = null;
+    this.goBack(f.date, f.classId, f.date);
+    toast('삭제했습니다');
   },
   // 저장된 일지를 불러온 수정용 폼 (editId: 수정 중인 일지 id, 할일은 기존 할일 + 빈 칸 하나)
   editForm(date, classId) {
     const l = Store.get('lessons', this.lessonId(classId, date));
     const todos = Store.where('todos', t => t.lessonId === l.id).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt))
-      .map(t => ({ id: t.id, text: t.text, date: t.date, done: !!t.done, importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
-        checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])), time: t.time || '' }));
+      .map(t => Object.assign({ id: t.id, text: t.grp && String(t.text).startsWith('[' + t.grp + '] ') ? t.text.slice(t.grp.length + 3) : t.text, date: t.date, done: !!t.done, importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
+        checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])), time: t.time || '' }, t.grp ? { grp: t.grp } : {}));
     todos.push({ text: '', date });
     const att = Object.assign({}, l.att || {});
     Classes.rosterOn(classId, date).forEach(s => { if (!att[s.id] && Makeups.preRec(classId, date, s.id)) att[s.id] = 'A'; });   // 결석 예정 학생
@@ -967,8 +1017,12 @@ const Lessons = {
     if (!this.form || this.form.date !== date || this.form.classId !== classId || !!this.form.editId !== isEdit)
       this.form = isEdit ? this.editForm(date, classId) : this.newForm(date, classId);
     const f = this.form;
-    // 학교·학년이 섞인 반이면 숙제를 나눠 입력 (처음 그릴 때 저장된 숙제를 나눠 담는다)
-    if (classId && !f.hw) { const lbs = this.hwLabels(classId, date); if (lbs.length > 1) f.hw = this.parseHw(f.homework, lbs); }
+    // 학교·학년이 섞인 반 + 내신일 때만 학교별(개별) 숙제·배부 자료·할일을 나눠 입력
+    //   내신을 끄면 나눠 쓴 숙제를 한 칸(공통 숙제)에 "[금천고2] …" 줄로 합쳐 보여 준다 (내용은 그대로 저장됨)
+    const lbs0 = classId ? this.hwLabels(classId, date) : [];
+    const split = !!(classId && f.np.on && lbs0.length > 1);
+    if (split && !f.hw) f.hw = this.parseHw(f.homework, lbs0);
+    if (!split && f.hw) { f.homework = this.joinHw(f.hw); f.hw = null; }
     const savedCnt = sched.filter(c => this.isSaved(c.id, date)).length;
     const skipCnt = sched.filter(c => !this.isSaved(c.id, date) && this.isSkipped(c.id, date)).length;
     const opt = (c) => {
@@ -985,7 +1039,7 @@ const Lessons = {
     const canCancel = isEdit || !!(classId && this.ret && this.ret.date === date && this.ret.classId === classId);
 
     let h = `<div class="page-narrow">${PL.head('lessons', `${NavBar.day(date)}${isEdit ? '<span class="badge orange">수정 중</span>' : ''}
-      <span class="grow"></span>${classId && !skipped ? (isEdit ? '' : '<button class="btn" data-skip>일지 건너뛰기</button>') + (canCancel ? '<button class="btn" data-cancel>취소</button>' : '') + '<button class="btn primary" data-save>저장</button>' : ''}`)}
+      <span class="grow"></span>${classId && !skipped ? (isEdit ? '<button class="btn danger" data-ldel title="출석·진도·숙제·메모·할일·보강 기록을 모두 지웁니다">완전 삭제</button>' : '<button class="btn" data-skip>일지 건너뛰기</button>') + (canCancel ? '<button class="btn" data-cancel>취소</button>' : '') + '<button class="btn primary" data-save>저장</button>' : ''}`)}
       <div class="toolbar"><span style="display:inline-flex;align-items:center">${Classes.selDot(classId ? Store.get('classes', classId) : null)}<select data-cls style="min-width:260px">
         ${classId ? '' : `<option value="" selected>${allDone ? '모두 작성되었습니다' : '입력할 반을 선택하세요'}</option>`}
         ${sched.length ? `<optgroup label="${DOW[dowOf(date)]}요일 수업">${sched.map(opt).join('')}</optgroup>` : ''}
@@ -1034,23 +1088,34 @@ const Lessons = {
         <div class="att-seg">${Object.keys(ATT).map(k => `<button class="${k} ${a === k ? 'on' : ''}" data-att="${k}" data-sid="${s.id}">${ATT[k]}</button>`).join('')}</div>
         ${a === 'M' ? `<label class="att-mkpre small soft" title="수업 전에 실제로 와서 보강한 날 (선택)">보강한 날 <input type="date" data-mkpre="${s.id}" max="${esc(date)}" value="${esc((f.mkpre || {})[s.id] || '')}"></label>` : ''}</div>`;
     }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 메뉴에서 학생을 배정하세요.</div>';
-    // 내신 진도 입력 (학교별 숙제는 그 학교 교재 바로 아래에 들어감 · 못 넣은 학교 숙제는 진도 칸 아래에 따로)
-    const npCtx0 = { classId, date, lessonId: f.editId || null, hw: f.hw || null };
+    // 할일 한 줄 (i: f.todos 안의 번호)
+    const todoRow = (d, i) => { const sm = TodoX.detailSummary(d); return `<div class="todo-row"><input type="text" data-dtext="${i}" value="${esc(d.text)}" placeholder="할일"><input type="date" class="todo-date" data-ddate="${i}" value="${esc(d.date)}"><button type="button" class="btn sm todo-detb${sm ? ' on' : ''}" data-ddet="${i}" title="시간·중요도·메모·상기·체크리스트">상세</button><button class="icon-btn" data-ddel="${i}" title="칸 지우기">✕</button></div>${sm ? `<div class="todo-det">${esc(sm)}</div>` : ''}`; };
+    // 학교 카드의 개별 할일
+    const todoBlock = (lb) => `<div class="np-stodo"><div class="np-mhead"><b>${esc(lb)} 개별 할일</b><button type="button" class="btn sm" data-dadd="${esc(lb)}">+ 할일 추가</button></div>
+      <div class="todo-drafts">${f.todos.map((d, i) => d.grp === lb ? todoRow(d, i) : '').join('')}</div></div>`;
+    // 교재 진도 (내신: 섞인 반이면 학교 카드 안에 개별 숙제·배부 자료·할일) → 공통 진도 → 공통 숙제 → 공통 배부 자료 → 공통 메모 → 공통 할일
+    const npCtx0 = { classId, date, lessonId: f.editId || null, hw: split ? f.hw : null, todoBlock: split ? todoBlock : null };
     const npHtml = NP.editorHtml(f.np, npCtx0);
-    const hwRest = f.hw ? f.hw.order.filter(lb => !npCtx0.hwPlaced || !npCtx0.hwPlaced.has(lb)) : [];
+    const placed = npCtx0.hwPlaced || new Set();
+    const hwRest = split ? f.hw.order.filter(lb => !placed.has(lb)) : [];     // 시험이 없어 카드에 못 들어간 학교
+    const distHtml = NP.commonDistHtml(f.np, npCtx0);
+    // 공통 할일: 학교 카드에 들어간 개별 할일은 빼고 (내신을 끈 경우의 개별 할일은 여기에 [학교] 표시와 함께)
+    const inCard = (d) => split && d.grp && (placed.has(d.grp) || hwRest.includes(d.grp));
     h += `</div><div class="panel">
       <h2>수업 내용</h2>
-      <div class="lesson-field"><label>진도</label><div data-npbox>${npHtml}</div>${hwRest.length ? `<div class="hw-split" style="margin:0 0 8px">
-        <div class="small soft">학교별 숙제 (선택)</div>
-        ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)}</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>`).join('')}</div>` : ''}</div>
-      <div class="lesson-field"><label>공통 진도</label><textarea data-f="progress" rows="4" placeholder="${f.np.on ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
-      <div class="lesson-field"><label>${f.hw ? '공통 숙제' : '숙제'}</label>${f.hw ? `<textarea data-hw="" rows="3" placeholder="모든 학생 공통 숙제 (학교별 숙제는 진도 아래 칸)">${esc(f.hw.common)}</textarea>`
+      ${isEdit ? `<div class="lesson-field ls-move"><label>수업 날짜</label><div class="row"><input type="date" data-movedate value="${esc(f.moveTo || date)}" style="width:170px"><span class="hint">다른 날짜로 옮기려면 바꾸고 저장 (할일·보강 기록도 함께 옮겨짐)</span></div></div>` : ''}
+      <div class="lesson-field"><label>교재 진도</label><div data-npbox>${npHtml}</div>${hwRest.length ? `<div class="hw-split" style="margin:0 0 8px">
+        <div class="small soft">시험이 등록되지 않은 학교</div>
+        ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)} 개별 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>${todoBlock(lb)}`).join('')}</div>` : ''}</div>
+      <div class="lesson-field"><label>공통 진도</label><textarea data-f="progress" rows="4" placeholder="${f.np.on || f.np.gen ? '그 외 진도 (자유 입력)' : '오늘 나간 진도'}">${esc(f.progress)}</textarea></div>
+      <div class="lesson-field"><label>공통 숙제</label>${split ? `<textarea data-hw="" rows="3" placeholder="모든 학생 공통 숙제 (학교별 숙제는 위 학교 카드)">${esc(f.hw.common)}</textarea>`
         : `<textarea data-f="homework" rows="3" placeholder="내준 숙제">${esc(f.homework)}</textarea>`}</div>
-      <div class="lesson-field"><label>메모</label><textarea data-f="memo" rows="3">${esc(f.memo)}</textarea></div>
-      <div class="lesson-field"><label>할일</label>
-        <div class="todo-drafts">${f.todos.map((d, i) => { const sm = TodoX.detailSummary(d); return `<div class="todo-row"><input type="text" data-dtext="${i}" value="${esc(d.text)}" placeholder="할일"><input type="date" class="todo-date" data-ddate="${i}" value="${esc(d.date)}"><button type="button" class="btn sm todo-detb${sm ? ' on' : ''}" data-ddet="${i}" title="시간·중요도·메모·상기·체크리스트">상세</button><button class="icon-btn" data-ddel="${i}" title="칸 지우기">✕</button></div>${sm ? `<div class="todo-det">${esc(sm)}</div>` : ''}`; }).join('')}</div>
+      <div class="lesson-field"><label>공통 배부 자료</label><div data-npbox>${distHtml}</div></div>
+      <div class="lesson-field"><label>공통 메모</label><textarea data-f="memo" rows="3">${esc(f.memo)}</textarea></div>
+      <div class="lesson-field"><label>공통 할일</label>
+        <div class="todo-drafts">${f.todos.map((d, i) => inCard(d) ? '' : (d.grp ? `<div class="small soft" style="margin:2px 0 -2px">[${esc(d.grp)}]</div>` : '') + todoRow(d, i)).join('')}</div>
         <div class="todo-actions"><button class="btn sm" data-dadd>+ 할일 칸 추가</button></div></div>
-      <p class="small muted" style="margin:10px 0 0">${isEdit ? '저장된 일지를 고치는 중입니다. ' : ''}“저장”을 누르면 출석은 출석부로, 진도·숙제·메모는 진도 탭으로, 할일은 정한 날짜의 할일로 들어갑니다. 저장하지 않고 다른 곳으로 가면 입력한 내용은 버려집니다. (Ctrl+Enter도 저장)</p>
+      <p class="small muted" style="margin:10px 0 0">${isEdit ? '저장된 일지를 고치는 중입니다. ' : ''}“저장”을 누르면 출석은 출석부로, 진도·숙제·배부 자료·메모는 진도 탭으로, 할일은 정한 날짜의 할일로 들어갑니다. 학교 카드의 개별 할일은 할일 목록에 [학교] 표시와 함께 들어갑니다.</p>
     </div></div></div>`;
     main.innerHTML = h;
     this.bind(main, date, classId);
@@ -1113,22 +1178,28 @@ const Lessons = {
         App.render();
         return;
       }
-      if (e.target.closest('[data-dadd]')) {
-        f.todos.push({ text: '', date });
+      const da = e.target.closest('[data-dadd]');
+      if (da) {
+        const grp = da.dataset.dadd || '';
+        f.todos.push(grp ? { text: '', date, grp } : { text: '', date });
         App.render();
-        const all = $$('[data-dtext]', $('#main')); if (all.length) all[all.length - 1].focus();
+        const i = f.todos.length - 1, n = $(`[data-dtext="${i}"]`, $('#main')); if (n) n.focus();
         return;
       }
+      if (e.target.closest('[data-ldel]')) { this.deleteLesson(f); return; }
       const dd = e.target.closest('[data-ddel]');
-      if (dd) { f.todos.splice(+dd.dataset.ddel, 1); if (!f.todos.length) f.todos.push({ text: '', date }); App.render(); }
+      if (dd) { f.todos.splice(+dd.dataset.ddel, 1); if (!f.todos.some(d => !d.grp)) f.todos.push({ text: '', date }); App.render(); }
     };
     main.onkeydown = (e) => {
       if (e.target.matches('[data-dtext]') && e.key === 'Enter' && !e.isComposing) {
         e.preventDefault();
         const i = +e.target.dataset.dtext;
-        if (i === f.todos.length - 1) f.todos.push({ text: '', date: f.todos[i].date || date });
+        // 같은 칸(공통 / 그 학교)의 다음 줄로 — 마지막 줄이면 새 줄 추가
+        const g = f.todos[i].grp || '';
+        let j = f.todos.findIndex((d, k) => k > i && (d.grp || '') === g);
+        if (j < 0) { f.todos.push(Object.assign({ text: '', date: f.todos[i].date || date }, g ? { grp: g } : {})); j = f.todos.length - 1; }
         App.render();
-        const n = $(`[data-dtext="${i + 1}"]`, $('#main')); if (n) n.focus();
+        const n = $(`[data-dtext="${j}"]`, $('#main')); if (n) n.focus();
       }
     };
     // 입력값은 저장 전까지 화면 메모리(form)에만 둔다
@@ -1139,10 +1210,12 @@ const Lessons = {
       if (e.target.matches('textarea[data-hw]') && f.hw) { const k = e.target.dataset.hw; if (k) f.hw.by[k] = e.target.value; else f.hw.common = e.target.value; }
       if (e.target.matches('[data-dtext]')) f.todos[+e.target.dataset.dtext].text = e.target.value;
       if (e.target.matches('[data-ddate]')) f.todos[+e.target.dataset.ddate].date = e.target.value;
+      if (e.target.matches('[data-movedate]')) f.moveTo = e.target.value;
     };
     main.onchange = (e) => {
       if (npDo(e, 'change')) return;
       if (e.target.matches('[data-mkpre]') && f) { const v = e.target.value; f.mkpre = f.mkpre || {}; if (isYmd(v)) f.mkpre[e.target.dataset.mkpre] = v; else delete f.mkpre[e.target.dataset.mkpre]; return; }   // 선보강한 날
+      if (e.target.matches('[data-movedate]')) { f.moveTo = e.target.value; return; }
       if (e.target.matches('[data-date]') && isYmd(e.target.value)) go(e.target.value, null);
       if (e.target.matches('[data-cls]') && e.target.value) go(date, e.target.value);
     };
@@ -1163,6 +1236,7 @@ const Lessons = {
     const rec = { id, classId: f.classId, date: f.date, progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) };
     if (np.np.length || np.dist.length) Object.assign(rec, { np: np.np, npExams: np.npExams, dist: np.dist });      // 내신 진도·배부 자료
     if (np.gp.length) rec.gp = np.gp;                                 // 비내신 진도
+    rec.npMode = np.mode;                                             // 진도 방식 (다시 열 때 그대로)
     const mp = this.mkpreOf(f.att, f.mkpre); if (Object.keys(mp).length) rec.mkpre = mp;   // 선보강한 날
     // 아무것도 입력하지 않았으면 저장하지 않는다 (빈 일지는 '작성 안 됨'으로 남기 때문)
     if (!Object.keys(rec.att).length && ![rec.progress, rec.homework, rec.memo].some(v => (v || '').trim())
@@ -1175,13 +1249,10 @@ const Lessons = {
     if (this.isSkipped(f.classId, f.date)) Store.del('meta', this.skipId(f.classId, f.date));   // 일지를 쓰면 건너뛰기 표시는 없앤다
     const now = Date.now();
     const todos = f.todos.filter(d => d.text.trim());
-    todos.forEach((d, i) => Store.put('todos', this.newTodo(d, i, now, id, f.classId, f.date)));
+    todos.forEach((d, i) => Store.put('todos', this.newTodo(d, i, now, id, f.classId, f.date)));     // 개별 할일은 [학교] 표시와 함께
     const cname = (Store.get('classes', f.classId) || {}).name || '';
     this.form = null;
-    const back = this.ret && this.ret.date === f.date && this.ret.classId === f.classId;
-    this.ret = null;
-    if (back) App.pickDate(f.date);                 // 날짜 요약에서 들어왔으면 그 요약 화면으로
-    else App.go('lessons', { date: f.date });
+    this.goBack(f.date, f.classId, f.date);
     await Store.syncNow();
     toast(`${cname} 저장 완료` + (todos.length ? ` · 할일 ${todos.length}개` : '') + (preN ? ` · 결석 예정 할일 ${preN}개 완료 처리` : '') + (Store.pendingCount() ? ' (인터넷 연결 후 자동 전송)' : ''));
   },
@@ -1193,15 +1264,19 @@ const Lessons = {
     return out;
   },
   // 수업일지 할일 저장용 레코드 (상세 값은 할일 창과 같은 규칙 · 체크리스트가 있으면 모두 체크해야 완료)
+  // 개별 할일(학교 카드)의 저장 문구: "[금천고2] 내용" (이미 붙어 있으면 그대로)
+  grpText(d, text) { const t = String(text).trim(); return d.grp && !t.startsWith('[' + d.grp + ']') ? `[${d.grp}] ${t}` : t; },
   newTodo(d, i, now, lessonId, classId, ldate) {
     const v = TodoX.detailVals(d);
-    const rec = Object.assign({ id: uid('TD'), lessonId, classId, date: isYmd(d.date) ? d.date : ldate, text: d.text.trim(), done: false, createdAt: new Date(now + i).toISOString() }, v);
+    const rec = Object.assign({ id: uid('TD'), lessonId, classId, date: isYmd(d.date) ? d.date : ldate, text: this.grpText(d, d.text), done: false, createdAt: new Date(now + i).toISOString() }, v);
+    if (d.grp) rec.grp = d.grp;
     if (v.checklist.length) rec.done = v.checklist.every(x => x.d);
     return rec;
   },
   editTodo(t, d, text, done) {
     const v = TodoX.detailVals(d);
-    const rec = Object.assign({}, t, { text, date: isYmd(d.date) ? d.date : t.date, done }, v);
+    const rec = Object.assign({}, t, { text: this.grpText(d, text), date: isYmd(d.date) ? d.date : t.date, done }, v);
+    if (d.grp) rec.grp = d.grp; else delete rec.grp;
     if (rec.date !== t.date || v.remind !== (+t.remind || 0)) rec.remindDone = false;
     if (v.checklist.length) rec.done = v.checklist.every(x => x.d);
     if (rec.done !== !!t.done) rec.doneAt = rec.done ? new Date().toISOString() : '';
@@ -1213,32 +1288,44 @@ const Lessons = {
     const id = f.editId;
     const old = Store.get('lessons', id);
     if (!old) { toast('일지를 찾을 수 없습니다'); this.form = null; App.go('lessons', { date: f.date }); return; }
-    const np = NP.toLesson(f.np, { classId: f.classId, date: f.date, lessonId: id });
-    const rec = Object.assign({}, old, { progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) });
+    // 날짜 옮기기: 같은 반 그 날짜에 일지가 이미 있으면 막는다
+    const nd = isYmd(f.moveTo) ? f.moveTo : f.date;
+    const lid = nd !== f.date ? this.lessonId(f.classId, nd) : id;
+    if (lid !== id && this.isSaved(f.classId, nd)) { toast(fmtDate(nd) + '에 이 반 수업일지가 이미 있습니다'); return; }
+    const np = NP.toLesson(f.np, { classId: f.classId, date: nd, lessonId: id });
+    const rec = Object.assign({}, old, { id: lid, date: nd, progress: stripZws(f.progress), homework: stripZws(f.homework), memo: stripZws(f.memo), att: Object.assign({}, f.att) });
     if (np.np.length || np.dist.length) Object.assign(rec, { np: np.np, npExams: np.npExams, dist: np.dist }); else { delete rec.np; delete rec.npExams; delete rec.dist; }
     if (np.gp.length) rec.gp = np.gp; else delete rec.gp;
+    rec.npMode = np.mode;                                             // 진도 방식 (다시 열 때 그대로)
     const mp = this.mkpreOf(f.att, f.mkpre); if (Object.keys(mp).length) rec.mkpre = mp; else delete rec.mkpre;   // 선보강한 날
     Store.put('lessons', rec);
+    if (lid !== id) {
+      // 날짜를 옮기면 딸린 할일·보강 기록도 새 날짜 수업으로 옮긴다
+      Store.where('todos', t => t.lessonId === id).forEach(t => Store.put('todos', Object.assign({}, t, { lessonId: lid })));
+      Store.where('makeups', mk => mk.lessonId === id).forEach(mk => {
+        Store.del('makeups', mk.id);
+        Store.put('makeups', Object.assign({}, mk, { id: Makeups.id(lid, mk.studentId), lessonId: lid, absentDate: nd }));
+      });
+      Store.del('lessons', id);
+    }
     const preN = Makeups.preSync(true).done;                          // 결석 예정이던 학생이 출석·선보강 등으로 바뀜 → 남은 결석 예정 할일 완료
     // 할일: 폼에 남은 기존 할일은 고치고, 빠진 기존 할일은 지우고, 새 칸은 추가
     const keep = new Set(f.todos.filter(d => d.id && d.text.trim()).map(d => d.id));
-    Store.where('todos', t => t.lessonId === id && !keep.has(t.id)).forEach(t => Store.del('todos', t.id));
+    Store.where('todos', t => t.lessonId === lid && !keep.has(t.id)).forEach(t => Store.del('todos', t.id));
     const now = Date.now();
     f.todos.forEach((d, i) => {
       const text = d.text.trim();
       if (!text) return;
       if (d.id) { const t = Store.get('todos', d.id); if (t) Store.put('todos', this.editTodo(t, d, text, !!t.done)); }
-      else Store.put('todos', this.newTodo(d, i, now, id, f.classId, f.date));
+      else Store.put('todos', this.newTodo(d, i, now, lid, f.classId, nd));
     });
-    if (this.isEmpty(Store.get('lessons', id))) Store.del('lessons', id);   // 다 비우면 기록 자체를 지운다
+    if (this.isEmpty(Store.get('lessons', lid))) Store.del('lessons', lid);   // 다 비우면 기록 자체를 지운다
     const cname = (Store.get('classes', f.classId) || {}).name || '';
     this.form = null;
-    const back = this.ret && this.ret.date === f.date && this.ret.classId === f.classId;
-    this.ret = null;
-    if (back) App.pickDate(f.date);                 // 날짜 요약에서 들어왔으면 그 요약 화면으로
-    else App.go('lessons', { date: f.date });
+    if (lid !== id) { App.selDate = nd; MiniCal.showMonthOf(nd); }
+    this.goBack(f.date, f.classId, nd);
     await Store.syncNow();
-    toast(`${cname} 수정 저장 완료` + (preN ? ` · 결석 예정 할일 ${preN}개 완료 처리` : '') + (Store.pendingCount() ? ' (인터넷 연결 후 자동 전송)' : ''));
+    toast(`${cname} 수정 저장 완료` + (lid !== id ? ` (${fmtMD(nd)}로 이동)` : '') + (preN ? ` · 결석 예정 할일 ${preN}개 완료 처리` : '') + (Store.pendingCount() ? ' (인터넷 연결 후 자동 전송)' : ''));
   },
 };
 
@@ -1620,101 +1707,14 @@ const ProgressBook = {
     }, 250);
   },
 
+  // 진도 탭에서 일지 줄을 누르면: 수업일지 화면(같은 칸 구성)에서 고치고, 저장·취소하면 진도 탭으로 돌아온다
+  //   (수업 날짜 옮기기 · 완전 삭제도 그 화면에서)
   openModal(id) {
     const l = Store.get('lessons', id);
     if (!l) return;
-    const c = Store.get('classes', l.classId);
-    const olds = Store.where('todos', t => t.lessonId === id).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
-    const rows = olds.map(t => ({ id: t.id, text: t.text, date: t.date, done: !!t.done, del: false, importance: +t.importance || 0, memo: t.memo || '', remind: +t.remind || 0,
-      checklist: JSON.parse(JSON.stringify(Array.isArray(t.checklist) ? t.checklist : [])), time: t.time || '' }));
-    rows.push({ id: null, text: '', date: l.date, done: false, del: false });
-    const npSt = NP.fromLesson(l), npCtx = { classId: l.classId, date: l.date, lessonId: l.id };
-    const todoHtml = () => rows.map((r, i) => r.del ? '' : `<div class="todo-row ${r.done ? 'done' : ''}">
-      <input type="checkbox" data-rdone="${i}" ${r.done ? 'checked' : ''} ${r.id ? '' : 'disabled'}>
-      <input type="text" data-rtext="${i}" value="${esc(r.text)}" placeholder="${r.id ? '' : '새 할일'}">
-      <input type="date" class="todo-date" data-rdate="${i}" value="${esc(r.date)}">
-      <button type="button" class="btn sm todo-detb${TodoX.detailHas(r) ? ' on' : ''}" data-rdet="${i}" title="시간·중요도·메모·상기·체크리스트">상세</button>
-      <button type="button" class="icon-btn" data-rdel="${i}" title="삭제">✕</button></div>${TodoX.detailHas(r) ? `<div class="todo-det">${esc(TodoX.detailSummary(r))}</div>` : ''}`).join('');
-    Modal.open({
-      title: `${c ? c.name : ''} · ${fmtDate(l.date)}`, size: 'lg',
-      body: `<div class="lesson-field"><label>수업 날짜</label><input type="date" name="ldate" value="${esc(l.date)}"></div>
-        <div class="lesson-field"><label>진도</label><div data-npbox></div><textarea name="progress" rows="4">${esc(l.progress)}</textarea></div>
-        <div class="lesson-field"><label>숙제</label><textarea name="homework" rows="3">${esc(l.homework)}</textarea></div>
-        <div class="lesson-field"><label>메모</label><textarea name="memo" rows="3">${esc(l.memo)}</textarea></div>
-        <div class="lesson-field"><label>할일</label><div data-rows>${todoHtml()}</div>
-          <div class="todo-actions"><button type="button" class="btn sm" data-radd>+ 할일 칸 추가</button></div></div>
-        <p class="small muted">출석은 출석부 탭에서 고칩니다.</p>`,
-      onMount: (b) => {
-        enhanceAll(b);
-        // 내신 진도·배부 자료 (날짜를 바꾸면 그 날짜 기준으로 다시 그림)
-        const npBox = $('[data-npbox]', b);
-        const npDraw = () => { npCtx.date = isYmd($('[name=ldate]', b).value) ? $('[name=ldate]', b).value : l.date; npBox.innerHTML = NP.editorHtml(npSt, npCtx); };
-        npDraw();
-        ['click', 'input', 'change'].forEach(type => npBox.addEventListener(type, (e) => { if (NP.handle(e, npSt, npCtx, type) === 'redraw') npDraw(); }));
-        $('[name=ldate]', b).addEventListener('change', npDraw);
-        const box = $('[data-rows]', b);
-        const redraw = () => { box.innerHTML = todoHtml(); };
-        b.addEventListener('input', (e) => {
-          const t = e.target;
-          if (t.matches('[data-rtext]')) rows[+t.dataset.rtext].text = t.value;
-          if (t.matches('[data-rdate]')) rows[+t.dataset.rdate].date = t.value;
-        });
-        b.addEventListener('change', (e) => { if (e.target.matches('[data-rdone]')) { rows[+e.target.dataset.rdone].done = e.target.checked; redraw(); } });
-        b.addEventListener('click', (e) => {
-          const d = e.target.closest('[data-rdel]'); if (d) { rows[+d.dataset.rdel].del = true; redraw(); return; }
-          const dt = e.target.closest('[data-rdet]'); if (dt) { TodoX.detailDlg(rows[+dt.dataset.rdet]).then(ok => { if (ok) redraw(); }); return; }
-          if (e.target.closest('[data-radd]')) { rows.push({ id: null, text: '', date: l.date, done: false, del: false }); redraw(); const ins = $$('[data-rtext]', box); ins[ins.length - 1].focus(); }
-        });
-      },
-      buttons: [
-        { text: '완전 삭제', cls: 'danger', left: true, onClick: async () => {
-          if (!await confirmHard('이 수업일지를 삭제할까요?\n출석, 진도·숙제·메모, 할일, 보강 기록이 함께 삭제됩니다.')) return false;
-          Store.delWhere('todos', t => t.lessonId === id);
-          Store.delWhere('makeups', m => m.lessonId === id);
-          Store.del('lessons', id);
-          toast('삭제했습니다'); App.render();
-        } },
-        { text: '취소' },
-        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
-          const g = (n) => stripZws($(`[name=${n}]`, m.body).value);
-          const nd = $('[name=ldate]', m.body).value;
-          if (!isYmd(nd)) { toast('수업 날짜를 선택하세요'); return false; }
-          let lid = id;
-          if (nd !== l.date) {
-            const nid = Lessons.lessonId(l.classId, nd);
-            if (Lessons.isSaved(l.classId, nd)) { toast(fmtDate(nd) + '에 이 반 수업일지가 이미 있습니다'); return false; }
-            lid = nid;
-          }
-          const npv = NP.toLesson(npSt, { classId: l.classId, date: nd, lessonId: id });
-          const nrec = Object.assign({}, Store.get('lessons', id) || l, { id: lid, date: nd, progress: g('progress'), homework: g('homework'), memo: g('memo') });
-          if (npv.np.length || npv.dist.length) Object.assign(nrec, { np: npv.np, npExams: npv.npExams, dist: npv.dist }); else { delete nrec.np; delete nrec.npExams; delete nrec.dist; }
-          if (npv.gp.length) nrec.gp = npv.gp; else delete nrec.gp;
-          Store.put('lessons', nrec);
-          if (lid !== id) {
-            // 날짜를 옮기면 딸린 할일·보강 기록도 새 날짜 수업으로 옮긴다
-            Store.where('todos', t => t.lessonId === id).forEach(t => Store.put('todos', Object.assign({}, t, { lessonId: lid })));
-            Store.where('makeups', mk => mk.lessonId === id).forEach(mk => {
-              Store.del('makeups', mk.id);
-              Store.put('makeups', Object.assign({}, mk, { id: Makeups.id(lid, mk.studentId), lessonId: lid, absentDate: nd }));
-            });
-            Store.del('lessons', id);
-          }
-          const now = Date.now();
-          rows.forEach((r, i) => {
-            const text = r.text.trim();
-            if (r.id) {
-              const t = Store.get('todos', r.id); if (!t) return;
-              if (r.del || !text) Store.del('todos', r.id);
-              else Store.put('todos', Lessons.editTodo(t, r, text, r.done));
-            } else if (!r.del && text) {
-              Store.put('todos', Lessons.newTodo(r, i, now, lid, l.classId, nd));
-            }
-          });
-          toast(lid !== id ? `저장했습니다 (${fmtMD(nd)}로 이동)` : '저장했습니다');
-          if (lid !== id) App.go('progress', { classId: l.classId, date: nd }); else App.render();
-        } },
-      ],
-    });
+    App.selDate = l.date; MiniCal.showMonthOf(l.date);
+    Lessons.ret = { date: l.date, classId: l.classId, page: 'progress' };
+    App.go('lessons', { date: l.date, classId: l.classId, edit: 1 });
   },
 };
 

@@ -1401,3 +1401,8 @@ body.theme-gray {
 .sc-tbl td[data-mc], .sc-tbl td[data-pc] { transition: background-color .12s; }
 .sc-tbl td[data-mc]:hover, .sc-tbl td[data-pc]:hover { background: var(--accent-soft); }
 .sc-tbl td.sc-v[data-mc]:hover b, .sc-tbl td[data-pc]:hover b { color: var(--accent-ink); }
+/* 수업일지: 공통 배부 자료 칸 · 학교 카드의 개별 할일 */
+.np-dist.np-cdist { border-top: 0; padding-top: 0; }
+.np-stodo { border-top: 1px dashed var(--line); padding: 8px 0 4px; }
+.np-stodo .todo-drafts:empty { display: none; }
+.ls-move .hint { margin-left: 8px; }
