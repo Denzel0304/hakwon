@@ -767,8 +767,19 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-c i { font-style: normal; font-size: 11px; color: var(--warn); margin-left: 3px; }
 .np-c:hover { border-color: var(--accent); }
 .np-c.done { background: #BFE5CD; border-color: #5FB584; color: #17683F; font-weight: 600; }
-.np-c.done.man { background: #D5EEDF; border-style: dashed; }
+.np-c.done.man { background: #DFF2E6; border: 1.5px dashed #4FA874; padding: 2.5px 6.5px; }
 .np-c.part { background: var(--warn-soft); border-color: #EBC78E; color: #A9650B; }
+/* 직접 처리한 진행 중 (요약에서 표시) — 점선 */
+.np-c.part.man { background: #FDF6EA; border: 1.5px dashed #DDA556; padding: 2.5px 6.5px; }
+.np-c.sm.done.man, .np-c.sm.part.man { padding: 1.5px 6.5px; }
+/* 수업일지 입력: 이미 완료된 칸은 잠금 (누르면 안내만) */
+.np-c[data-np-lock] { cursor: not-allowed; }
+.np-c[data-np-lock]:hover { border-color: #5FB584; }
+.np-c.man[data-np-lock]:hover { border-color: #4FA874; }
+/* 진도 탭: 요약 위 색 안내 */
+.np-guide { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 0 0 10px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.np-guide > b { font-size: 13px; color: var(--ink-soft); }
+.np-guide .np-legend { margin: 0; flex-wrap: wrap; }
 .np-c.prep { background: #C3DBF3; border-color: #5E9BD6; color: #1C4F86; font-weight: 600; }
 .np-c.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .np-ul { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin-right: 2px; white-space: nowrap; }
@@ -779,6 +790,7 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-drow .np-chips, .np-drow [data-np-dmemo] { grid-column: 1 / -1; }
 .np-legend { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .np-legend .np-c { cursor: default; font-size: 11.5px; padding: 1px 6px; }
+.np-legend .np-c.man { padding: 0.5px 5.5px; }
 .np-err { color: var(--danger); }
 .np-msg { padding: 6px 0; line-height: 1.6; word-break: keep-all; }
 /* 수업일지 숙제 (학교·학년별) · 할일 상세 */

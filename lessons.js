@@ -204,8 +204,9 @@ const NP = {
   },
 
   /* ---------- 표시(수동 진도·수업 준비) ---------- */
-  emptyMark() { return { nums: [], units: {}, unums: {} }; },
-  normMark(k) { k = k || {}; return { nums: (k.nums || []).slice(), units: Object.assign({}, k.units || {}), unums: JSON.parse(JSON.stringify(k.unums || {})) }; },
+  // parts: 과 단위 '진행 중' 직접 표시 (요약에서 빈칸→진행 중→완료 순으로 누를 때)
+  emptyMark() { return { nums: [], units: {}, unums: {}, parts: {} }; },
+  normMark(k) { k = k || {}; return { nums: (k.nums || []).slice(), units: Object.assign({}, k.units || {}), unums: JSON.parse(JSON.stringify(k.unums || {})), parts: Object.assign({}, k.parts || {}) }; },
   toggleIn(arr, n) { const i = arr.indexOf(n); if (i >= 0) arr.splice(i, 1); else arr.push(n); arr.sort((a, b) => a - b); return arr; },
   toggleMark(k, what, uid, n) {
     if (what === 'num') this.toggleIn(k.nums, n);
@@ -240,6 +241,38 @@ const NP = {
     const home = exIds.find(id => { const e = Store.get('exams', id); return e && (e.items || []).some(it => it.matId === matId); }) || exIds[0];
     this.toggleManual(classId, home, matId, what, uid, n);
   },
+  // 과 하나의 직접 표시를 정함 (val: '' 지움 | 'part' 진행 중 | 'done' 완료). 묶인 시험들에서 모두 지우고 한 시험에만 둔다
+  setManualUnit(classId, exIds, matId, uid, val) {
+    exIds.forEach(exId => {
+      const id = this.pmId(classId, exId), r = Store.get('meta', id);
+      if (!r || !r.mats || !r.mats[matId]) return;
+      const k = this.normMark(r.mats[matId]);
+      if (!k.units[uid] && !k.parts[uid]) return;
+      delete k.units[uid]; delete k.parts[uid];
+      const mats = JSON.parse(JSON.stringify(r.mats)); mats[matId] = k;
+      Store.put('meta', Object.assign({}, r, { mats }));
+    });
+    if (!val) return;
+    const home = exIds.find(id => { const e = Store.get('exams', id); return e && (e.items || []).some(it => it.matId === matId); }) || exIds[0];
+    const id = this.pmId(classId, home);
+    const r = Store.get('meta', id) || { id, kind: 'pman', classId, examId: home, mats: {} };
+    const mats = JSON.parse(JSON.stringify(r.mats || {}));
+    const k = this.normMark(mats[matId]);
+    if (val === 'done') k.units[uid] = true; else k.parts[uid] = true;
+    mats[matId] = k;
+    Store.put('meta', Object.assign({}, r, { mats }));
+  },
+  // 요약에서 과 칸을 누를 때 다음 상태: 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 진행 중인 칸은 완료 → 다시 진행 중)
+  nextManual(cur) { return cur === 'man' ? '' : cur === 'mpart' || cur === 'part' ? 'done' : 'part'; },
+  // 비내신 직접 표시: { id 'GM_반ID', kind:'gman', classId, marks:{ '교재ID:단위ID': 'done'|'part' } }
+  gmId(classId) { return 'GM_' + classId; },
+  setGenManual(classId, k, val) {
+    const id = this.gmId(classId);
+    const r = Store.get('meta', id) || { id, kind: 'gman', classId, marks: {} };
+    const marks = Object.assign({}, r.marks || {});
+    if (val) marks[k] = val; else delete marks[k];
+    Store.put('meta', Object.assign({}, r, { marks }));
+  },
 
   /* ---------- 진도 상황 ---------- */
   // 이 반이 이 시험들을 위해 나간 진도 (exclude: 지금 고치는 수업일지는 빼고 계산)
@@ -248,7 +281,7 @@ const NP = {
     if (!exams.length) return st;
     const ws = exams.map(e => this.window(e));
     const from = ws.map(w => w.from).sort()[0], to = ws.map(w => w.to).sort().pop();
-    const slot = (o, mid) => (o[mid] = o[mid] || { nums: new Set(), units: new Set(), unums: {}, last: {} });
+    const slot = (o, mid) => (o[mid] = o[mid] || { nums: new Set(), units: new Set(), unums: {}, last: {}, parts: new Set() });
     Store.where('lessons', l => l.classId === classId && l.id !== exclude && l.date >= from && l.date <= to)
       .sort((a, b) => ko(a.date, b.date)).forEach(l => {
         (l.np || []).forEach(en => {
@@ -266,6 +299,7 @@ const NP = {
         const k = this.normMark(r.mats[mid]), s = slot(st.man, mid);
         k.nums.forEach(n => s.nums.add(+n));
         Object.keys(k.units).forEach(u => s.units.add(u));
+        Object.keys(k.parts).forEach(u => s.parts.add(u));
         Object.keys(k.unums).forEach(u => { const x = s.unums[u] = s.unums[u] || new Set(); k.unums[u].forEach(n => x.add(+n)); });
       });
     });
@@ -294,6 +328,7 @@ const NP = {
       if (all.some(Boolean)) return 'part';
     }
     if (a && (a.last[ru.id] || (a.unums[ru.id] && a.unums[ru.id].size))) return 'part';
+    if (b && b.parts.has(ru.id)) return 'mpart';           // 요약에서 직접 '진행 중' 표시
     return '';
   },
   lastText(st, mid, uid) { const a = st.mats[mid]; return a && a.last[uid] ? a.last[uid] : null; },
@@ -308,9 +343,15 @@ const NP = {
         if (en.text && en.text.trim()) st.last[k] = { date: l.date, text: en.text.trim() };
       });
     });
+    const gm = Store.get('meta', this.gmId(classId));
+    st.man = Object.assign({}, (gm && gm.marks) || {});          // 요약에서 직접 표시한 완료·진행 중
     return st;
   },
-  genSt(st, mid, uid) { const k = this.key(mid, uid); return st.done.has(k) ? 'les' : st.any.has(k) ? 'part' : ''; },
+  // les 수업일지로 완결 / man 직접 완료 / part 수업일지로 진행 중 / mpart 직접 진행 중
+  genSt(st, mid, uid) {
+    const k = this.key(mid, uid), m = (st.man || {})[k];
+    return st.done.has(k) ? 'les' : m === 'done' ? 'man' : st.any.has(k) ? 'part' : m === 'part' ? 'mpart' : '';
+  },
   prepNum(k, n) { return k.nums.includes(n); },
   prepUnit(k, ru) { return !!k.units[ru.id] || !!(ru.nums && ru.nums.length && ru.nums.every(n => (k.unums[ru.id] || []).includes(n))); },
   prepUnum(k, uid, n) { return !!k.units[uid] || (k.unums[uid] || []).includes(n); },
@@ -392,7 +433,16 @@ const NP = {
     return !!(st && st.on && (Object.keys(st.items).length || st.dist.some(d => (d.name || '').trim() || (d.refs || []).length)));
   },
 
-  chipCls(s) { return s === 'les' ? 'done' : s === 'man' ? 'done man' : s === 'part' ? 'part' : ''; },
+  chipCls(s) { return s === 'les' ? 'done' : s === 'man' ? 'done man' : s === 'part' ? 'part' : s === 'mpart' ? 'part man' : ''; },
+  // 수업일지 입력: 이미 완료된 칸(다른 일지로 완료 'les' / 요약에서 완료 처리 'man')은 잠금 — 이 일지에서 고른 칸은 그대로 누를 수 있음
+  lockAttr(s, on) {
+    if (on || (s !== 'les' && s !== 'man')) return '';
+    return ` data-np-lock="${s}" title="${s === 'les' ? '이전 수업일지에서 완료한 진도입니다' : '요약에서 완료 처리한 진도입니다'}"`;
+  },
+  // 색 안내 (요약 위 · 입력 아래)
+  legendHtml(withPrep, withToday) {
+    return `<div class="np-legend small soft"><span class="np-c done">수업 완료</span><span class="np-c done man">직접 완료</span><span class="np-c part">진행 중</span><span class="np-c part man">직접 진행 중</span>${withPrep ? '<span class="np-c prep">수업 준비</span>' : ''}${withToday ? '<span class="np-c on">오늘</span>' : ''}<span class="np-c">미진행</span></div>`;
+  },
   editorHtml(st, ctx) {
     let h = `<div style="display:flex;gap:16px;flex-wrap:wrap"><label class="chk np-on"><input type="checkbox" data-np-on ${st.on ? 'checked' : ''}>내신</label>
       <label class="chk np-on"><input type="checkbox" data-np-gen ${st.gen ? 'checked' : ''}>비내신</label></div>`;
@@ -412,7 +462,7 @@ const NP = {
     // 학교별 숙제(수업일지 작성 화면만, ctx.hw): 교재를 학교·학년 순으로 모으고, 그 학교의 마지막 교재 바로 아래에 그 학교 숙제
     const hwAt = {}, own = {}, cardOf = {};      // cardOf[교재 순번] = 이 교재부터 시작하는 학교 카드 이름
     ctx.hwPlaced = new Set();
-    const legend = '<div class="np-legend small soft"><span class="np-c done">완료</span><span class="np-c part">진행 중</span><span class="np-c on">오늘</span></div>';
+    const legend = this.legendHtml(false, true);
     // 배부 자료 한 줄 (i: st.dist 안의 번호, refs: 고를 수 있는 교재·단위)
     const refsOfR = (r) => r.mat.type === 'mock' ? [r.mat.id] : r.units.map(u => r.mat.id + ':' + u.id);
     const drow = (d, i, refs) => `<div class="np-drow"><input type="text" list="dl-npdist" data-np-dname="${i}" value="${esc(d.name || '')}" placeholder="자료 이름 (예: 변형문제)">
@@ -440,13 +490,13 @@ const NP = {
       h += `<div class="np-mat${cardOf[ri] ? ' np-school' : ''}">${cardOf[ri] ? `<div class="np-school-h">${esc(cardOf[ri])}</div>` : ''}<div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
       if (m.type === 'mock') {
         const en = st.items[mid];
-        h += '<div class="np-chips">' + r.nums.map(n => `<button type="button" class="np-c ${this.chipCls(this.numSt(prog, mid, n))} ${en && (en.nums || []).includes(n) ? 'on' : ''}" data-np-num="${mid}|${n}">${n}</button>`).join('') + '</div>';
+        h += '<div class="np-chips">' + r.nums.map(n => { const s = this.numSt(prog, mid, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-num="${mid}|${n}"${this.lockAttr(s, on)}>${n}</button>`; }).join('') + '</div>';
       } else {
         const whole = r.units.filter(u => !u.nums), numbered = r.units.filter(u => u.nums);
-        if (whole.length) h += '<div class="np-chips">' + whole.map(u => `<button type="button" class="np-c ${this.chipCls(this.unitSt(prog, mid, u))} ${st.items[this.key(mid, u.id)] ? 'on' : ''}" data-np-unit="${mid}|${u.id}" title="${esc(u.notes.join(' · '))}">${esc(u.name)}${u.notes.length ? '<i>일부</i>' : ''}</button>`).join('') + '</div>';
+        if (whole.length) h += '<div class="np-chips">' + whole.map(u => { const s = this.unitSt(prog, mid, u), on = !!st.items[this.key(mid, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unit="${mid}|${u.id}"${this.lockAttr(s, on) || ` title="${esc(u.notes.join(' · '))}"`}>${esc(u.name)}${u.notes.length ? '<i>일부</i>' : ''}</button>`; }).join('') + '</div>';
         numbered.forEach(u => {
           const en = st.items[this.key(mid, u.id)];
-          h += `<div class="np-chips"><span class="np-ul">${esc(u.name)}</span>` + u.nums.map(n => `<button type="button" class="np-c ${this.chipCls(this.unumSt(prog, mid, u.id, n))} ${en && (en.nums || []).includes(n) ? 'on' : ''}" data-np-unum="${mid}|${u.id}|${n}">${n}</button>`).join('')
+          h += `<div class="np-chips"><span class="np-ul">${esc(u.name)}</span>` + u.nums.map(n => { const s = this.unumSt(prog, mid, u.id, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unum="${mid}|${u.id}|${n}"${this.lockAttr(s, on)}>${n}</button>`; }).join('')
             + (u.notes.length ? `<span class="small soft">${esc(u.notes.join(' · '))}</span>` : '') + '</div>';
         });
         // 고른 과·강마다 메모 + 완결
@@ -490,7 +540,7 @@ const NP = {
     mats.forEach(m => {
       const units = m.units || [];
       h += `<div class="np-mat"><div class="np-mhead"><span class="np-tag">일반</span><b>${esc(m.name)}</b></div>`;
-      h += '<div class="np-chips">' + (units.map(u => `<button type="button" class="np-c ${this.chipCls(this.genSt(gpr, m.id, u.id))} ${st.gitems[this.key(m.id, u.id)] ? 'on' : ''}" data-np-gunit="${m.id}|${u.id}">${esc(u.name)}</button>`).join('')
+      h += '<div class="np-chips">' + (units.map(u => { const s = this.genSt(gpr, m.id, u.id), on = !!st.gitems[this.key(m.id, u.id)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-gunit="${m.id}|${u.id}"${this.lockAttr(s, on)}>${esc(u.name)}</button>`; }).join('')
         || '<span class="small muted">이 교재에 단위가 없습니다.</span>') + '</div>';
       units.filter(u => st.gitems[this.key(m.id, u.id)]).forEach(u => {
         const k = this.key(m.id, u.id), en = st.gitems[k], last = gpr.last[k];
@@ -499,7 +549,7 @@ const NP = {
       });
       h += '</div>';
     });
-    h += '<div class="np-legend small soft"><span class="np-c done">완결</span><span class="np-c part">진행 중</span><span class="np-c on">오늘</span></div></div>';
+    h += this.legendHtml(false, true) + '</div>';
     return h;
   },
   // 이벤트 처리 → 'redraw'(다시 그림) / true(처리함) / false(관계없음)
@@ -521,6 +571,12 @@ const NP = {
     }
     const b = (s) => t.closest(s);
     let x;
+    // 잠긴 칸 (이미 완료된 진도): 누르지 않고 안내만
+    if ((x = b('[data-np-lock]'))) {
+      toast(x.dataset.npLock === 'les' ? '이미 이전 수업에서 완료한 진도입니다. 해제하려면 처음 완료한 날의 수업일지에서 하세요'
+        : '요약에서 완료 처리한 진도입니다. 해제하려면 진도 탭의 내신·비내신 요약에서 완료 처리를 취소하세요');
+      return true;
+    }
     if ((x = b('[data-np-ex]'))) {
       const cur = this.selExams(st, ctx).map(ex => ex.id);
       st.exams = this.toggleGroup(cur, x.dataset.npEx.split(','));
@@ -591,7 +647,7 @@ const NP = {
             tot++; if (s === 'les' || s === 'man') dn++; if (this.prepUnit(pk, u)) pr++;
             const note = u.notes.length ? `<i>${esc(u.notes.join(' · '))}</i>` : '';
             if (!u.nums) {
-              cells.push(`<button type="button" class="np-c ${this.chipCls(s)}" data-pm="${exIdStr}|${mid}|unit|${u.id}|" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${s === 'part' && last ? ' · ' + esc(last.text) : ''}${note}</button>`);
+              cells.push(`<button type="button" class="np-c ${this.chipCls(s)}" data-pm="${exIdStr}|${mid}|unit|${u.id}|" data-st="${s}" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${(s === 'part' || s === 'mpart') && last ? ' · ' + esc(last.text) : ''}${note}</button>`);
               prepCells.push(`<button type="button" class="np-c ${this.prepUnit(pk, u) ? 'prep' : ''}" data-pp="${mid}|unit|${u.id}|">${esc(u.name)}</button>`);
             } else {
               cells.push(`<span class="np-grp"><span class="np-ul">${esc(u.name)}</span>${u.nums.map(n => `<button type="button" class="np-c ${this.chipCls(this.unumSt(prog, mid, u.id, n))}" data-pm="${exIdStr}|${mid}|unum|${u.id}|${n}">${n}</button>`).join('')}${note}</span>`);
@@ -619,13 +675,13 @@ const NP = {
     const gpr = this.genProgress(classId, null);
     return '<div class="panel np-sum"><h2>비내신 진도</h2>' + mats.map(m => {
       const units = m.units || [];
-      const dn = units.filter(u => this.genSt(gpr, m.id, u.id) === 'les').length;
+      const dn = units.filter(u => { const s = this.genSt(gpr, m.id, u.id); return s === 'les' || s === 'man'; }).length;
       return `<div class="np-srow"><div class="np-mhead"><span class="np-tag">일반</span><b>${esc(m.name)}</b><span class="small soft">완결 ${dn}/${units.length}</span></div>
         <div class="np-chips">${units.map(u => {
           const s = this.genSt(gpr, m.id, u.id), last = gpr.last[this.key(m.id, u.id)];
-          return `<span class="np-c ${this.chipCls(s)}" style="cursor:default" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${s === 'part' && last ? ' · ' + esc(last.text) : ''}</span>`;
+          return `<button type="button" class="np-c ${this.chipCls(s)}" data-gm="${m.id}|${u.id}" data-st="${s}" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${(s === 'part' || s === 'mpart') && last ? ' · ' + esc(last.text) : ''}</button>`;
         }).join('') || '<span class="small muted">단위가 없습니다.</span>'}</div></div>`;
-    }).join('') + '<div class="np-legend small soft"><span class="np-c done">완결</span><span class="np-c part">진행 중</span></div></div>';
+    }).join('') + '</div>';
   },
   // 요약 칸 클릭 (처리했으면 true)
   handleSummary(e, classId) {
@@ -633,7 +689,19 @@ const NP = {
     if (pm) {
       const [exIds, mid, what, uid, n] = pm.dataset.pm.split('|');
       if (pm.classList.contains('done') && !pm.classList.contains('man')) { toast('수업일지에 기록된 진도입니다. 바꾸려면 아래 목록에서 그 날 일지를 고치세요'); return true; }
-      this.toggleManualGroup(classId, exIds.split(','), mid, what, uid, n ? +n : null);
+      if (what === 'unit') this.setManualUnit(classId, exIds.split(','), mid, uid, this.nextManual(pm.dataset.st));   // 과: 빈칸 → 진행 중 → 완료 → 빈칸
+      else this.toggleManualGroup(classId, exIds.split(','), mid, what, uid, n ? +n : null);
+      App.render();
+      return true;
+    }
+    // 비내신 요약: 과·강 칸 (빈칸 → 진행 중 → 완료 → 빈칸, 수업일지로 완결된 칸은 그 날 일지에서)
+    const gm = e.target.closest('[data-gm]');
+    if (gm) {
+      const st = gm.dataset.st;
+      if (st === 'les') { toast('수업일지에 기록된 진도입니다. 바꾸려면 아래 목록에서 그 날 일지를 고치세요'); return true; }
+      const [mid, uid] = gm.dataset.gm.split('|');
+      const nx = this.nextManual(st);
+      this.setGenManual(classId, this.key(mid, uid), nx === 'done' ? 'done' : nx === 'part' ? 'part' : '');
       App.render();
       return true;
     }
@@ -1481,6 +1549,7 @@ const ProgressBook = {
       <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     // 내신 요약: 시험 범위 · 진도 · 수업 준비 · 배부 자료
     if (allCls && (this.npOn || this.gpOn)) h += '<p class="small muted" style="margin:0 0 10px">전체 반 검색 중에는 내신·비내신 요약을 숨깁니다 (검색어를 지우면 다시 보입니다).</p>';
+    if (!allCls && (this.npOn || this.gpOn)) h += `<div class="np-guide"><b>색 안내</b>${NP.legendHtml(this.npOn, false)}<span class="small muted">실선 = 수업일지로 기록 · 점선 = 수업 없이 직접 처리</span></div>`;
     if (this.npOn && !allCls) {
       const today = todayStr();
       const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
@@ -1488,9 +1557,9 @@ const ProgressBook = {
       h += `<div class="np-exams" style="margin-bottom:10px"><span class="small soft">시험</span>${NP.groupExams(cands).map(g => `<button type="button" class="np-ex ${g.ids.some(id => sel.includes(id)) ? 'on' : ''}" data-npsx="${g.ids.join(',')}">${esc(NP.examLabel(g.ex))} <small>${esc(NP.examDates(g.ex))}</small></button>`).join('') || '<span class="small muted">등록된 시험이 없습니다.</span>'}
         ${this.npSel[this.classId] ? '<button type="button" class="np-auto" data-npsauto>자동</button>' : ''}</div>`;
       h += NP.summaryHtml(this.classId, sel);
-      h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 날짜 없이 끝낸 것으로 표시하거나 취소합니다 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
+      h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 수업 없이 직접 처리합니다 — 번호는 완료 ↔ 빈칸, 과는 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
     }
-    if (this.gpOn && !allCls) h += NP.genSummaryHtml(this.classId) + '<div style="height:14px"></div>';
+    if (this.gpOn && !allCls) h += NP.genSummaryHtml(this.classId) + '<p class="small muted" style="margin:6px 0 14px">과·강 칸을 누르면 수업 없이 직접 처리합니다 — 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 완결된 칸은 그 날 일지에서 고칩니다).</p>';
     h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:${allCls ? 880 : 760}px"><colgroup><col style="width:100px">${allCls ? '<col style="width:120px">' : ''}<col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th>${allCls ? '<th>반</th>' : ''}<th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
