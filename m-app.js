@@ -411,11 +411,12 @@ const MEvents = {
 
   evRow(ev, showDate) {
     const t = eventTime(ev);
-    return `<button type="button" class="m-ev ${evEnd(ev) < todayStr() ? 'past' : ''}" data-ev="${ev.id}">
+    // 보기 전용 줄 (상세 창 없음) — 메모는 줄바꿈까지 전부 보여 준다
+    return `<div class="m-ev ${evEnd(ev) < todayStr() ? 'past' : ''}">
       <span class="badge ${this.TCLS[evType(ev)]}">${this.tagLabel(ev)}</span>
       <span class="m-ev-b"><b>${esc(this.rowText(ev))}</b>
         <span class="small soft">${[showDate || isRange(ev) ? eventRangeLabel(ev) : '', t].filter(Boolean).map(esc).join(' ')}</span>
-        ${ev.memo ? `<span class="small muted m-ev-memo">${esc(firstLine(ev.memo))}</span>` : ''}</span></button>`;
+        ${ev.memo ? `<span class="small muted pre">${esc(ev.memo)}</span>` : ''}</span></div>`;
   },
 
   calHtml(today) {
@@ -498,22 +499,6 @@ const MEvents = {
     return `<div class="m-cnt">${list.length}건</div><div class="m-evs">${list.map(ev => this.evRow(ev, true)).join('')}</div>`;
   },
 
-  openEv(id) {
-    const ev = Store.get('events', id);
-    if (!ev) return;
-    const tg = eventTarget(ev), t = eventTime(ev);
-    let f = `<span class="k">날짜</span><div>${esc(isRange(ev) ? fmtDate(ev.date) + ' ~ ' + fmtDate(evEnd(ev)) : fmtDate(ev.date))}</div>`;
-    if (t) f += `<span class="k">시간</span><div>${esc(t)}</div>`;
-    if (tg) f += `<span class="k">대상</span><div>${esc(ev.school ? ev.school + ' ' + gradesLabel(evGrades(ev), false) + (evGrades(ev).length ? '학년' : '') : tg)}</div>`;
-    if (ev.title) f += `<span class="k">제목</span><div>${esc(ev.title)}</div>`;
-    if (ev.memo) f += `<span class="k">메모</span><div class="pre">${esc(ev.memo)}</div>`;
-    Modal.open({
-      title: EVENT_TYPES[evType(ev)].label, size: 'sm', autofocus: false,
-      body: `<div class="m-f m-f-lg">${f}</div>`,
-      buttons: [{ text: '닫기', cls: 'primary', primary: true }],
-    });
-  },
-
   // 제목 '2026년 11월 ▾' → 년·월 고르기
   pickYm() {
     const [Y, M] = this.month.split('-').map(Number);
@@ -543,9 +528,9 @@ const MEvents = {
         this.sel = todayStr(); this.month = this.sel.slice(0, 7);
         App.render(); return;
       }
-      // 달력 안(칸·일정 글자·기간 띠)을 누르면 날짜 이동만 → 달력 아래에 그날 일정이 보임 (상세 창은 띄우지 않음)
+      // 달력 안의 일정 글자·기간 띠를 누르면 그 날짜로 이동 → 달력 아래에 그날 일정이 보임 (상세 창 없음)
       const ev = e.target.closest('[data-ev]');
-      if (ev && ev.closest('.m-cal')) {
+      if (ev) {
         let d = '';
         const cell = ev.closest('[data-d]');
         if (cell) d = cell.dataset.d;                                   // 칸 안의 하루 일정
@@ -560,7 +545,6 @@ const MEvents = {
         if (d) this.pickDay(d);
         return;
       }
-      if (ev) { this.openEv(ev.dataset.ev); return; }                    // 달력 아래 목록 · 목록 보기의 일정을 누르면 상세
       const dd = e.target.closest('[data-d]');
       if (dd) this.pickDay(dd.dataset.d);
     };
