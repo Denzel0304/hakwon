@@ -525,6 +525,13 @@ const MEvents = {
     });
   },
 
+  // 달력에서 날짜 고르기 (다른 달의 날짜면 그 달로 넘어감)
+  pickDay(d) {
+    this.sel = d;
+    if (this.sel.slice(0, 7) !== this.month) { this._dir = this.sel > this.month ? 1 : -1; this.month = this.sel.slice(0, 7); }
+    App.render();
+  },
+
   bind(main) {
     main.onclick = (e) => {
       const md = e.target.closest('[data-mode]'); if (md) { this.mode = md.dataset.mode; App.render(true); return; }
@@ -536,9 +543,26 @@ const MEvents = {
         this.sel = todayStr(); this.month = this.sel.slice(0, 7);
         App.render(); return;
       }
-      const ev = e.target.closest('[data-ev]'); if (ev) { this.openEv(ev.dataset.ev); return; }   // 띠·일정 글자를 누르면 상세
+      // 띠·일정 글자를 누르면 상세 (달력 안이면 누른 날짜로도 이동 → 달력 아래에 그날 일정이 보임)
+      const ev = e.target.closest('[data-ev]');
+      if (ev) {
+        let d = '';
+        const cell = ev.closest('[data-d]');
+        if (cell) d = cell.dataset.d;                                   // 칸 안의 하루 일정
+        else if (ev.classList.contains('m-bc-bar')) {                   // 기간 띠: 누른 위치의 요일 칸
+          const wk = ev.closest('.m-bc-week'), cells = wk ? $$('[data-d]', wk) : [];
+          if (cells.length) {
+            const r = wk.getBoundingClientRect();
+            const i = Math.max(0, Math.min(cells.length - 1, Math.floor((e.clientX - r.left) / r.width * cells.length)));
+            d = cells[i].dataset.d;
+          }
+        }
+        if (d) this.pickDay(d);
+        this.openEv(ev.dataset.ev);
+        return;
+      }
       const dd = e.target.closest('[data-d]');
-      if (dd) { this.sel = dd.dataset.d; if (this.sel.slice(0, 7) !== this.month) { this._dir = this.sel > this.month ? 1 : -1; this.month = this.sel.slice(0, 7); } App.render(); }
+      if (dd) this.pickDay(dd.dataset.d);
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-type]')) { this.type = e.target.value; e.target.blur(); App.render(); return; }
