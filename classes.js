@@ -649,6 +649,28 @@ const Classes = {
     return { n: studs.length, seats, grades, schools, upcoming };
   },
   mdDow(d) { return this.md(d) + '(' + DOW[dowOf(d)] + ')'; },
+  // first~base 사이의 신규 등록 (처음 등록 + 재등록) [{ s, d, kind:'신규'|'재등록', cls:[반] }] — 반 화면 요약·PDF 공통
+  //   반: 기준일(base)에 다니는 반 (위 반 표와 같게). 기준일 전에 빠졌으면(퇴원 등) 등록일 이후 마지막으로 다니던 반, 그것도 없으면 등록일에 다니던 반
+  joinsIn(first, base) {
+    const inM = (d) => isYmd(d) && d >= first && d <= base;
+    const clsAt = (sid, d) => {
+      const mine = Store.where('enrollments', e => e.studentId === sid);
+      const uniqC = (arr) => [...new Set(arr.map(e => e.classId))].map(id => Store.get('classes', id)).filter(Boolean);
+      const now = mine.filter(e => this.enrollValid(e, base));
+      if (now.length) return uniqC(now);
+      const ended = mine.filter(e => e.to && e.to > d && e.to <= base);
+      if (ended.length) { const lastTo = ended.reduce((m, e) => (e.to > m ? e.to : m), ''); return uniqC(ended.filter(e => e.to === lastTo)); }
+      return uniqC(mine.filter(e => this.enrollValid(e, d)));
+    };
+    const out = [];
+    Store.all('students').forEach(s => {
+      const jd = Students.joinDateOf(s);
+      if (inM(jd)) out.push({ s, d: jd, kind: '신규' });
+      Store.where('student_log', l => l.studentId === s.id && l.type === 'rejoin' && inM(l.date)).forEach(l => out.push({ s, d: l.date, kind: '재등록' }));
+    });
+    out.forEach(o => { o.cls = clsAt(o.s.id, o.d); });
+    return out.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
+  },
   // first~base 사이의 퇴원 [{ s, d, plan, cls:[반] }] (withPlan이면 base 뒤 last까지의 퇴원 예약도 '예정'으로)
   //   type: 'leave' 퇴원 / 'transfer' 반이동 (처리는 같고 이력 종류만 다름)
   leavesIn(first, base, last, withPlan, type = 'leave') {
@@ -671,7 +693,11 @@ const Classes = {
     const schools = sm.schools.map(x => `<div class="cls-sch" title="${esc(x.name + ' ' + x.n + '명 (' + x.g.map(g => g.label + ' ' + g.n + '명').join(', ') + ')')}">
       <b class="n">${x.n}명</b><span class="col"><i style="height:${Math.max(4, x.n / maxS * 100)}%"></i></span>
       <span class="nm">${esc(x.name)}</span><span class="gs">${x.g.map(g => `${esc(g.label)} ${g.n}`).join(' · ')}</span></div>`).join('');
-    const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
+    // 이번 달 신규(1일~오늘 등록·재등록) + 등록 예정 — 한 카드에 날짜순 (신규 먼저, 예정은 오늘 뒤)
+    const jn = this.joinsIn(date.slice(0, 7) + '-01', date);
+    const jns = jn.map(o => `<div class="cls-sum-up"><span class="dt nw">${this.mdDow(o.d)}</span><span class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span> <span class="badge green">${o.kind}</span></span>
+      <span class="cs">${o.cls.map(c => `${this.dot(c)}${esc(c.name)}`).join('<br>') || '-'}</span></div>`).join('');
+    const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span> <span class="badge orange">예정</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
       <span class="cs">${u.items.map(i => `${this.dot(i.c)}${esc(i.c.name)}${i.from !== u.from ? ` <span class="muted">${this.md(i.from)}~</span>` : ''}`).join('<br>')}</span></div>`).join('');
     const newUp = sm.upcoming.filter(u => !u.kind).length;
     // 이번 달 퇴원·반이동 (1일~오늘 + 이달 안의 예약) — 한 카드에 날짜순, 반이동은 표시를 붙인다
@@ -689,8 +715,8 @@ const Classes = {
           <div class="soft small">반별 수강 합계 ${sm.seats}명</div>${sm.seats !== sm.n ? `<div class="muted small">여러 반 수강 ${sm.seats - sm.n}명</div>` : ''}
           ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div></div>
         <div class="cls-sum-card"><div class="lbl">학년별</div><div class="cls-sum-body">${grades}</div></div>
-        <div class="cls-sum-card"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div><div class="cls-sum-body">${ups || empty('등록 예정인 학생이 없습니다.')}</div></div>
-        <div class="cls-sum-card"><div class="lbl">${M}월 퇴원·반이동 <span class="cnt lv">퇴원 ${lvL.length}</span><span class="cnt tr">반이동 ${lvT.length}</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원·반이동한 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card lst"><div class="lbl">${M}월 신규·등록 예정 <span class="cnt nw">신규 ${jn.length}</span><span class="cnt up">예정 ${sm.upcoming.length}</span></div><div class="cls-sum-body">${jns + ups || empty('이번 달 신규·등록 예정 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card lst"><div class="lbl">${M}월 퇴원·반이동 <span class="cnt lv">퇴원 ${lvL.length}</span><span class="cnt tr">반이동 ${lvT.length}</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원·반이동한 학생이 없습니다.')}</div></div>
         <div class="cls-sum-card cls-sum-sch"><div class="lbl">학교별 <span class="cnt">${sm.schools.length}곳</span></div>
           ${schools ? `<div class="cls-sch-wrap"><div class="cls-sch-row">${schools}</div></div>` : empty('-')}</div>
       </div></div>`;
@@ -718,28 +744,10 @@ const Classes = {
         <td class="tm">${esc(this.timeLabel(c))}</td><td class="n"><b>${r.length}</b>${up.length ? `<small>+${up.length} 예정</small>` : ''}</td><td class="st">${names.join(', ') || '-'}</td></tr>`;
     }).join('');
     // 그 달의 신규 등록 (처음 등록 + 재등록) · 퇴원 (이번 달은 이후 날짜의 퇴원 예약도 '예정'으로)
-    const inM = (d) => isYmd(d) && d >= first && d <= base;
-    // 신규 등록 학생의 반: 기준일(이번 달은 오늘, 지난 달은 말일)에 다니는 반 — 위 반 표와 같게.
-    // 기준일 전에 빠졌으면(퇴원 등) 등록일 이후 마지막으로 다니던 반, 그것도 없으면 등록일에 다니던 반
-    const clsAt = (sid, d) => {
-      const mine = Store.where('enrollments', e => e.studentId === sid);
-      const uniqC = (arr) => [...new Set(arr.map(e => e.classId))].map(id => Store.get('classes', id)).filter(Boolean);
-      const now = mine.filter(e => this.enrollValid(e, base));
-      if (now.length) return uniqC(now);
-      const ended = mine.filter(e => e.to && e.to > d && e.to <= base);
-      if (ended.length) { const lastTo = ended.reduce((m, e) => (e.to > m ? e.to : m), ''); return uniqC(ended.filter(e => e.to === lastTo)); }
-      return uniqC(mine.filter(e => this.enrollValid(e, d)));
-    };
-    const joins = [];
-    Store.all('students').forEach(s => {
-      const jd = Students.joinDateOf(s);
-      if (inM(jd)) joins.push({ s, d: jd, kind: '신규' });
-      Store.where('student_log', l => l.studentId === s.id && l.type === 'rejoin' && inM(l.date)).forEach(l => joins.push({ s, d: l.date, kind: '재등록' }));
-    });
+    const joins = this.joinsIn(first, base);
     const leaves = this.leavesIn(first, base, last, isCur), moves = this.leavesIn(first, base, last, isCur, 'transfer');
-    joins.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
     const cl = (arr) => arr.map(c => `<span class="dot" style="background:${this.colorOf(c)}"></span>${esc(c.name)}`).join(', ') || '-';
-    const joinRows = joins.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.kind === '재등록' ? ' <span class="kd">재등록</span>' : ''}</td><td>${cl(clsAt(o.s.id, o.d))}</td></tr>`).join('');
+    const joinRows = joins.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.kind === '재등록' ? ' <span class="kd">재등록</span>' : ''}</td><td>${cl(o.cls)}</td></tr>`).join('');
     const outRows = (arr) => arr.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(o.cls)}</td></tr>`).join('');
     const leaveRows = outRows(leaves), moveRows = outRows(moves);
     const planN = (arr, lb) => (arr.some(o => o.plan) ? `<small>(${lb} 예정 ${arr.filter(o => o.plan).length}명 포함)</small>` : '');
@@ -1288,12 +1296,16 @@ document.addEventListener('change', (e) => {
    아랫줄: 학교별 막대 그래프 (가로 전체) */
 .cls-sum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
 @media (max-width: 900px) { .cls-sum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.cls-sum-card { display: flex; flex-direction: column; min-height: 170px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
+.cls-sum-card { display: flex; flex-direction: column; min-height: 230px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
 .cls-sum-card > .lbl { flex: none; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
 .cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
 .cls-sum-card > .lbl .cnt.lv { color: var(--danger); }
 .cls-sum-card > .lbl .cnt.tr { color: var(--accent-ink); margin-left: 8px; }
-.cls-sum-card > .lbl .cnt.lv + .cnt.tr::before { content: '·'; color: var(--ink-mute); margin-right: 8px; }
+.cls-sum-card > .lbl .cnt.lv + .cnt.tr::before, .cls-sum-card > .lbl .cnt.nw + .cnt.up::before { content: '·'; color: var(--ink-mute); margin-right: 8px; }
+.cls-sum-card > .lbl .cnt.nw { color: var(--ok); }
+.cls-sum-card > .lbl .cnt.up { color: var(--warn); margin-left: 8px; }
+/* 목록 카드(신규·등록 예정 / 퇴원·반이동): 카드 높이를 늘리지 않고 안에서 스크롤 — 윗줄 높이는 전체 인원·학년별 카드가 정한다 */
+.cls-sum-card.lst .cls-sum-body { flex: 1 1 0; height: 0; min-height: 0; max-height: none; }
 .cls-tr-badge { background: var(--accent-soft); color: var(--accent-ink); }
 .cls-sum-body { flex: 1; max-height: 300px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .cls-sum-body::-webkit-scrollbar { width: 6px; } .cls-sum-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
@@ -1325,6 +1337,7 @@ document.addEventListener('change', (e) => {
 .cls-sum-up .dt { font-weight: 700; color: var(--warn); white-space: nowrap; }
 .cls-sum-up .dt.lv { color: var(--danger); }
 .cls-sum-up .dt.tr { color: var(--accent-ink); }
+.cls-sum-up .dt.nw { color: var(--ok); }
 .cls-sum-up .nm .tag { color: var(--ink-mute); font-size: 12px; }
 .cls-sum-up .cs { grid-column: 2; font-size: 12px; color: var(--ink-soft); }
 `;
