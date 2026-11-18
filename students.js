@@ -1231,12 +1231,12 @@ const Students = {
 
   /* ---------- 첫 등원 할일 ----------
      등록일(첫 수업일)을 미래로 정한 학생: 그 학생이 처음 오는 날(공휴일 건너뜀)의 가장 빠른 수업 시작 시각으로
-     "[반 이름] 홍길동 학생 첫 등원"(중요도 높음)을 만든다. 할일 id TDF_학생ID · 기록 meta FD_학생ID { kind:'first_todo', studentId, date }
+     "[반 이름] 홍길동 첫 등원"(중요도 높음)을 만든다. 할일 id TDF_학생ID · 기록 meta FD_학생ID { kind:'first_todo', studentId, date }
      · 등록일·수강반이 바뀌면 할일 날짜·시간·반 이름을 따라 옮김 (아직 안 한 할일만)
      · 첫 수업 전에 퇴원 처리·완전 삭제 → 아직 안 한 할일 삭제 · 첫 등원일이 지난 뒤에는 건드리지 않음
      · 직접 지운 할일은 다시 만들지 않음 (기록이 남아 있으므로) */
   FIRST_DAYS: 120,
-  firstText(c, s) { return `${c ? c.name + ' ' : ''}${s.name} 학생 첫 등원`; },
+  firstText(c, s) { return `${c ? c.name + ' ' : ''}${s.name} 첫 등원`; },
   // 등록일부터 처음 오는 날 { date, time, c } (없으면 null)
   firstDay(sid, from, hol) {
     if (!isYmd(from) || typeof Makeups === 'undefined') return null;
