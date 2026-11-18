@@ -1791,12 +1791,19 @@ const ProgressSum = {
       return { c, rows, labels };
     }).filter(o => o.c.active !== false || o.rows.length);       // 종료된 반은 기록이 있을 때만
   },
-  // 공통 진도 칸 (비내신 + 그 외 진도)
-  commonHtml(p, pdf) {
-    const out = [];
-    if (p.gen) out.push(`<div class="${pdf ? 'gp' : 'ps-gp'}"><span class="${pdf ? 'tg' : 'ps-tg'}">비내신</span>${esc(p.gen)}</div>`);
-    if (p.free) out.push(`<div class="${pdf ? 'fr' : 'ps-fr'}">${esc(p.free)}</div>`);
-    return out.join('') || `<span class="${pdf ? 'mt' : 'muted'}">-</span>`;
+  // 회차 카드 묶음 (화면·PDF 공통 마크업) — 회차마다 카드 한 장: [n회차 · 날짜] / 공통 진도(비내신 + 그 외 진도) / 학교·학년별 내신
+  cardsHtml(o, pdf) {
+    const { c, rows, labels } = o;
+    const card = (x, i) => {
+      const secs = [];
+      const com = (x.p.gen ? `<div class="psc-gp"><span class="psc-tg">비내신</span>${esc(x.p.gen)}</div>` : '') + (x.p.free ? `<div class="psc-fr">${esc(x.p.free)}</div>` : '');
+      if (com) secs.push(`<div class="psc-sec"><div class="psc-lb">${labels.length ? '공통 진도' : '진도'}</div><div class="psc-tx">${com}</div></div>`);
+      labels.forEach(lb => { if (x.p.np[lb]) secs.push(`<div class="psc-sec np"><div class="psc-lb">${esc(lb)} 내신</div><div class="psc-tx">${esc(x.p.np[lb])}</div></div>`); });
+      return `<div class="psc"${pdf ? '' : ` data-psid="${x.l.id}" title="눌러서 이 날 수업일지 고치기"`}>
+        <div class="psc-h"><span class="psc-n">${i + 1}회차</span><span class="psc-d">${fmtMD(x.l.date)}</span></div>
+        ${secs.join('') || '<div class="psc-none">진도 기록 없음</div>'}</div>`;
+    };
+    return `<div class="psc-grid" style="--cc:${Classes.colorOf(c)}">${rows.map(card).join('')}</div>`;
   },
 
   render(main) {
@@ -1814,17 +1821,14 @@ const ProgressSum = {
         <span class="grow" style="flex:1"></span>
         <button type="button" class="btn sm cls-pdfbtn" data-pspdf title="화면에 보이는 기간·반의 진도 요약을 A4 가로로 인쇄 · PDF 저장" ${list.length ? '' : 'disabled'}>PDF 저장</button>
       </div>
-      <p class="small muted" style="margin:0 0 12px">수업일지에 적은 진도를 반별·날짜별로 모았습니다. 내신 진도는 학교·학년별 열로 나누고, 비내신은 독해·문법 교재만 넣습니다. 줄을 누르면 그 날 수업일지를 고칩니다.</p>`;
+      <p class="small muted" style="margin:0 0 12px">수업일지에 적은 진도를 반별·회차별로 모았습니다. 내신 진도는 학교·학년별로 나누고, 비내신은 독해·문법 교재만 넣습니다. 카드를 누르면 그 날 수업일지를 고칩니다.</p>`;
     if (!act.length) h += '<div class="panel"><div class="empty">반이 없습니다.</div></div>';
     else if (!list.length) h += '<div class="panel"><div class="empty">이 기간에 보여줄 반이 없습니다.</div></div>';
     list.forEach(o => {
       const { c, rows, labels } = o;
       h += `<div class="ps-cls"><div class="ps-head">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}<span class="soft small">${esc(Classes.timeLabel(c))}</span><span class="grow"></span><span class="ps-cnt">수업 <b>${rows.length}</b>회</span></div>`;
       if (!rows.length) { h += '<div class="panel"><div class="empty small">이 기간에 작성한 수업일지가 없습니다.</div></div></div>'; return; }
-      h += `<div class="tbl-wrap"><table class="tbl compact ps-tbl"><colgroup><col style="width:92px"><col>${labels.map(() => '<col>').join('')}</colgroup>
-        <thead><tr><th>날짜</th><th>${labels.length ? '공통 진도' : '진도'}</th>${labels.map(lb => `<th>${esc(lb)} 내신</th>`).join('')}</tr></thead><tbody>
-        ${rows.map(x => `<tr class="click" data-psid="${x.l.id}"><td class="nowrap"><b>${fmtMD(x.l.date)}</b></td><td>${this.commonHtml(x.p)}</td>${labels.map(lb => `<td class="ps-np">${x.p.np[lb] ? esc(x.p.np[lb]) : '<span class="muted">-</span>'}</td>`).join('')}</tr>`).join('')}
-        </tbody></table></div></div>`;
+      h += this.cardsHtml(o, false) + '</div>';
     });
     h += '</div>';
     main.innerHTML = h;
@@ -1842,7 +1846,7 @@ const ProgressSum = {
         return;
       }
       if (e.target.closest('[data-pspdf]')) { this.pdf(); return; }
-      const tr = e.target.closest('tr[data-psid]');
+      const tr = e.target.closest('[data-psid]');
       if (tr) {
         const l = Store.get('lessons', tr.dataset.psid);
         if (!l) return;
@@ -1862,11 +1866,7 @@ const ProgressSum = {
     const body = list.map(({ c, rows, labels }) => {
       const head = `<h2><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}${c.active === false ? ' <span class="end">종료</span>' : ''}<small>${esc(Classes.timeLabel(c))} · 수업 ${rows.length}회</small></h2>`;
       if (!rows.length) return head + '<div class="empty">이 기간에 작성한 수업일지가 없습니다.</div>';
-      const w = labels.length ? Math.max(18, Math.floor(100 / (labels.length + 1))) : 0;
-      return head + `<table><colgroup><col style="width:20mm"><col>${labels.map(() => `<col style="width:${w}%">`).join('')}</colgroup>
-        <thead><tr><th>날짜</th><th>${labels.length ? '공통 진도' : '진도'}</th>${labels.map(lb => `<th>${esc(lb)} 내신</th>`).join('')}</tr></thead><tbody>
-        ${rows.map(x => `<tr><td class="dt">${fmtMD(x.l.date)}</td><td>${this.commonHtml(x.p, true)}</td>${labels.map(lb => `<td>${x.p.np[lb] ? esc(x.p.np[lb]) : '<span class="mt">-</span>'}</td>`).join('')}</tr>`).join('')}
-        </tbody></table>`;
+      return head + this.cardsHtml({ c, rows, labels }, true);
     }).join('');
     const title = `진도요약_${this.mode === 'week' ? r.from + '_주' : r.from.slice(0, 7)}`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
@@ -1879,15 +1879,19 @@ const ProgressSum = {
       h2 small { font-weight: normal; color: #666; font-size: 8pt; margin-left: 6pt; }
       .dot { display: inline-block; width: 7pt; height: 7pt; border-radius: 50%; margin-right: 4pt; vertical-align: 0; }
       .end { font-size: 7pt; color: #777; border: 0.4pt solid #bbb; border-radius: 2pt; padding: 0 2pt; font-weight: normal; }
-      table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 2mm; }
-      thead { display: table-header-group; }
-      tr { break-inside: avoid; page-break-inside: avoid; }
-      th, td { border: 0.5pt solid #9aa3ad; padding: 1.3mm 1.6mm; vertical-align: top; text-align: left; word-break: keep-all; overflow-wrap: anywhere; }
-      th { background: #eef2f7; font-size: 8pt; }
-      td.dt { white-space: nowrap; font-weight: bold; }
-      .fr { white-space: pre-wrap; } .gp + .fr { margin-top: 1mm; color: #333; }
-      .tg { display: inline-block; font-size: 6.5pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 2pt; padding: 0 2pt; margin-right: 3pt; vertical-align: 0.5pt; }
-      .mt { color: #aaa; } .empty { color: #888; padding: 1mm 0 2mm; }
+      /* 회차 카드: 한 줄에 5장, 카드는 쪽 사이에서 잘리지 않음 */
+      .psc-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2.2mm; margin-bottom: 2mm; }
+      .psc { border: 0.5pt solid #b8c2cc; border-top: 2.2pt solid var(--cc); border-radius: 1.6mm; padding: 1.6mm 2mm 2mm; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+      .psc-h { display: flex; align-items: baseline; gap: 2mm; padding-bottom: 1.2mm; margin-bottom: 1.2mm; border-bottom: 0.4pt solid #dde3e9; }
+      .psc-n { font-weight: bold; font-size: 9pt; color: #1D5E93; } .psc-d { font-weight: bold; font-size: 8.5pt; color: #333; }
+      .psc-sec + .psc-sec { margin-top: 1.4mm; padding-top: 1.2mm; border-top: 0.4pt dashed #e1e6eb; }
+      .psc-lb { font-size: 6.8pt; font-weight: bold; color: #6a7580; margin-bottom: 0.5mm; }
+      .psc-sec.np .psc-lb { color: #8a5a00; }
+      .psc-tx { font-size: 8pt; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
+      .psc-fr { white-space: pre-wrap; } .psc-gp + .psc-fr { margin-top: 0.8mm; color: #333; }
+      .psc-tg { display: inline-block; font-size: 6.3pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 1.5pt; padding: 0 1.5pt; margin-right: 2pt; vertical-align: 0.5pt; }
+      .psc-none { color: #999; font-size: 7.5pt; }
+      .empty { color: #888; padding: 1mm 0 2mm; }
     </style></head><body>
       <h1>진도 요약 · ${esc(this.rangeLabel(r))}<small>${r.from} ~ ${r.to} · 출력일 ${today}</small></h1>
       ${body}
@@ -1922,11 +1926,21 @@ const ProgressSum = {
 .ps-head { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; }
 .ps-head .grow { flex: 1; }
 .ps-cnt { font-size: 13px; color: var(--ink-soft); }
-.ps-tbl { table-layout: fixed; }
-.ps-tbl td { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; vertical-align: top; }
-.ps-fr { white-space: pre-wrap; }
-.ps-gp + .ps-fr { margin-top: 3px; color: var(--ink-soft); }
-.ps-tg { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-right: 5px; }
+/* 회차 카드 — 왼쪽에서 오른쪽으로, 폭에 맞춰 한 줄 4~5장 */
+.psc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 10px; }
+.psc { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--cc); border-radius: 10px; padding: 10px 12px 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(30, 70, 105, .05); transition: box-shadow .12s, transform .12s; min-width: 0; }
+.psc:hover { box-shadow: 0 4px 12px rgba(30, 70, 105, .13); transform: translateY(-1px); }
+.psc-h { display: flex; align-items: baseline; gap: 8px; padding-bottom: 7px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.psc-n { font-size: 14px; font-weight: 800; color: var(--accent-ink); }
+.psc-d { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.psc-sec + .psc-sec { margin-top: 8px; padding-top: 7px; border-top: 1px dashed var(--line); }
+.psc-lb { font-size: 11.5px; font-weight: 700; color: var(--ink-mute); margin-bottom: 3px; }
+.psc-sec.np .psc-lb { color: var(--warn); }
+.psc-tx { font-size: 13.5px; line-height: 1.5; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+.psc-fr { white-space: pre-wrap; }
+.psc-gp + .psc-fr { margin-top: 3px; color: var(--ink-soft); }
+.psc-tg { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-right: 5px; vertical-align: 1px; }
+.psc-none { font-size: 13px; color: var(--ink-mute); }
 `;
   document.head.appendChild(st);
 })();
