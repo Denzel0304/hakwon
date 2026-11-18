@@ -8,7 +8,7 @@ const App = {
   _needRender: false,
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
-    lessons: Lessons, attendance: AttBook, report: Reports, words: WordBook, vocas: Vocas, books: Books, progress: ProgressBook, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
+    lessons: Lessons, attendance: AttBook, report: Reports, words: WordBook, vocas: Vocas, books: Books, progress: ProgressBook, psum: ProgressSum, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
     counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings,
   },
 
@@ -33,7 +33,7 @@ const App = {
       main.innerHTML = `<div class="panel"><div class="empty">화면을 그리는 중 오류가 났습니다: ${esc(e.message)}</div></div>`;
     }
     main.scrollTop = toTop ? 0 : st;
-    const navKey = this.page === 'day' ? '' : this.page === 'lessons' ? 'progress' : this.page;   // 수업일지는 '진도+일지' 메뉴의 탭
+    const navKey = this.page === 'day' ? '' : (this.page === 'lessons' || this.page === 'psum') ? 'progress' : this.page;   // 수업일지·진도 요약은 '진도+일지' 메뉴의 탭
     $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.page === navKey));
     MiniCal.render();
     this.refreshSchools();

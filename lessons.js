@@ -780,7 +780,7 @@ const PL = {
   head(cur, bar) {
     const tab = (k, t) => `<button type="button" data-pltab="${k}" class="${cur === k ? 'active' : ''}">${t}</button>`;
     return `<div class="page-head pl-head${bar ? '' : ' no-bar'}"><h1>진도+일지</h1>
-      <div class="tabs">${tab('progress', '진도')}${tab('lessons', '수업일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
+      <div class="tabs">${tab('progress', '진도')}${tab('psum', '진도 요약')}${tab('lessons', '수업일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
   },
   click(e) {
     const b = e.target.closest('[data-pltab]');
@@ -788,7 +788,7 @@ const PL = {
     const t = b.dataset.pltab;
     if (t !== App.page) {
       if (t === 'lessons') App.go('lessons', { date: App.selDate });
-      else App.go('progress', {});
+      else App.go(t, {});            // 'progress' 진도 / 'psum' 진도 요약
     }
     return true;
   },
@@ -966,13 +966,14 @@ const Lessons = {
     this.form = null;
     this.goBack(date, f ? f.classId : '', date);
   },
-  // 저장·취소 뒤 돌아갈 곳: 진도 탭에서 열었으면 진도 탭 / 날짜 요약에서 열었으면 요약 / 아니면 수업일지 탭
+  // 저장·취소 뒤 돌아갈 곳: 진도 탭에서 열었으면 진도 탭 / 진도 요약 탭에서 열었으면 진도 요약 / 날짜 요약에서 열었으면 요약 / 아니면 수업일지 탭
   //   (nd: 날짜를 옮겼으면 새 날짜)
   goBack(date, classId, nd) {
     const r = this.ret;
     this.ret = null;
     const mine = r && r.date === date && r.classId === classId;
     if (mine && r.page === 'progress') { App.go('progress', { classId, date: nd }); return; }
+    if (mine && r.page === 'psum') { App.go('psum', {}); return; }      // 진도 요약에서 열었으면 진도 요약으로
     if (mine) { App.pickDate(nd); return; }
     App.go('lessons', { date: nd });
   },
@@ -1718,6 +1719,205 @@ const ProgressBook = {
     App.go('lessons', { date: l.date, classId: l.classId, edit: 1 });
   },
 };
+
+/* =========================================================
+   진도 요약 — 기간(월·주) 동안 반별로 수업일지의 진도를 날짜별 표로 (화면 + PDF A4 가로)
+   · 내신 진도: 학교·학년별 열 (그 날 일지에서 고른 시험의 교재로 나눔 — 보강용 Lessons.forStudent와 같은 기준)
+   · 공통 진도: 비내신(독해·문법 교재만, 듣기·단어 제외) + 그 외 진도(자유 입력 글)
+   · 반: 진행 중인 반 + 그 기간에 수업일지가 있는 종료된 반
+   ========================================================= */
+const ProgressSum = {
+  mode: 'month',      // 'month' 월 / 'week' 주(월~일)
+  anchor: '',         // 기준 날짜 (비면 오늘)
+  classId: '',        // 화면에서 고른 반 ('' 전체)
+
+  range() {
+    const a = this.anchor || todayStr();
+    if (this.mode === 'week') {
+      const from = addDaysStr(a, -((dowOf(a) + 6) % 7));
+      return { from, to: addDaysStr(from, 6) };
+    }
+    const Y = +a.slice(0, 4), M = +a.slice(5, 7);
+    return { from: a.slice(0, 7) + '-01', to: ymd(new Date(Y, M, 0)) };
+  },
+  rangeLabel(r) {
+    if (this.mode === 'week') return `${r.from.slice(0, 4)}년 ${fmtMD(r.from)} ~ ${fmtMD(r.to)}`;
+    return `${+r.from.slice(0, 4)}년 ${+r.from.slice(5, 7)}월`;
+  },
+  move(n) {
+    const a = this.anchor || todayStr();
+    if (this.mode === 'week') this.anchor = addDaysStr(a, 7 * n);
+    else this.anchor = ymd(new Date(+a.slice(0, 4), +a.slice(5, 7) - 1 + n, 1));
+  },
+
+  // 수업일지 한 편의 진도 → { gen: 비내신 문장, free: 그 외 진도 글, np: { 학교학년: 문장 }, info: { 학교학년: 정렬 키 } }
+  progressOf(l) {
+    const free = stripZws(l.progress || '').trim();
+    const gpL = (l.gp || []).filter(en => { const m = NP.mat(en.matId); return !m || NP.isLessonMat(m); });
+    const gen = gpL.length ? NP.genText({ gp: gpL }) : '';
+    const exs = (l.npExams || []).map(id => Store.get('exams', id)).filter(Boolean);
+    const lbOf = (e) => NP.sch(e.school) + gradeNum(e.grade);
+    const by = {}, info = {};
+    (l.np || []).forEach(en => {
+      let owners = exs.filter(e => (e.items || []).some(it => it.matId === en.matId));
+      if (!owners.length && exs.length && new Set(exs.map(lbOf)).size === 1) owners = exs;     // 학교·학년이 하나뿐이면 그쪽으로
+      const lbs = owners.length ? [...new Set(owners.map(lbOf))] : ['내신'];
+      lbs.forEach(lb => {
+        (by[lb] = by[lb] || []).push(en);
+        if (!info[lb]) { const e = owners.find(x => lbOf(x) === lb); info[lb] = e ? (+e.grade || 99) * 1000 : 99999; }
+      });
+    });
+    const np = {};
+    Object.keys(by).forEach(lb => { np[lb] = NP.text({ np: by[lb] }); });
+    return { gen, free, np, info };
+  },
+  // 기간 안의 반별 진도 [{ c, rows:[{ l, p }], labels:[학교학년] }]
+  data(r, onlyCid) {
+    return Classes.sorted(Store.all('classes')).filter(c => !onlyCid || c.id === onlyCid).map(c => {
+      const rows = Store.where('lessons', l => l.classId === c.id && l.date >= r.from && l.date <= r.to && !Lessons.isEmpty(l))
+        .sort((a, b) => ko(a.date, b.date)).map(l => ({ l, p: this.progressOf(l) }));
+      const key = {};
+      rows.forEach(x => Object.keys(x.p.np).forEach(lb => { key[lb] = Math.min(key[lb] ?? 1e9, x.p.info[lb]); }));
+      const labels = Object.keys(key).sort((a, b) => key[a] - key[b] || (a === '내신') - (b === '내신') || ko(a, b));
+      return { c, rows, labels };
+    }).filter(o => o.c.active !== false || o.rows.length);       // 종료된 반은 기록이 있을 때만
+  },
+  // 공통 진도 칸 (비내신 + 그 외 진도)
+  commonHtml(p, pdf) {
+    const out = [];
+    if (p.gen) out.push(`<div class="${pdf ? 'gp' : 'ps-gp'}"><span class="${pdf ? 'tg' : 'ps-tg'}">비내신</span>${esc(p.gen)}</div>`);
+    if (p.free) out.push(`<div class="${pdf ? 'fr' : 'ps-fr'}">${esc(p.free)}</div>`);
+    return out.join('') || `<span class="${pdf ? 'mt' : 'muted'}">-</span>`;
+  },
+
+  render(main) {
+    const r = this.range(), today = todayStr();
+    const act = Classes.sorted(Store.all('classes'));
+    const all = this.data(r, '');
+    if (this.classId && !all.some(o => o.c.id === this.classId)) this.classId = '';
+    const list = this.classId ? all.filter(o => o.c.id === this.classId) : all;
+    const isNow = r.from <= today && today <= r.to;
+    let h = `<div class="page-narrow">${PL.head('psum')}
+      <div class="toolbar ps-bar">
+        <span class="ps-seg"><button type="button" data-psmode="month" class="${this.mode === 'month' ? 'on' : ''}">월</button><button type="button" data-psmode="week" class="${this.mode === 'week' ? 'on' : ''}">주</button></span>
+        <button type="button" class="btn sm ghost" data-psmv="-1" title="이전 ${this.mode === 'week' ? '주' : '달'}">◀</button>
+        <b class="ps-rng">${esc(this.rangeLabel(r))}</b>
+        <button type="button" class="btn sm ghost" data-psmv="1" title="다음 ${this.mode === 'week' ? '주' : '달'}">▶</button>
+        ${isNow ? '' : `<button type="button" class="btn sm" data-psnow>이번 ${this.mode === 'week' ? '주' : '달'}</button>`}
+        <span style="display:inline-flex;align-items:center">${Classes.selDot(this.classId ? Store.get('classes', this.classId) : null)}<select data-pscls style="min-width:160px"><option value="">전체 반 (${all.length})</option>${all.map(o => `<option value="${o.c.id}" ${o.c.id === this.classId ? 'selected' : ''}>${esc(o.c.name)}${o.c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>
+        <span class="grow" style="flex:1"></span>
+        <button type="button" class="btn sm cls-pdfbtn" data-pspdf title="화면에 보이는 기간·반의 진도 요약을 A4 가로로 인쇄 · PDF 저장" ${list.length ? '' : 'disabled'}>PDF 저장</button>
+      </div>
+      <p class="small muted" style="margin:0 0 12px">수업일지에 적은 진도를 반별·날짜별로 모았습니다. 내신 진도는 학교·학년별 열로 나누고, 비내신은 독해·문법 교재만 넣습니다. 줄을 누르면 그 날 수업일지를 고칩니다.</p>`;
+    if (!act.length) h += '<div class="panel"><div class="empty">반이 없습니다.</div></div>';
+    else if (!list.length) h += '<div class="panel"><div class="empty">이 기간에 보여줄 반이 없습니다.</div></div>';
+    list.forEach(o => {
+      const { c, rows, labels } = o;
+      h += `<div class="ps-cls"><div class="ps-head">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}<span class="soft small">${esc(Classes.timeLabel(c))}</span><span class="grow"></span><span class="ps-cnt">수업 <b>${rows.length}</b>회</span></div>`;
+      if (!rows.length) { h += '<div class="panel"><div class="empty small">이 기간에 작성한 수업일지가 없습니다.</div></div></div>'; return; }
+      h += `<div class="tbl-wrap"><table class="tbl compact ps-tbl"><colgroup><col style="width:92px"><col>${labels.map(() => '<col>').join('')}</colgroup>
+        <thead><tr><th>날짜</th><th>${labels.length ? '공통 진도' : '진도'}</th>${labels.map(lb => `<th>${esc(lb)} 내신</th>`).join('')}</tr></thead><tbody>
+        ${rows.map(x => `<tr class="click" data-psid="${x.l.id}"><td class="nowrap"><b>${fmtMD(x.l.date)}</b></td><td>${this.commonHtml(x.p)}</td>${labels.map(lb => `<td class="ps-np">${x.p.np[lb] ? esc(x.p.np[lb]) : '<span class="muted">-</span>'}</td>`).join('')}</tr>`).join('')}
+        </tbody></table></div></div>`;
+    });
+    h += '</div>';
+    main.innerHTML = h;
+    main.onclick = (e) => {
+      if (PL.click(e)) return;
+      const md = e.target.closest('[data-psmode]');
+      if (md) { if (md.dataset.psmode !== this.mode) { this.mode = md.dataset.psmode; App.render(); } return; }
+      const mv = e.target.closest('[data-psmv]');
+      if (mv) { this.move(+mv.dataset.psmv); App.render(); return; }
+      if (e.target.closest('[data-psnow]')) { this.anchor = ''; App.render(); return; }
+      if (e.target.closest('[data-pspdf]')) { this.pdf(); return; }
+      const tr = e.target.closest('tr[data-psid]');
+      if (tr) {
+        const l = Store.get('lessons', tr.dataset.psid);
+        if (!l) return;
+        App.selDate = l.date; MiniCal.showMonthOf(l.date);
+        Lessons.ret = { date: l.date, classId: l.classId, page: 'psum' };       // 저장·취소하면 진도 요약으로 돌아온다
+        App.go('lessons', { date: l.date, classId: l.classId, edit: 1 });
+      }
+    };
+    main.onchange = (e) => { if (e.target.matches('[data-pscls]')) { this.classId = e.target.value; App.render(); } };
+  },
+
+  // PDF (A4 가로) — 화면에 보이는 기간·반을 이어서
+  pdf() {
+    const r = this.range(), today = todayStr();
+    const list = this.data(r, this.classId);
+    if (!list.length) { toast('저장할 반이 없습니다'); return; }
+    const body = list.map(({ c, rows, labels }) => {
+      const head = `<h2><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}${c.active === false ? ' <span class="end">종료</span>' : ''}<small>${esc(Classes.timeLabel(c))} · 수업 ${rows.length}회</small></h2>`;
+      if (!rows.length) return head + '<div class="empty">이 기간에 작성한 수업일지가 없습니다.</div>';
+      const w = labels.length ? Math.max(18, Math.floor(100 / (labels.length + 1))) : 0;
+      return head + `<table><colgroup><col style="width:20mm"><col>${labels.map(() => `<col style="width:${w}%">`).join('')}</colgroup>
+        <thead><tr><th>날짜</th><th>${labels.length ? '공통 진도' : '진도'}</th>${labels.map(lb => `<th>${esc(lb)} 내신</th>`).join('')}</tr></thead><tbody>
+        ${rows.map(x => `<tr><td class="dt">${fmtMD(x.l.date)}</td><td>${this.commonHtml(x.p, true)}</td>${labels.map(lb => `<td>${x.p.np[lb] ? esc(x.p.np[lb]) : '<span class="mt">-</span>'}</td>`).join('')}</tr>`).join('')}
+        </tbody></table>`;
+    }).join('');
+    const title = `진도요약_${this.mode === 'week' ? r.from + '_주' : r.from.slice(0, 7)}`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
+      @page { size: A4 landscape; margin: 9mm; }
+      * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { margin: 0; color: #111; font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; font-size: 8.5pt; }
+      h1 { font-size: 14pt; margin: 0 0 3mm; display: flex; justify-content: space-between; align-items: baseline; }
+      h1 small { font-size: 8pt; font-weight: normal; color: #666; }
+      h2 { font-size: 10.5pt; margin: 5mm 0 2mm; padding-left: 2mm; border-left: 2.5pt solid #2B7FC1; break-after: avoid; page-break-after: avoid; }
+      h2 small { font-weight: normal; color: #666; font-size: 8pt; margin-left: 6pt; }
+      .dot { display: inline-block; width: 7pt; height: 7pt; border-radius: 50%; margin-right: 4pt; vertical-align: 0; }
+      .end { font-size: 7pt; color: #777; border: 0.4pt solid #bbb; border-radius: 2pt; padding: 0 2pt; font-weight: normal; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 2mm; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 0.5pt solid #9aa3ad; padding: 1.3mm 1.6mm; vertical-align: top; text-align: left; word-break: keep-all; overflow-wrap: anywhere; }
+      th { background: #eef2f7; font-size: 8pt; }
+      td.dt { white-space: nowrap; font-weight: bold; }
+      .fr { white-space: pre-wrap; } .gp + .fr { margin-top: 1mm; color: #333; }
+      .tg { display: inline-block; font-size: 6.5pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 2pt; padding: 0 2pt; margin-right: 3pt; vertical-align: 0.5pt; }
+      .mt { color: #aaa; } .empty { color: #888; padding: 1mm 0 2mm; }
+    </style></head><body>
+      <h1>진도 요약 · ${esc(this.rangeLabel(r))}<small>${r.from} ~ ${r.to} · 출력일 ${today}</small></h1>
+      ${body}
+    </body></html>`;
+    const fr = document.createElement('iframe');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+    const doc = fr.contentDocument;
+    doc.open(); doc.write(html); doc.close();
+    const t0 = document.title;
+    setTimeout(() => {
+      document.title = title;                 // 저장 파일 이름
+      try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally {
+        document.title = t0;
+        setTimeout(() => fr.remove(), 1000);
+      }
+    }, 300);
+  },
+};
+
+/* ---------- 진도 요약 화면 스타일 ---------- */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+.ps-bar { align-items: center; }
+.ps-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.ps-seg button { border: 0; background: var(--surface); color: var(--ink-soft); padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.ps-seg button + button { border-left: 1px solid var(--line-strong); }
+.ps-seg button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+.ps-rng { font-size: 15px; min-width: 120px; text-align: center; }
+.ps-cls { margin-bottom: 18px; }
+.ps-head { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; }
+.ps-head .grow { flex: 1; }
+.ps-cnt { font-size: 13px; color: var(--ink-soft); }
+.ps-tbl { table-layout: fixed; }
+.ps-tbl td { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; vertical-align: top; }
+.ps-fr { white-space: pre-wrap; }
+.ps-gp + .ps-fr { margin-top: 3px; color: var(--ink-soft); }
+.ps-tg { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-right: 5px; }
+`;
+  document.head.appendChild(st);
+})();
 
 /* =========================================================
    결석+보강 — 출석부의 결석 + 결석 예정을 모아 보여준다 (결석 예정 탭: 내일 이후 / 처리 필요·완료·전체: 오늘까지)
