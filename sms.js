@@ -531,16 +531,18 @@ const SmsPage = {
    - 문자는 무조건 부모님 번호로 보낸다 (교재 안내는 카톡으로 하므로 완료 체크만)
    - 학생 기록 meta NW_학생ID { kind:'nw', studentId, plan(할일 일정 등록), bookDays(교재 안내 N일 전, null = 생략),
                                 made:{ book, first, cns }(할일을 만든 적 있음), dates:{ … }(만들 때·옮길 때 정한 날짜),
-                                done:{ … }(완료 시각 ISO, '' = 미완료), skip:{ book }(수업이 이미 시작되어 교재 안내 생략), createdAt }
+                                done:{ … }(완료 시각 ISO, '' = 미완료), skip:{ book }(교재 안내 생략), first(첫 등원일),
+                                key(일정 계산값 — 바뀌면 할일을 옮김), createdAt }
    - 설정 meta NWCFG { kind:'nw_cfg', tplFirst, tplCns(보내기 탭 템플릿 id), bookDays(확인창 기본 N일) }
-   - 할일 id TDN_학생ID_book / _first / _cns (nwKey 학생ID, nwStep 단계) · 중요도 높음 · "[반 이름] 홍길동 교재 안내 문자"
-     · 교재 안내: 첫 수업일 N일 전 (이미 지났으면 오늘) — 등록할 때 첫 수업이 오늘이거나 지났으면 생략
+   - 할일 id TDN_학생ID_book / _first / _cns (nwKey 학생ID, nwStep 단계) · 중요도 높음 · "[반 이름] 홍길동 교재 안내 문자 (12/2 등원예정)"
+     · 교재 안내: 첫 수업일 N일 전 (이미 지났으면 오늘) — 수업이 이미 시작된 학생도 확인창에서 고르면 오늘로 만듦
      · 첫 문자: 첫 수업 다음날 (주말·공휴일이면 다음 평일 → 금요일 첫 수업은 월요일)
-     · 첫 상담 안내: (주당 수업 요일 수 × 2)회 수업을 마친 다음날, 단 첫 수업일 + 14일 이후 (주말·공휴일이면 다음 평일, 공휴일은 횟수에서 뺌)
+     · 첫 상담 안내: (주당 수업 요일 수 × 2)회 수업을 마친 다음날 (주말·공휴일이면 다음 평일, 공휴일은 횟수에서 뺌)
    - 완료 상태: 할일이 있으면 할일의 완료를 따르고(할일 목록에서 체크해도 반영), 없으면 기록(done)을 따른다.
      탭에서 체크하면 할일과 기록을 함께 바꾼다.
-   - 등록일·수강반이 바뀌면 아직 안 한 할일을 새 날짜로 옮김 (직접 날짜를 바꾼 할일, 날짜가 지난 할일은 그대로)
-   - 퇴원·휴원 등 재원생이 아니게 됨 → 아직 안 한 할일 삭제 / 완전 삭제 → 기록까지 삭제
+   - 등원 예정일(첫 수업일)·수강반이 바뀌어 일정이 달라지면 → 아직 안 한 할일을 모두 새 날짜로 옮김
+   - 첫 등원 전에 등원 예정이 없어짐(수강반 삭제·퇴원 등) 또는 학생 완전 삭제 → 할일 모두 삭제
+     (등원 예정이 없어진 경우 반을 다시 정하면 새로 만듦) · 첫 등원 뒤 퇴원·휴원 → 아직 안 한 할일만 삭제
    - 직접 지운 할일은 다시 만들지 않음
    ========================================================= */
 const NewStu = {
@@ -562,7 +564,7 @@ const NewStu = {
   rec(sid) {
     const m = Store.get('meta', this.mid(sid));
     const z = () => ({ book: '', first: '', cns: '' });
-    return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, createdAt: new Date().toISOString() }, m || {},
+    return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, first: '', key: '', createdAt: new Date().toISOString() }, m || {},
       { made: Object.assign({ book: false, first: false, cns: false }, (m && m.made) || {}), dates: Object.assign(z(), (m && m.dates) || {}),
         done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false }, (m && m.skip) || {}) });
   },
@@ -580,14 +582,14 @@ const NewStu = {
   isOff(d, hol) { const w = dowOf(d); return w === 0 || w === 6 || Holidays.has(d, hol); },
   // d 다음날부터 처음 오는 평일 (주말·공휴일 건너뜀)
   nextWork(d, hol) { for (let i = 1; i <= 60; i++) { const x = addDaysStr(d, i); if (!this.isOff(x, hol)) return x; } return addDaysStr(d, 1); },
-  // 학생의 일정 { c(첫 수업 반), first(첫 수업일), book, firstMsg, cns } (수강반이 없으면 null)
+  // 학생의 일정 { c(첫 수업 반), first(첫 수업일), bookRaw(N일 전), book(지났으면 오늘), firstMsg, cns } (수강반이 없으면 null)
   calc(s, bookDays, hol, today) {
     const jd = Students.joinDateOf(s);
     if (!isYmd(jd) || typeof Makeups === 'undefined') return null;
     const fd = Students.firstDay(s.id, jd, hol);
     if (!fd) return null;
-    let book = '';
-    if (bookDays != null && fd.date > today) { const b = addDaysStr(fd.date, -Math.max(0, +bookDays || 0)); book = b < today ? today : b; }
+    const bookRaw = bookDays != null ? addDaysStr(fd.date, -Math.max(0, +bookDays || 0)) : '';
+    const book = bookRaw && bookRaw < today ? today : bookRaw;
     // 주당 수업 요일 수 (첫 수업일부터 1주일)
     const per = new Set();
     for (let i = 0; i < 7; i++) { const d = addDaysStr(fd.date, i); if (Makeups.classesFor(s.id, d, true).length) per.add(dowOf(d)); }
@@ -598,10 +600,12 @@ const NewStu = {
       if (Holidays.has(d, hol)) continue;
       if (Makeups.classesFor(s.id, d, true).length) { cnt++; last = d; }
     }
-    const min = addDaysStr(fd.date, 13);              // 다음 평일로 넘기므로 최소 14일 뒤
-    return { c: fd.c, first: fd.date, book, firstMsg: this.nextWork(fd.date, hol), cns: this.nextWork(last > min ? last : min, hol) };
+    return { c: fd.c, first: fd.date, bookRaw, book, firstMsg: this.nextWork(fd.date, hol), cns: this.nextWork(last, hol) };   // 마지막(2주치) 수업 다음날
   },
-  textOf(k, c, s) { return `${c ? c.name + ' ' : ''}${s.name} ${this.TODO_TXT[k]}`; },
+  textOf(k, c, s, first) {
+    const d = k === 'book' && isYmd(first) ? parseYmd(first) : null;
+    return `${c ? c.name + ' ' : ''}${s.name} ${this.TODO_TXT[k]}${d ? ` (${d.getMonth() + 1}/${d.getDate()} 등원예정)` : ''}`;
+  },
 
   /* ---------- 할일 만들기 · 옮기기 · 정리 (Makeups.retSync에서 부름) ---------- */
   sync() {
@@ -610,44 +614,44 @@ const NewStu = {
     let add = 0, chg = 0;
     Store.where('meta', m => m.kind === 'nw').forEach(m0 => {
       const sid = m0.studentId, s = Store.get('students', sid);
-      if (!s) {                                                   // 완전 삭제
-        this.KEYS.forEach(k => { const t = Store.get('todos', this.tid(sid, k)); if (t && !t.done) { Store.del('todos', t.id); chg++; } });
-        Store.del('meta', m0.id);
-        return;
-      }
+      const delAll = (undoneOnly) => this.KEYS.forEach(k => { const t = Store.get('todos', this.tid(sid, k)); if (t && !(undoneOnly && t.done)) { Store.del('todos', t.id); chg++; } });
+      if (!s) { delAll(false); Store.del('meta', m0.id); return; }   // 완전 삭제 → 할일 모두 삭제
       const m = this.rec(sid), before = JSON.stringify(m);
       // 할일 목록에서 체크한 완료를 기록에도 남김 (할일을 나중에 지워도 완료가 유지되게)
       this.KEYS.forEach(k => { const t = Store.get('todos', this.tid(sid, k)); if (t && !!t.done !== !!m.done[k]) m.done[k] = t.done ? (t.doneAt || iso) : ''; });
       if (m.plan) {
         const live = (s.status || 'active') === 'active';
         const p = live ? this.calc(s, m.bookDays, hol, today) : null;
-        this.KEYS.forEach(k => {
-          const id = this.tid(sid, k), t = Store.get('todos', id);
-          if (!p) {                                               // 퇴원·휴원 · 수강반 없음 → 아직 안 한 할일 삭제
-            if (t && !t.done) { Store.del('todos', id); chg++; }
-            if (live && m.made[k] && !t) m.made[k] = false;          // 수강반이 다시 정해지면 새로 만듦
-            if (live && t && !t.done) m.made[k] = false;
-            return;
-          }
-          const want = k === 'book' ? p.book : k === 'first' ? p.firstMsg : p.cns, text = this.textOf(k, p.c, s);
-          if (!m.made[k]) {
-            if (!want || m.done[k] || m.skip[k]) return;
-            if (!t) {
-              Store.put('todos', Object.assign({ id, lessonId: '', classId: '', date: want, text, done: false, createdAt: iso,
-                order: TodoX.maxOrder(want) + 1, doneAt: '', remindDone: false, nwKey: sid, nwStep: k }, TodoX.detailVals({ importance: 3 })));
-              add++;
+        if (!p) {
+          if (!isYmd(m.first) || m.first > today) {                // 첫 등원 전에 등원 예정이 없어짐 → 할일 모두 삭제, 처음 상태로
+            delAll(false);
+            const z = () => ({ book: '', first: '', cns: '' });
+            Object.assign(m, { made: { book: false, first: false, cns: false }, dates: z(), done: z(), first: '', key: '' });
+          } else delAll(true);                                    // 다니다가 퇴원·휴원 → 아직 안 한 할일만 삭제
+        } else {
+          const key = [p.first, p.bookRaw, p.firstMsg, p.cns].join('|');
+          const changed = !!m.key && m.key !== key;              // 등원 예정일·수강반이 바뀌어 일정이 달라짐
+          this.KEYS.forEach(k => {
+            const id = this.tid(sid, k), t = Store.get('todos', id);
+            const want = k === 'book' ? p.book : k === 'first' ? p.firstMsg : p.cns, text = this.textOf(k, p.c, s, p.first);
+            if (!m.made[k]) {
+              if (!want || m.done[k] || m.skip[k]) return;
+              if (!t) {
+                Store.put('todos', Object.assign({ id, lessonId: '', classId: '', date: want, text, done: false, createdAt: iso,
+                  order: TodoX.maxOrder(want) + 1, doneAt: '', remindDone: false, nwKey: sid, nwStep: k }, TodoX.detailVals({ importance: 3 })));
+                add++;
+              }
+              m.made[k] = true; m.dates[k] = want;
+              return;
             }
-            m.made[k] = true; m.dates[k] = want;
-            return;
-          }
-          if (!t || t.done || !want) return;                      // 직접 지운 할일 · 완료 · 더는 날짜가 없음
-          const moved = t.date !== m.dates[k];                    // 직접 날짜를 바꾼 할일
-          const passed = isYmd(m.dates[k]) && m.dates[k] < today; // 날짜가 지난 할일
-          if (!moved && !passed && t.date !== want) {
-            Store.put('todos', Object.assign({}, t, { date: want, text, order: TodoX.maxOrder(want) + 1, remindDone: false }));
-            m.dates[k] = want; chg++;
-          } else if (t.text !== text) { Store.put('todos', Object.assign({}, t, { text })); chg++; }
-        });
+            if (!t || t.done) return;                             // 직접 지운 할일 · 완료한 할일
+            if (changed && want && t.date !== want) {             // 일정이 바뀜 → 새 날짜로 (직접 옮긴 할일도 함께)
+              Store.put('todos', Object.assign({}, t, { date: want, text, order: TodoX.maxOrder(want) + 1, remindDone: false }));
+              m.dates[k] = want; chg++;
+            } else if (t.text !== text) { Store.put('todos', Object.assign({}, t, { text })); chg++; }
+          });
+          m.first = p.first; m.key = key;
+        }
       }
       if (JSON.stringify(m) !== before) Store.put('meta', m);
     });
@@ -659,37 +663,51 @@ const NewStu = {
   ask(sid) {
     const s = Store.get('students', sid);
     if (!s) return;
-    const today = todayStr(), hol = Holidays.map(), cfg = this.cfg();
+    const today = todayStr(), hol = Holidays.map(), cfg = this.cfg(), n0 = +cfg.bookDays || 0;
     const p0 = this.calc(s, null, hol, today);
     const started = p0 && p0.first <= today;
     const bd = (v) => { const p = this.calc(s, v, hol, today); return p && p.book ? fmtDate(p.book) : '—'; };
     const row = (lb, v) => `<div class="nw-ask-r"><span class="soft">${lb}</span><b>${v}</b></div>`;
+    const nIn = `첫 수업 <input type="number" data-nwn min="0" max="30" value="${n0}" style="width:64px"> 일 전`;
     let body = `<p class="confirm-msg" style="margin-top:0">${esc(s.name)} 학생의 신규생 문자 일정을 할일에 등록할까요?</p>`;
     if (!p0) body += `<div class="small soft">수강반이 없어 날짜를 아직 정할 수 없습니다. 수강반을 정하면 할일이 만들어집니다.</div>
-      <div class="nw-ask-r" style="margin-top:8px"><span class="soft">교재 안내</span><span>첫 수업 <input type="number" data-nwn min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전</span></div>`;
+      <div class="nw-ask-r" style="margin-top:8px"><span class="soft">교재 안내</span><span>${nIn}</span></div>`;
     else {
       body += row('첫 수업', `${fmtDate(p0.first)}${p0.c ? ' · ' + esc(p0.c.name) : ''}`);
-      body += started ? row('교재 안내', '<span class="soft">수업이 이미 시작되어 생략</span>')
-        : `<div class="nw-ask-r"><span class="soft">교재 안내</span><span>첫 수업 <input type="number" data-nwn min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전 → <b data-nwbd>${bd(+cfg.bookDays || 0)}</b></span></div>`;
+      body += started
+        ? `<div class="nw-ask-r"><span class="soft">교재 안내</span><label class="chk"><input type="checkbox" data-nwbk checked> 할일 추가 → <b>${fmtDate(today)}</b></label></div>
+           <div class="small muted" style="margin:2px 0 4px">수업이 이미 시작되었습니다. 교재 안내가 필요 없으면 체크를 푸세요.</div>`
+        : `<div class="nw-ask-r"><span class="soft">교재 안내</span><span>${nIn} → <b data-nwbd>${bd(n0)}</b></span></div>`;
       body += row('첫 문자', fmtDate(p0.firstMsg)) + row('첫 상담 안내', fmtDate(p0.cns));
     }
     Modal.open({
       title: '신규생 일정 등록', size: 'sm', autofocus: false, body,
       onMount: (b) => { const i = $('[data-nwn]', b), o = $('[data-nwbd]', b); if (i && o) i.addEventListener('input', () => { o.textContent = bd(Math.max(0, +i.value || 0)); }); },
       buttons: [{ text: '안 함' }, { text: '등록', cls: 'primary', primary: true, onClick: (mm) => {
-        const i = $('[data-nwn]', mm.body);
-        const n = i ? Math.max(0, Math.min(30, Math.round(+i.value || 0))) : null;
+        const i = $('[data-nwn]', mm.body), bk = $('[data-nwbk]', mm.body);
+        const n = i ? Math.max(0, Math.min(30, Math.round(+i.value || 0))) : n0;
+        const useBook = bk ? bk.checked : true;
         const m = this.rec(sid);
         m.plan = true;
-        m.bookDays = started ? null : n;
-        if (started && !m.done.book) m.skip.book = true;
+        m.bookDays = useBook ? n : null;
+        m.skip.book = !useBook && !m.done.book;
         Store.put('meta', m);
-        if (n != null) this.setCfg({ bookDays: n });            // 다음 등록 때 기본값
+        if (i) this.setCfg({ bookDays: n });                    // 다음 등록 때 기본값
         this.sync();
         toast('신규생 일정을 등록했습니다');
         App.render();
       } }],
     });
+  },
+  // 학생·수강반·반·공휴일이 바뀌면 잠시 뒤 한 번 맞춘다 (연달아 바뀌는 동안은 기다림)
+  soon() {
+    clearTimeout(this._sT);
+    this._sT = setTimeout(() => {
+      try {
+        if (!this.sync()) return;
+        if (App.isEditingMain && App.isEditingMain()) App._needRender = true; else App.render();
+      } catch (e) { console.warn('[mg77] 신규생 할일 처리 실패', e); }
+    }, 800);
   },
 
   /* ---------- 완료 체크 ---------- */
@@ -888,6 +906,16 @@ const NewStu = {
     };
   },
 };
+
+// 등원 예정(등록일·수강반)·학생·반·공휴일이 바뀌면 신규생 할일을 맞춘다 (books.js와 같은 방식)
+['put', 'del'].forEach(fn => {
+  const f0 = Store[fn];
+  Store[fn] = function (t, ...a) {
+    const r = f0.call(this, t, ...a);
+    if (t === 'enrollments' || t === 'students' || t === 'classes' || t === 'events') NewStu.soon();
+    return r;
+  };
+});
 
 /* ---------- 문자 탭 전용 스타일 (sx7- 접두사) ---------- */
 (function () {
