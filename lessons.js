@@ -1750,6 +1750,15 @@ const ProgressSum = {
     else this.anchor = ymd(new Date(+a.slice(0, 4), +a.slice(5, 7) - 1 + n, 1));
   },
 
+  // 기간 이동 줄 — 다른 화면과 같은 공통 모양 (월: NavBar.month / 주: 같은 칸 구성으로 [‹][11/16(월) ~ 11/22(일) ▾][›][이번 주])
+  navHtml(r, isNow) {
+    if (this.mode === 'month') return NavBar.month(r.from.slice(0, 7), { prev: 'data-psmv="-1"', next: 'data-psmv="1"', now: 'data-psnow', pick: 'data-pspick' });
+    return `<div class="dnav dnav-w">
+      <button type="button" class="dnav-arr" data-psmv="-1" title="이전 주" aria-label="이전 주">‹</button>
+      <button type="button" class="dnav-ttl" data-pspick title="${esc(r.from.slice(0, 4))}년 · 날짜를 고르면 그 주로 이동">${fmtMD(r.from)} ~ ${fmtMD(r.to)}<i>▾</i></button>
+      <button type="button" class="dnav-arr" data-psmv="1" title="다음 주" aria-label="다음 주">›</button>
+      <button type="button" class="dnav-now${isNow ? ' is-cur' : ''}" data-psnow ${isNow ? 'disabled' : ''} title="이번 주로">이번 주</button></div>`;
+  },
   // 수업일지 한 편의 진도 → { gen: 비내신 문장, free: 그 외 진도 글, np: { 학교학년: 문장 }, info: { 학교학년: 정렬 키 } }
   progressOf(l) {
     const free = stripZws(l.progress || '').trim();
@@ -1800,10 +1809,7 @@ const ProgressSum = {
     let h = `<div class="page-narrow">${PL.head('psum')}
       <div class="toolbar ps-bar">
         <span class="ps-seg"><button type="button" data-psmode="month" class="${this.mode === 'month' ? 'on' : ''}">월</button><button type="button" data-psmode="week" class="${this.mode === 'week' ? 'on' : ''}">주</button></span>
-        <button type="button" class="btn sm ghost" data-psmv="-1" title="이전 ${this.mode === 'week' ? '주' : '달'}">◀</button>
-        <b class="ps-rng">${esc(this.rangeLabel(r))}</b>
-        <button type="button" class="btn sm ghost" data-psmv="1" title="다음 ${this.mode === 'week' ? '주' : '달'}">▶</button>
-        ${isNow ? '' : `<button type="button" class="btn sm" data-psnow>이번 ${this.mode === 'week' ? '주' : '달'}</button>`}
+        ${this.navHtml(r, isNow)}
         <span style="display:inline-flex;align-items:center">${Classes.selDot(this.classId ? Store.get('classes', this.classId) : null)}<select data-pscls style="min-width:160px"><option value="">전체 반 (${all.length})</option>${all.map(o => `<option value="${o.c.id}" ${o.c.id === this.classId ? 'selected' : ''}>${esc(o.c.name)}${o.c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>
         <span class="grow" style="flex:1"></span>
         <button type="button" class="btn sm cls-pdfbtn" data-pspdf title="화면에 보이는 기간·반의 진도 요약을 A4 가로로 인쇄 · PDF 저장" ${list.length ? '' : 'disabled'}>PDF 저장</button>
@@ -1829,6 +1835,12 @@ const ProgressSum = {
       const mv = e.target.closest('[data-psmv]');
       if (mv) { this.move(+mv.dataset.psmv); App.render(); return; }
       if (e.target.closest('[data-psnow]')) { this.anchor = ''; App.render(); return; }
+      if (e.target.closest('[data-pspick]')) {      // 월: 년·월 고르기 / 주: 날짜를 고르면 그 날이 든 주
+        const a = this.anchor || todayStr();
+        if (this.mode === 'month') NavBar.pickMonth(a.slice(0, 7)).then(v => { if (v && v !== a.slice(0, 7)) { this.anchor = v + '-01'; App.render(); } });
+        else DatePicker.open(a, '주 고르기 (그 날이 든 주)').then(d => { if (d) { this.anchor = d; App.render(); } });
+        return;
+      }
       if (e.target.closest('[data-pspdf]')) { this.pdf(); return; }
       const tr = e.target.closest('tr[data-psid]');
       if (tr) {
@@ -1901,11 +1913,11 @@ const ProgressSum = {
   const st = document.createElement('style');
   st.textContent = `
 .ps-bar { align-items: center; }
-.ps-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
-.ps-seg button { border: 0; background: var(--surface); color: var(--ink-soft); padding: 5px 12px; font-size: 13px; cursor: pointer; }
-.ps-seg button + button { border-left: 1px solid var(--line-strong); }
-.ps-seg button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
-.ps-rng { font-size: 15px; min-width: 120px; text-align: center; }
+.ps-seg { display: inline-flex; flex: none; height: 36px; padding: 3px; gap: 3px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--tint-strong); box-shadow: 0 1px 2px rgba(30, 50, 67, .06); }
+.ps-seg button { border: 0; min-width: 58px; padding: 0 16px; border-radius: 7px; background: transparent; color: var(--ink-soft); font-family: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; transition: background .12s, color .12s; }
+.ps-seg button:hover:not(.on) { color: var(--accent-ink); background: rgba(255, 255, 255, .6); }
+.ps-seg button.on { background: var(--surface); color: var(--accent-ink); font-weight: 800; box-shadow: 0 1px 3px rgba(30, 70, 105, .18); }
+.dnav-w .dnav-ttl { width: 196px; }
 .ps-cls { margin-bottom: 18px; }
 .ps-head { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; }
 .ps-head .grow { flex: 1; }
