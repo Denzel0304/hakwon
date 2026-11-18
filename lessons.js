@@ -2480,7 +2480,8 @@ const Makeups = {
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
-    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0);   // 보강 예정 할일 · 첫 등원 할일
+    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0)
+      + (typeof NewStu !== 'undefined' ? NewStu.sync() : 0);   // 보강 예정 할일 · 첫 등원 할일 · 신규생 할일(sms.js)
     Object.keys(groups).forEach(k => {
       const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
       const meta = Store.get('meta', mid);

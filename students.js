@@ -438,6 +438,7 @@ const Students = {
           this.readClassPicks(b).forEach(p => Classes.enrollDays(s.id, p.cid, joinDate, p.days, true));
           toast(s.name + ' 학생을 등록했습니다');
           App.render();
+          if (typeof NewStu !== 'undefined') setTimeout(() => NewStu.ask(s.id), 0);   // 신규생 문자 일정 등록 확인 (sms.js)
         } },
       ],
     });

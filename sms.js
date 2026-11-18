@@ -5,9 +5,10 @@
    - 템플릿(meta): id SX7T_…, { kind:'sx7_tpl', name, text, createdAt }
    - 발송 기록: Supabase mg77_sx7_log (mg77_sx7_add / mg77_sx7_list / mg77_sx7_del)
    - 발송 후 성공 여부는 추적하지 않음 (발송 단계에서 거절된 문자만 '실패'로 표시)
+   - 신규생 탭: 아래 NewStu 참고
    ========================================================= */
 const SmsPage = {
-  tab: 'send',            // 'send' | 'log'
+  tab: 'send',            // 'send' | 'new'(신규생) | 'log'
   cls: '',                // 반 필터 ('' = 전체 재원생)
   q: '',                  // 이름 검색
   sel: new Set(),         // 선택한 학생 ID
@@ -66,10 +67,12 @@ const SmsPage = {
   /* ---------- 화면 ---------- */
   render(main) {
     let h = `<div class="page-head"><h1>SMS</h1><span class="sub">내 폰으로 발송 (SMS Gateway)</span></div>
-      <div class="tabs">${[['send', '보내기'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
+      <div class="tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
-    h += this.tab === 'log' ? this.logHtml() : this.sendHtml();
+    if (this.tab === 'new') NewStu.sync();          // 신규생: 등록일·수강반이 바뀐 것을 할일에 먼저 반영
+    h += this.tab === 'log' ? this.logHtml() : this.tab === 'new' ? NewStu.html() : this.sendHtml();
     main.innerHTML = h;
+    if (this.tab === 'new') { NewStu.bind(main); return; }
     this.bind(main);
     if (this.tab === 'log') this.paintDel(main);   // 전체 선택의 일부 선택(−) 표시
     if (this.tab === 'log' && !this.log && !this.logBusy && !this.logTried) this.loadLog(false);
@@ -246,7 +249,8 @@ const SmsPage = {
     return (d && (d.message || r)) || '알 수 없는 오류';
   },
 
-  async send(items) {
+  // opts: { stay: 발송 뒤 발송 기록 탭으로 옮기지 않음, onSent(rows): 접수 결과로 할 일 (신규생 완료 처리) }
+  async send(items, opts) {
     if (this.sending) return;
     const key = Auth.key();
     if (!key) { toast('로그인이 필요합니다'); return; }
@@ -295,7 +299,9 @@ const SmsPage = {
     if (stopMsg) msg += `\n\n중단: ${stopMsg}`;
     if (logFail) msg += '\n\n발송 기록 저장에 실패했습니다. (문자 발송 자체와는 별개입니다)';
     if (rows.length) msg += '\n\n접수된 문자는 폰에서 차례로 발송됩니다. 보낸 내용은 발송 기록에서 확인하세요.';
-    if (rows.length) { this.tab = 'log'; this.log = null; this.logTried = false; this.open = new Set([batch]); }
+    if (rows.length && opts && opts.onSent) { try { opts.onSent(rows); } catch (e) { console.warn('[mg77] 발송 후 처리 실패', e); } }
+    if (rows.length && !(opts && opts.stay)) { this.tab = 'log'; this.log = null; this.logTried = false; this.open = new Set([batch]); }
+    else if (rows.length) { this.log = null; this.logTried = false; }   // 발송 기록 탭을 열면 새로 불러오도록
     if (App.page === 'sms') App.render();
     await alertDlg('문자 발송', msg);
   },
@@ -520,6 +526,369 @@ const SmsPage = {
   },
 };
 
+/* =========================================================
+   신규생 탭 (SMS 페이지) — 반별로 교재 안내 · 첫 문자 · 첫 상담 안내 처리 현황을 보고 완료 체크 · 문자 발송
+   - 문자는 무조건 부모님 번호로 보낸다 (교재 안내는 카톡으로 하므로 완료 체크만)
+   - 학생 기록 meta NW_학생ID { kind:'nw', studentId, plan(할일 일정 등록), bookDays(교재 안내 N일 전, null = 생략),
+                                made:{ book, first, cns }(할일을 만든 적 있음), dates:{ … }(만들 때·옮길 때 정한 날짜),
+                                done:{ … }(완료 시각 ISO, '' = 미완료), skip:{ book }(수업이 이미 시작되어 교재 안내 생략), createdAt }
+   - 설정 meta NWCFG { kind:'nw_cfg', tplFirst, tplCns(보내기 탭 템플릿 id), bookDays(확인창 기본 N일) }
+   - 할일 id TDN_학생ID_book / _first / _cns (nwKey 학생ID, nwStep 단계) · 중요도 높음 · "[반 이름] 홍길동 교재 안내 문자"
+     · 교재 안내: 첫 수업일 N일 전 (이미 지났으면 오늘) — 등록할 때 첫 수업이 오늘이거나 지났으면 생략
+     · 첫 문자: 첫 수업 다음날 (주말·공휴일이면 다음 평일 → 금요일 첫 수업은 월요일)
+     · 첫 상담 안내: (주당 수업 요일 수 × 2)회 수업을 마친 다음날, 단 첫 수업일 + 14일 이후 (주말·공휴일이면 다음 평일, 공휴일은 횟수에서 뺌)
+   - 완료 상태: 할일이 있으면 할일의 완료를 따르고(할일 목록에서 체크해도 반영), 없으면 기록(done)을 따른다.
+     탭에서 체크하면 할일과 기록을 함께 바꾼다.
+   - 등록일·수강반이 바뀌면 아직 안 한 할일을 새 날짜로 옮김 (직접 날짜를 바꾼 할일, 날짜가 지난 할일은 그대로)
+   - 퇴원·휴원 등 재원생이 아니게 됨 → 아직 안 한 할일 삭제 / 완전 삭제 → 기록까지 삭제
+   - 직접 지운 할일은 다시 만들지 않음
+   ========================================================= */
+const NewStu = {
+  KEYS: ['book', 'first', 'cns'],
+  LABEL: { book: '교재 안내', first: '첫 문자', cns: '첫 상담 안내' },
+  TODO_TXT: { book: '교재 안내 문자', first: '첫 수업 후 문자', cns: '첫 상담 안내 문자' },
+  CFG_ID: 'NWCFG',
+  COUNT_DAYS: 180,          // 상담 안내 날짜를 찾는 범위 (첫 수업 뒤 며칠까지)
+  cls: '',                  // 반 필터 ('' = 전체)
+  q: '',                    // 이름 검색
+  todo: true,               // 미완료만 보기
+  sel: new Set(),           // 선택한 학생 ID
+
+  /* ---------- 기록 ---------- */
+  mid(sid) { return 'NW_' + sid; },
+  tid(sid, k) { return 'TDN_' + sid + '_' + k; },
+  cfg() { return Object.assign({ tplFirst: '', tplCns: '', bookDays: 3 }, Store.get('meta', this.CFG_ID) || {}); },
+  setCfg(o) { Store.put('meta', Object.assign({ id: this.CFG_ID, kind: 'nw_cfg', createdAt: new Date().toISOString() }, Store.get('meta', this.CFG_ID) || {}, o)); },
+  rec(sid) {
+    const m = Store.get('meta', this.mid(sid));
+    const z = () => ({ book: '', first: '', cns: '' });
+    return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, createdAt: new Date().toISOString() }, m || {},
+      { made: Object.assign({ book: false, first: false, cns: false }, (m && m.made) || {}), dates: Object.assign(z(), (m && m.dates) || {}),
+        done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false }, (m && m.skip) || {}) });
+  },
+  // 단계 상태 { done, at(완료 시각), date(할일 날짜), skip, todo }
+  state(sid, k) {
+    const m = Store.get('meta', this.mid(sid)), t = Store.get('todos', this.tid(sid, k));
+    const skip = !!(m && m.skip && m.skip[k]);
+    if (t) return { done: !!t.done, at: t.doneAt || '', date: t.date || '', skip: false, todo: t };
+    const at = (m && m.done && m.done[k]) || '';
+    return { done: !!at || skip, at, date: '', skip: skip && !at, todo: null };
+  },
+  allDone(sid) { return this.KEYS.every(k => this.state(sid, k).done); },
+
+  /* ---------- 날짜 계산 ---------- */
+  isOff(d, hol) { const w = dowOf(d); return w === 0 || w === 6 || Holidays.has(d, hol); },
+  // d 다음날부터 처음 오는 평일 (주말·공휴일 건너뜀)
+  nextWork(d, hol) { for (let i = 1; i <= 60; i++) { const x = addDaysStr(d, i); if (!this.isOff(x, hol)) return x; } return addDaysStr(d, 1); },
+  // 학생의 일정 { c(첫 수업 반), first(첫 수업일), book, firstMsg, cns } (수강반이 없으면 null)
+  calc(s, bookDays, hol, today) {
+    const jd = Students.joinDateOf(s);
+    if (!isYmd(jd) || typeof Makeups === 'undefined') return null;
+    const fd = Students.firstDay(s.id, jd, hol);
+    if (!fd) return null;
+    let book = '';
+    if (bookDays != null && fd.date > today) { const b = addDaysStr(fd.date, -Math.max(0, +bookDays || 0)); book = b < today ? today : b; }
+    // 주당 수업 요일 수 (첫 수업일부터 1주일)
+    const per = new Set();
+    for (let i = 0; i < 7; i++) { const d = addDaysStr(fd.date, i); if (Makeups.classesFor(s.id, d, true).length) per.add(dowOf(d)); }
+    const need = Math.max(1, per.size) * 2;
+    let cnt = 0, last = fd.date;
+    for (let i = 0; i <= this.COUNT_DAYS && cnt < need; i++) {
+      const d = addDaysStr(fd.date, i);
+      if (Holidays.has(d, hol)) continue;
+      if (Makeups.classesFor(s.id, d, true).length) { cnt++; last = d; }
+    }
+    const min = addDaysStr(fd.date, 13);              // 다음 평일로 넘기므로 최소 14일 뒤
+    return { c: fd.c, first: fd.date, book, firstMsg: this.nextWork(fd.date, hol), cns: this.nextWork(last > min ? last : min, hol) };
+  },
+  textOf(k, c, s) { return `${c ? c.name + ' ' : ''}${s.name} ${this.TODO_TXT[k]}`; },
+
+  /* ---------- 할일 만들기 · 옮기기 · 정리 (Makeups.retSync에서 부름) ---------- */
+  sync() {
+    if (!Store.firstPullDone || !Auth.key()) return 0;
+    const today = todayStr(), hol = Holidays.map(), iso = new Date().toISOString();
+    let add = 0, chg = 0;
+    Store.where('meta', m => m.kind === 'nw').forEach(m0 => {
+      const sid = m0.studentId, s = Store.get('students', sid);
+      if (!s) {                                                   // 완전 삭제
+        this.KEYS.forEach(k => { const t = Store.get('todos', this.tid(sid, k)); if (t && !t.done) { Store.del('todos', t.id); chg++; } });
+        Store.del('meta', m0.id);
+        return;
+      }
+      const m = this.rec(sid), before = JSON.stringify(m);
+      // 할일 목록에서 체크한 완료를 기록에도 남김 (할일을 나중에 지워도 완료가 유지되게)
+      this.KEYS.forEach(k => { const t = Store.get('todos', this.tid(sid, k)); if (t && !!t.done !== !!m.done[k]) m.done[k] = t.done ? (t.doneAt || iso) : ''; });
+      if (m.plan) {
+        const live = (s.status || 'active') === 'active';
+        const p = live ? this.calc(s, m.bookDays, hol, today) : null;
+        this.KEYS.forEach(k => {
+          const id = this.tid(sid, k), t = Store.get('todos', id);
+          if (!p) {                                               // 퇴원·휴원 · 수강반 없음 → 아직 안 한 할일 삭제
+            if (t && !t.done) { Store.del('todos', id); chg++; }
+            if (live && m.made[k] && !t) m.made[k] = false;          // 수강반이 다시 정해지면 새로 만듦
+            if (live && t && !t.done) m.made[k] = false;
+            return;
+          }
+          const want = k === 'book' ? p.book : k === 'first' ? p.firstMsg : p.cns, text = this.textOf(k, p.c, s);
+          if (!m.made[k]) {
+            if (!want || m.done[k] || m.skip[k]) return;
+            if (!t) {
+              Store.put('todos', Object.assign({ id, lessonId: '', classId: '', date: want, text, done: false, createdAt: iso,
+                order: TodoX.maxOrder(want) + 1, doneAt: '', remindDone: false, nwKey: sid, nwStep: k }, TodoX.detailVals({ importance: 3 })));
+              add++;
+            }
+            m.made[k] = true; m.dates[k] = want;
+            return;
+          }
+          if (!t || t.done || !want) return;                      // 직접 지운 할일 · 완료 · 더는 날짜가 없음
+          const moved = t.date !== m.dates[k];                    // 직접 날짜를 바꾼 할일
+          const passed = isYmd(m.dates[k]) && m.dates[k] < today; // 날짜가 지난 할일
+          if (!moved && !passed && t.date !== want) {
+            Store.put('todos', Object.assign({}, t, { date: want, text, order: TodoX.maxOrder(want) + 1, remindDone: false }));
+            m.dates[k] = want; chg++;
+          } else if (t.text !== text) { Store.put('todos', Object.assign({}, t, { text })); chg++; }
+        });
+      }
+      if (JSON.stringify(m) !== before) Store.put('meta', m);
+    });
+    if (add) toast(`신규생 할일 ${add}개를 추가했습니다`);
+    return add + chg;
+  },
+
+  /* ---------- 신규 등록 직후 확인창 (Students.openNew에서 부름) ---------- */
+  ask(sid) {
+    const s = Store.get('students', sid);
+    if (!s) return;
+    const today = todayStr(), hol = Holidays.map(), cfg = this.cfg();
+    const p0 = this.calc(s, null, hol, today);
+    const started = p0 && p0.first <= today;
+    const bd = (v) => { const p = this.calc(s, v, hol, today); return p && p.book ? fmtDate(p.book) : '—'; };
+    const row = (lb, v) => `<div class="nw-ask-r"><span class="soft">${lb}</span><b>${v}</b></div>`;
+    let body = `<p class="confirm-msg" style="margin-top:0">${esc(s.name)} 학생의 신규생 문자 일정을 할일에 등록할까요?</p>`;
+    if (!p0) body += `<div class="small soft">수강반이 없어 날짜를 아직 정할 수 없습니다. 수강반을 정하면 할일이 만들어집니다.</div>
+      <div class="nw-ask-r" style="margin-top:8px"><span class="soft">교재 안내</span><span>첫 수업 <input type="number" data-nwn min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전</span></div>`;
+    else {
+      body += row('첫 수업', `${fmtDate(p0.first)}${p0.c ? ' · ' + esc(p0.c.name) : ''}`);
+      body += started ? row('교재 안내', '<span class="soft">수업이 이미 시작되어 생략</span>')
+        : `<div class="nw-ask-r"><span class="soft">교재 안내</span><span>첫 수업 <input type="number" data-nwn min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전 → <b data-nwbd>${bd(+cfg.bookDays || 0)}</b></span></div>`;
+      body += row('첫 문자', fmtDate(p0.firstMsg)) + row('첫 상담 안내', fmtDate(p0.cns));
+    }
+    Modal.open({
+      title: '신규생 일정 등록', size: 'sm', autofocus: false, body,
+      onMount: (b) => { const i = $('[data-nwn]', b), o = $('[data-nwbd]', b); if (i && o) i.addEventListener('input', () => { o.textContent = bd(Math.max(0, +i.value || 0)); }); },
+      buttons: [{ text: '안 함' }, { text: '등록', cls: 'primary', primary: true, onClick: (mm) => {
+        const i = $('[data-nwn]', mm.body);
+        const n = i ? Math.max(0, Math.min(30, Math.round(+i.value || 0))) : null;
+        const m = this.rec(sid);
+        m.plan = true;
+        m.bookDays = started ? null : n;
+        if (started && !m.done.book) m.skip.book = true;
+        Store.put('meta', m);
+        if (n != null) this.setCfg({ bookDays: n });            // 다음 등록 때 기본값
+        this.sync();
+        toast('신규생 일정을 등록했습니다');
+        App.render();
+      } }],
+    });
+  },
+
+  /* ---------- 완료 체크 ---------- */
+  setDone(sid, k, v) {
+    const iso = v ? new Date().toISOString() : '';
+    const t = Store.get('todos', this.tid(sid, k));
+    if (t && !!t.done !== v) Store.put('todos', Object.assign({}, t, { done: v, doneAt: iso }));
+    const m = this.rec(sid);
+    m.done[k] = iso;
+    if (!v) m.skip[k] = false;
+    Store.put('meta', m);
+  },
+
+  /* ---------- 화면 ---------- */
+  // 반별 학생 (재원생 · 지금 다니거나 다닐 예정)
+  groups() {
+    const today = todayStr(), q = this.q.trim();
+    return SmsPage.activeClasses().filter(c => !this.cls || c.id === this.cls).map(c => {
+      const seen = new Set();
+      const list = Store.where('enrollments', e => e.classId === c.id && (!e.to || today < e.to))
+        .map(e => Store.get('students', e.studentId)).filter(s => s && (s.status || 'active') === 'active' && (s.name || '').trim() && !seen.has(s.id) && seen.add(s.id))
+        .sort((a, b) => Students.sortFn(a, b));
+      return { c, all: list, list: list.filter(s => (!q || s.name.includes(q)) && (!this.todo || !this.allDone(s.id))) };
+    });
+  },
+  chip(sid, k, today) {
+    const st = this.state(sid, k);
+    const md = (d) => { const x = parseYmd(d); return (x.getMonth() + 1) + '/' + x.getDate(); };
+    let cls, txt;
+    if (st.skip) { cls = 'gray'; txt = '생략'; }
+    else if (st.done) { cls = 'green'; txt = '✓ 완료' + (st.at ? ' ' + md(ymd(new Date(st.at))) : ''); }
+    else if (st.date && st.date < today) { cls = 'red'; txt = '지남 ' + md(st.date); }
+    else if (st.date === today) { cls = 'orange'; txt = '오늘'; }
+    else if (st.date) { cls = 'blue'; txt = md(st.date) + ' 예정'; }
+    else { cls = 'gray'; txt = '미완료'; }
+    const send = (k !== 'book' && !st.done) ? `<button type="button" class="btn sm nw-send" data-nwsend="${sid}|${k}" title="부모님께 ${this.LABEL[k]} 문자 보내기">보내기</button>` : '';
+    return `<button type="button" class="nw-chip ${cls}" data-nwtg="${sid}|${k}" title="눌러서 ${st.done ? '미완료로' : '완료로'}">${txt}</button>${send}`;
+  },
+  html() {
+    const cfg = this.cfg(), tpls = SmsPage.tpls(), today = todayStr();
+    const tsel = (key, v) => `<select data-nwcfg="${key}" style="min-width:140px"><option value="">— 템플릿 선택 —</option>${tpls.map(t => `<option value="${t.id}" ${v === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`;
+    const classes = SmsPage.activeClasses();
+    if (this.cls && !classes.some(c => c.id === this.cls)) this.cls = '';
+    const gs = this.groups();
+    const alive = new Set(); gs.forEach(g => g.all.forEach(s => alive.add(s.id)));
+    [...this.sel].forEach(id => { if (!alive.has(id)) this.sel.delete(id); });
+
+    let h = `<div class="panel nw-cfg">
+        <div class="nw-cfg-r"><span class="soft small">첫 문자 템플릿</span>${tsel('tplFirst', cfg.tplFirst)}
+          <span class="soft small">첫 상담 안내 템플릿</span>${tsel('tplCns', cfg.tplCns)}
+          <span class="soft small">교재 안내 기본</span><span><input type="number" data-nwcfg="bookDays" min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전</span></div>
+        <div class="small muted" style="margin-top:6px">문자는 부모님 번호로만 보냅니다. 템플릿은 보내기 탭에서 만들고 저장하세요. 교재 안내는 완료 체크만 합니다.</div>
+      </div>
+      <div class="toolbar">
+        <div class="sx7-clsbar" style="margin:0">${Classes.selDot(this.cls ? classes.find(c => c.id === this.cls) : null)}<select data-nwcls aria-label="반 선택"><option value="">전체 반</option>${classes.map(c => `<option value="${c.id}" ${this.cls === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <input type="search" data-nwq value="${esc(this.q)}" placeholder="이름 검색" style="width:160px">
+        <label class="chk small"><input type="checkbox" data-nwtodo ${this.todo ? 'checked' : ''}> 미완료만</label>
+      </div>
+      <div id="nw-selbar">${this.selBarHtml()}</div>`;
+    return h + `<div id="nw-body">${this.bodyHtml(gs)}</div>`;
+  },
+  bodyHtml(gs) {
+    const today = todayStr();
+    gs = gs || this.groups();
+    const shown = gs.filter(g => g.list.length);
+    let h = '';
+    if (!shown.length) return h + `<div class="panel"><div class="empty">${gs.some(g => g.all.length) ? (this.todo ? '처리할 학생이 없습니다. (모두 완료)' : '해당하는 학생이 없습니다.') : '재원생이 없습니다.'}</div></div>`;
+    h += shown.map(g => {
+      const n = g.all.length, cnt = (k) => g.all.filter(s => this.state(s.id, k).done).length;
+      const allSel = g.list.every(s => this.sel.has(s.id));
+      return `<div class="panel nw-cls">
+        <div class="nw-ch">${Classes.selDot(g.c)}<b>${esc(g.c.name)}</b> <span class="small soft">${esc(Classes.timeLabel(g.c))}</span>
+          <span class="nw-cnt small">${this.KEYS.map(k => `${this.LABEL[k]} <b class="${cnt(k) === n ? 'ok' : ''}">${cnt(k)}/${n}</b>`).join(' · ')}</span></div>
+        <div class="tbl-wrap"><table class="tbl compact nw-tbl"><thead><tr>
+          <th class="chk-th"><label class="chk-hit"><input type="checkbox" data-nwall="${g.c.id}" ${allSel ? 'checked' : ''} aria-label="반 전체 선택"></label></th>
+          <th>이름</th><th>등록일</th>${this.KEYS.map(k => `<th>${this.LABEL[k]}</th>`).join('')}</tr></thead><tbody>
+          ${g.list.map(s => {
+            const jd = Students.joinDateOf(s);
+            return `<tr><td class="chk-td"><label class="chk-hit"><input type="checkbox" data-nwsel="${s.id}" ${this.sel.has(s.id) ? 'checked' : ''}></label></td>
+              <td class="nowrap"><b>${highlight(s.name, this.q.trim())}</b> <span class="tag">${esc(stTag(s))}</span>${this.parentOk(s) ? '' : ' <span class="badge red" title="부모님 번호가 없거나 휴대폰 번호가 아님">번호 없음</span>'}</td>
+              <td class="nowrap small">${isYmd(jd) ? fmtDate(jd, false) : ''}${isYmd(jd) && jd > today ? ' <span class="badge orange">예정</span>' : ''}</td>
+              ${this.KEYS.map(k => `<td class="nowrap">${this.chip(s.id, k, today)}</td>`).join('')}</tr>`;
+          }).join('')}
+        </tbody></table></div></div>`;
+    }).join('');
+    return h;
+  },
+  selBarHtml() {
+    const n = this.sel.size;
+    if (!n) return '<div class="small muted nw-selbar">학생을 체크하면 여러 명을 한꺼번에 보내거나 완료 처리할 수 있습니다.</div>';
+    return `<div class="nw-selbar on"><b>선택 ${n}명</b>
+      <button class="btn sm primary" data-nwbulk="send|first" ${SmsPage.sending ? 'disabled' : ''}>첫 문자 보내기</button>
+      <button class="btn sm primary" data-nwbulk="send|cns" ${SmsPage.sending ? 'disabled' : ''}>첫 상담 안내 보내기</button>
+      <span class="soft small" style="margin-left:6px">완료 처리</span>
+      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="done|${k}">${this.LABEL[k]}</button>`).join('')}
+      <button class="btn sm ghost" data-nwbulk="clear">선택 해제</button></div>`;
+  },
+  parentOk(s) { return SmsPage.okPhone(SmsPage.digits(s.parentPhone)); },
+
+  /* ---------- 문자 보내기 (미리보기 → 발송 → 자동 완료) ---------- */
+  fillMap(list) {
+    const cmap = SmsPage.classMap();
+    list.forEach(s => { if (!cmap[s.id]) { const up = Students.upcomingClassesOf(s.id); if (up.length) cmap[s.id] = [up[0].c]; } });   // 수업 시작 전 학생은 다닐 반
+    return cmap;
+  },
+  preview(sids, k) {
+    if (SmsPage.sending) return;
+    if (!CFG.GAS_SMS_URL) { toast('문자 발송 주소(GAS_SMS_URL)가 설정되지 않았습니다'); return; }
+    const cfg = this.cfg(), tpl = Store.get('meta', k === 'first' ? cfg.tplFirst : cfg.tplCns);
+    if (!tpl || !String(tpl.text || '').trim()) { toast(`위 설정에서 ${this.LABEL[k]} 템플릿을 고르세요`); return; }
+    const list = sids.map(id => Store.get('students', id)).filter(s => s && (s.status || 'active') === 'active');
+    const done = list.filter(s => this.state(s.id, k).done);
+    const go = list.filter(s => !this.state(s.id, k).done);
+    const cmap = this.fillMap(go), out = [], miss = [];
+    go.forEach(s => {
+      const d = SmsPage.digits(s.parentPhone);
+      if (!d) { miss.push(`${s.name} — 부모님 번호 없음`); return; }
+      if (!SmsPage.okPhone(d)) { miss.push(`${s.name} — 휴대폰 번호 형식 아님`); return; }
+      out.push({ sid: s.id, name: s.name.trim(), role: '부모', phone: d, text: SmsPage.fill(tpl.text, s, cmap) });
+    });
+    const totalParts = out.reduce((n, o) => n + SmsPage.parts(o.text), 0);
+    let body = `<div class="sx7-pv">
+      <p style="margin:0 0 8px"><b>${esc(this.LABEL[k])}</b> · 템플릿 "${esc(tpl.name)}" · 부모님께 <b>${out.length}건</b> 발송 (예상 약 ${totalParts}통)</p>
+      <p class="small soft" style="margin:0 0 6px">발송 접수가 되면 ${esc(this.LABEL[k])}를 자동으로 완료 처리합니다.</p>`;
+    if (done.length) body += `<p class="small soft" style="margin:0 0 6px">이미 완료한 ${done.length}명은 뺐습니다: ${esc(done.map(s => s.name).join(', '))}</p>`;
+    if (out.some(o => SmsPage.parts(o.text) > 1)) body += `<p class="small sx7-warn" style="margin:0 0 6px">긴 문자는 여러 통으로 나뉘어 도착할 수 있습니다.</p>`;
+    if (miss.length) body += `<div class="small" style="margin:8px 0 4px"><b class="sx7-no">제외 ${miss.length}건</b></div><div class="sx7-miss small">${miss.map(esc).join('<br>')}</div>`;
+    if (out.length) body += `<div class="small soft" style="margin:12px 0 4px">미리보기${out.length > 3 ? ' (처음 3건)' : ''}</div>` +
+      out.slice(0, 3).map(o => `<div class="sx7-sample"><div class="small soft">${esc(o.name)} (부모) · ${esc(fmtPhone(o.phone))}</div><div class="pre">${esc(o.text)}</div></div>`).join('');
+    body += '</div>';
+    Modal.open({
+      title: `${this.LABEL[k]} 발송 확인`, size: 'lg', autofocus: false, body,
+      buttons: out.length
+        ? [{ text: '취소' }, { text: `${out.length}건 발송`, cls: 'primary', primary: true, onClick: () => {
+          SmsPage.send(out, { stay: true, onSent: (rows) => {
+            const ok = new Set(rows.filter(r => r.state !== 'failed').map(r => r.sid));
+            ok.forEach(sid => { this.setDone(sid, k, true); this.sel.delete(sid); });
+          } });
+        } }]
+        : [{ text: '닫기', cls: 'primary', primary: true }],
+    });
+  },
+
+  async bulk(act, k) {
+    const sids = [...this.sel];
+    if (!sids.length) return;
+    if (act === 'send') { this.preview(sids, k); return; }
+    const todo = sids.filter(id => !this.state(id, k).done);
+    if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 완료 상태입니다`); return; }
+    if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 완료로 체크할까요?`, '완료 처리')) return;
+    todo.forEach(id => this.setDone(id, k, true));
+    toast(`${todo.length}명 ${this.LABEL[k]} 완료`);
+    App.render();
+  },
+
+  /* ---------- 이벤트 ---------- */
+  bind(main) {
+    main.onclick = (e) => {
+      const tb = e.target.closest('[data-tab]');
+      if (tb) { SmsPage.tab = tb.dataset.tab; App.render(); return; }
+      const tg = e.target.closest('[data-nwtg]');
+      if (tg) {
+        const [sid, k] = tg.dataset.nwtg.split('|'), v = !this.state(sid, k).done;
+        this.setDone(sid, k, v);
+        App.render();
+        return;
+      }
+      const sd = e.target.closest('[data-nwsend]');
+      if (sd) { const [sid, k] = sd.dataset.nwsend.split('|'); this.preview([sid], k); return; }
+      const bk = e.target.closest('[data-nwbulk]');
+      if (bk && !bk.disabled) {
+        const [act, k] = bk.dataset.nwbulk.split('|');
+        if (act === 'clear') { this.sel.clear(); App.render(); return; }
+        this.bulk(act, k);
+      }
+    };
+    main.onchange = (e) => {
+      const t = e.target;
+      if (t.matches('[data-nwsel]')) { if (t.checked) this.sel.add(t.dataset.nwsel); else this.sel.delete(t.dataset.nwsel); App.render(); }
+      else if (t.matches('[data-nwall]')) {
+        const g = this.groups().find(x => x.c.id === t.dataset.nwall);
+        if (g) g.list.forEach(s => { if (t.checked) this.sel.add(s.id); else this.sel.delete(s.id); });
+        App.render();
+      }
+      else if (t.matches('[data-nwcls]')) { this.cls = t.value; App.render(); }
+      else if (t.matches('[data-nwtodo]')) { this.todo = t.checked; App.render(); }
+      else if (t.matches('[data-nwcfg]')) {
+        const key = t.dataset.nwcfg;
+        this.setCfg({ [key]: key === 'bookDays' ? Math.max(0, Math.min(30, Math.round(+t.value || 0))) : t.value });
+        toast('설정을 저장했습니다');
+      }
+    };
+    main.oninput = (e) => {
+      const t = e.target;
+      if (t.matches('[data-nwq]')) { this.q = t.value; const b = $('#nw-body', main); if (b) b.innerHTML = this.bodyHtml(); }   // 검색칸은 다시 그리지 않음 (한글 입력 유지)
+    };
+  },
+};
+
 /* ---------- 문자 탭 전용 스타일 (sx7- 접두사) ---------- */
 (function () {
   if (document.getElementById('mg77-sx7-style')) return;
@@ -564,6 +933,31 @@ const SmsPage = {
 .sx7-ar { flex: none; font-size: 10.5px; color: var(--ink-mute); }
 .sx7-gd { padding: 0 4px 14px; }
 .sx7-body { background: var(--tint-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+/* 신규생 탭 (nw- 접두사) */
+.nw-cfg { margin-bottom: 12px; }
+.nw-cfg-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.nw-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.nw-selbar.on { padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
+.nw-cls { margin-bottom: 12px; }
+.nw-ch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.nw-cnt { margin-left: auto; color: var(--ink-soft); }
+.nw-cnt b.ok { color: var(--ok); }
+.nw-tbl td { vertical-align: middle; }
+.nw-tbl { table-layout: fixed; width: 100%; min-width: 760px; }                  /* 반마다 칸 위치를 같게 */
+.nw-tbl th:nth-child(2) { width: 20%; } .nw-tbl th:nth-child(3) { width: 15%; }
+.nw-tbl td { overflow: hidden; text-overflow: ellipsis; }
+.nw-chip { border: 0; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.nw-chip.green { background: var(--ok-soft); color: var(--ok); }
+.nw-chip.red { background: var(--danger-soft); color: var(--danger); }
+.nw-chip.orange { background: var(--warn-soft); color: var(--warn); }
+.nw-chip.blue { background: var(--accent-soft); color: var(--accent-ink); }
+.nw-chip.gray { background: #EEF2F5; color: var(--ink-soft); }
+.nw-chip:hover { filter: brightness(0.95); }
+.nw-send { margin-left: 6px; padding: 2px 9px; font-size: 12.5px; }
+.nw-ask-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.nw-ask-r > :first-child { flex: none; white-space: nowrap; }
+.nw-ask-r > :last-child { text-align: right; }
+.nw-ask-r input { padding: 3px 6px; }
 `;
   document.head.appendChild(st);
 })();
