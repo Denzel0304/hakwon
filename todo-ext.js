@@ -21,6 +21,51 @@ const TX_RTYPES = [['none', '없음'], ['daily', '매일'], ['weekly', '매주']
 const TX_BDAY = '🎂';
 const TX_TITLE_CMP = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
+/* ---------- 할일 완료 폭죽 ----------
+   할일을 직접 완료로 체크하면 짧게 한 번 터진다 (효과음 대신). 화면 클릭을 막지 않고, 다른 기능·시간 계산과 무관.
+   근무시간 축하 연출(soon.js)과는 별개로 자기 캔버스만 잠깐 붙였다가 지운다. */
+const TodoPop = {
+  MS: 1400,
+  burst() {
+    try {
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const w = window.innerWidth, h = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let cv = this.cv;
+      if (!cv) {
+        cv = this.cv = document.createElement('canvas');
+        cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+        cv.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(cv);
+        cv.width = w * dpr; cv.height = h * dpr;
+        this.parts = [];
+      }
+      const colors = ['#F0A202', '#F7B733', '#FFFDF6', '#E8730A', '#FF9F6B'];
+      const n = w < 600 ? 60 : 90;
+      for (let i = 0; i < n; i++) {
+        const L = i % 2 === 0;
+        this.parts.push({ x: L ? -10 : w + 10, y: h * (0.55 + Math.random() * 0.35), vx: (L ? 1 : -1) * (4 + Math.random() * 7), vy: -(9 + Math.random() * 9),
+          s: 5 + Math.random() * 6, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.35, c: colors[i % colors.length] });
+      }
+      this.until = performance.now() + this.MS;
+      if (this.raf) return;                                   // 이미 터지는 중이면 조각만 더함
+      const ctx = cv.getContext('2d');
+      const step = () => {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        const left = Math.max(0, this.until - performance.now());
+        ctx.globalAlpha = Math.min(1, left / 400);              // 끝날 때 살짝 흐려짐
+        this.parts.forEach(q => {
+          q.vy += 0.32; q.vx *= 0.99; q.x += q.vx; q.y += q.vy; q.r += q.vr;
+          ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.r); ctx.fillStyle = q.c; ctx.fillRect(-q.s / 2, -q.s / 4, q.s, q.s / 2); ctx.restore();
+        });
+        if (left > 0) { this.raf = requestAnimationFrame(step); return; }
+        this.raf = 0; this.parts = []; cv.remove(); this.cv = null;
+      };
+      this.raf = requestAnimationFrame(step);
+    } catch (e) { /* 연출 실패는 무시 */ }
+  },
+};
+
 const TodoX = {
   LATE_DAYS: 730,           // 반복 일정의 밀린 회차는 최근 2년까지만 찾는다
 
@@ -304,6 +349,7 @@ const TodoX = {
     if (!it.done && prog && prog.done < prog.total) { toast('상세에서 체크리스트를 모두 완료하세요'); return; }
     if (it.done && prog && prog.done === prog.total) { toast('상세에서 체크리스트를 해제하세요'); return; }   // 체크리스트를 다 한 할일은 바깥 체크만 끌 수 없음
     this.setDone(it, !it.done);
+    if (!it.done) TodoPop.burst();                            // 완료로 체크 → 폭죽
     App.render();
   },
   setDone(it, v) {
@@ -629,6 +675,7 @@ const TodoX = {
       if (st.date !== cur.date) { rec.date = st.date; rec.order = this.maxOrder(st.date) + 1; rec.remindDone = false; }
       if (vals.remind !== (+cur.remind || 0)) rec.remindDone = false;
       if (clDone !== null) rec.done = clDone;
+      if (rec.done && !cur.done && !(rep && !cur.lessonId)) TodoPop.burst();   // 체크리스트를 다 해서 완료됨 → 폭죽
       if (rep && !cur.lessonId) {                                   // 반복으로 바꿈 → 이 날짜부터 반복 시작
         rec.repeat = rep; rec.checklist = tpl; rec.done = false; rec.remindDone = false;
         Store.put('todos', rec);
@@ -650,6 +697,7 @@ const TodoX = {
     if (onlyChecks) {
       const ex0 = Store.get('todos', this.exId(m.id, it.date));
       this.putEx(m.id, it.date, { ov: Object.assign({}, (ex0 && ex0.ov) || {}, { checklist: cl }), done: !!clDone });
+      if (clDone && !it.done) TodoPop.burst();                  // 이 회차를 다 해서 완료됨 → 폭죽
       toast('저장했습니다');
       App.render();
       return;

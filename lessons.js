@@ -2695,7 +2695,7 @@ const Todos = {
     const td = e.target.closest('[data-tdone]');
     if (td) {
       const t = Store.get('todos', td.dataset.tdone);
-      if (t) { Store.put('todos', Object.assign({}, t, { done: td.checked })); App.render(); }
+      if (t) { Store.put('todos', Object.assign({}, t, { done: td.checked })); if (td.checked && !t.done && typeof TodoPop !== 'undefined') TodoPop.burst(); App.render(); }
       return true;
     }
     const mn = e.target.closest('[data-tmenu]');
