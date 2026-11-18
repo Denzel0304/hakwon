@@ -17,7 +17,7 @@ const Books = {
   bq: '',            // 교재 이름 검색
   cls: '',           // 반 필터
   grade: '',         // 학년 필터
-  st: 'active',      // 학생 상태 필터: active / pause / left / all
+  st: 'active',      // 학생 상태 필터: active / transfer(반이동) / pause / left(퇴원·졸업) / all
   flt: '',           // '' 전체 / 'none' 진행 교재 없음 / 'over' 예정일 지남
   cat: '',           // 교재별 보기의 분류 필터 ('' 전체 / 분류 키 / 'none' 미분류)
 
@@ -94,7 +94,7 @@ const Books = {
     if (r.status === 'stop') return '<span class="badge gray">중단</span>';
     return this.over(r) ? '<span class="badge orange">예정일 지남</span>' : '<span class="badge">진행 중</span>';
   },
-  stuLabel(s) { return s ? esc(s.name) + (stTag(s) ? ` <span class="tag">${esc(stTag(s))}</span>` : '') + (s.status === 'pause' ? ' <span class="badge orange">휴원</span>' : s.status === 'left' ? ' <span class="badge gray">퇴원</span>' : '') : '<span class="muted">(삭제된 학생)</span>'; },
+  stuLabel(s) { return s ? esc(s.name) + (stTag(s) ? ` <span class="tag">${esc(stTag(s))}</span>` : '') + (s.status === 'pause' ? ' <span class="badge orange">휴원</span>' : Students.isTransfer(s) ? ' <span class="badge" style="background:var(--accent-soft);color:var(--accent-ink)">반이동</span>' : s.status === 'left' ? ' <span class="badge gray">퇴원</span>' : '') : '<span class="muted">(삭제된 학생)</span>'; },
 
   /* =========================================================
      화면
@@ -125,7 +125,7 @@ const Books = {
   renderStudents(main) {
     const q = this.q.trim().toLowerCase(), bq = this.bq.trim().toLowerCase();
     const all = Store.all('students');
-    const list = all.filter(s => this.st === 'all' || (s.status || 'active') === this.st)
+    const list = all.filter(s => this.st === 'all' || Students.tabOf(s) === this.st)
       .filter(s => !this.grade || +s.grade === +this.grade)
       .filter(s => !this.cls || Students.activeClassesOf(s.id).some(c => c.id === this.cls))
       .filter(s => !q || [s.name, s.school, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)))
@@ -140,7 +140,7 @@ const Books = {
       <div class="toolbar">
         <input type="search" data-bks="q" placeholder="학생 이름, 학교 검색" value="${esc(this.q)}" style="width:190px">
         <input type="search" data-bks="bq" placeholder="교재 이름 검색" value="${esc(this.bq)}" style="width:170px">
-        <select data-f="st">${[['active', '재원'], ['pause', '휴원'], ['left', '퇴원·졸업'], ['all', '전체 학생']].map(([k, t]) => `<option value="${k}" ${this.st === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <select data-f="st">${[['active', '재원'], ['transfer', '반이동'], ['pause', '휴원'], ['left', '퇴원·졸업'], ['all', '전체 학생']].map(([k, t]) => `<option value="${k}" ${this.st === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
         <select data-f="cls"><option value="">전체 반</option>${clsList.map(c => `<option value="${c.id}" ${this.cls === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
         <select data-f="grade">${gradeOptions(this.grade, '전체 학년')}</select>
         <select data-f="flt">${[['', '모든 학생'], ['none', '진행 교재 없음'], ['over', '예정일 지난 교재']].map(([k, t]) => `<option value="${k}" ${this.flt === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
@@ -155,7 +155,7 @@ const Books = {
       g.list.forEach(s => {
         const cls = Students.activeClassesOf(s.id).map(c => c.name).join(', ');
         const doneN = this.doneOf(s.id).length;
-        h += `<tr data-sid="${s.id}"><td class="nowrap bk-name" data-open="${s.id}"><b>${highlight(s.name, this.q)}</b>${stTag(s) ? `<div class="small soft">${highlight(stTag(s), this.q)}</div>` : ''}${s.status === 'pause' ? '<span class="badge orange">휴원</span>' : s.status === 'left' ? '<span class="badge gray">퇴원</span>' : ''}</td>
+        h += `<tr data-sid="${s.id}"><td class="nowrap bk-name" data-open="${s.id}"><b>${highlight(s.name, this.q)}</b>${stTag(s) ? `<div class="small soft">${highlight(stTag(s), this.q)}</div>` : ''}${s.status === 'pause' ? '<span class="badge orange">휴원</span>' : Students.isTransfer(s) ? '<span class="badge" style="background:var(--accent-soft);color:var(--accent-ink)">반이동</span>' : s.status === 'left' ? '<span class="badge gray">퇴원</span>' : ''}</td>
           <td class="small">${esc(cls) || '<span class="muted">-</span>'}</td>`;
         BOOK_CATS.forEach(cat => {
           const ing = this.ingOf(s.id, cat);

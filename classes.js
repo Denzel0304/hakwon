@@ -294,7 +294,7 @@ const Classes = {
     };
     let h = `<div class="page-narrow"><div class="page-head"><h1>반</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
-      <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm cls-pdfbtn" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원을 A4로 인쇄 · PDF 저장">PDF 저장</button></span>
+      <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm cls-pdfbtn" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원·반이동을 A4로 인쇄 · PDF 저장">PDF 저장</button></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;
     h += show.length ? `<div class="tbl-wrap"><table class="tbl compact cls-tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
@@ -650,13 +650,14 @@ const Classes = {
   },
   mdDow(d) { return this.md(d) + '(' + DOW[dowOf(d)] + ')'; },
   // first~base 사이의 퇴원 [{ s, d, plan, cls:[반] }] (withPlan이면 base 뒤 last까지의 퇴원 예약도 '예정'으로)
-  leavesIn(first, base, last, withPlan) {
+  //   type: 'leave' 퇴원 / 'transfer' 반이동 (처리는 같고 이력 종류만 다름)
+  leavesIn(first, base, last, withPlan, type = 'leave') {
     const out = [];
-    Store.where('student_log', l => l.type === 'leave' && isYmd(l.date) && l.date >= first && l.date <= base).forEach(l => {
+    Store.where('student_log', l => l.type === type && isYmd(l.date) && l.date >= first && l.date <= base).forEach(l => {
       const s = Store.get('students', l.studentId);
       if (s) out.push({ s, d: l.date, plan: false });
     });
-    if (withPlan) Store.where('students', s => s.sched && s.sched.act === 'leave' && isYmd(s.sched.date) && s.sched.date > base && s.sched.date <= last)
+    if (withPlan) Store.where('students', s => s.sched && s.sched.act === type && isYmd(s.sched.date) && s.sched.date > base && s.sched.date <= last)
       .forEach(s => out.push({ s, d: s.sched.date, plan: true }));
     out.forEach(o => { o.cls = Store.where('enrollments', e => e.studentId === o.s.id && e.to === o.d).map(e => Store.get('classes', e.classId)).filter(Boolean); });
     return out.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
@@ -673,10 +674,12 @@ const Classes = {
     const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
       <span class="cs">${u.items.map(i => `${this.dot(i.c)}${esc(i.c.name)}${i.from !== u.from ? ` <span class="muted">${this.md(i.from)}~</span>` : ''}`).join('<br>')}</span></div>`).join('');
     const newUp = sm.upcoming.filter(u => !u.kind).length;
-    // 이번 달 퇴원 (1일~오늘 + 이달 안의 퇴원 예약)
+    // 이번 달 퇴원·반이동 (1일~오늘 + 이달 안의 예약) — 한 카드에 날짜순, 반이동은 표시를 붙인다
     const M = +date.slice(5, 7), first = date.slice(0, 7) + '-01', last = ymd(new Date(+date.slice(0, 4), M, 0));
-    const lv = this.leavesIn(first, date, last, true);
-    const lvs = lv.map(o => `<div class="cls-sum-up"><span class="dt lv">${this.mdDow(o.d)}</span><span class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="badge gray">예정</span>' : ''}</span>
+    const lvL = this.leavesIn(first, date, last, true), lvT = this.leavesIn(first, date, last, true, 'transfer');
+    lvT.forEach(o => { o.tr = true; });
+    const lv = lvL.concat(lvT).sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
+    const lvs = lv.map(o => `<div class="cls-sum-up"><span class="dt ${o.tr ? 'tr' : 'lv'}">${this.mdDow(o.d)}</span><span class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.tr ? ' <span class="badge cls-tr-badge">반이동</span>' : ''}${o.plan ? ' <span class="badge gray">예정</span>' : ''}</span>
       <span class="cs">${o.cls.map(c => `${this.dot(c)}${esc(c.name)}`).join('<br>') || '-'}</span></div>`).join('');
     const empty = (t) => `<div class="cls-sum-empty">${t}</div>`;
     return `<div class="cls-sum">
@@ -687,7 +690,7 @@ const Classes = {
           ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div></div>
         <div class="cls-sum-card"><div class="lbl">학년별</div><div class="cls-sum-body">${grades}</div></div>
         <div class="cls-sum-card"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div><div class="cls-sum-body">${ups || empty('등록 예정인 학생이 없습니다.')}</div></div>
-        <div class="cls-sum-card"><div class="lbl">${M}월 퇴원 <span class="cnt lv">${lv.length}명</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원한 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card"><div class="lbl">${M}월 퇴원·반이동 <span class="cnt lv">퇴원 ${lvL.length}</span><span class="cnt tr">반이동 ${lvT.length}</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원·반이동한 학생이 없습니다.')}</div></div>
         <div class="cls-sum-card cls-sum-sch"><div class="lbl">학교별 <span class="cnt">${sm.schools.length}곳</span></div>
           ${schools ? `<div class="cls-sch-wrap"><div class="cls-sch-row">${schools}</div></div>` : empty('-')}</div>
       </div></div>`;
@@ -733,11 +736,13 @@ const Classes = {
       if (inM(jd)) joins.push({ s, d: jd, kind: '신규' });
       Store.where('student_log', l => l.studentId === s.id && l.type === 'rejoin' && inM(l.date)).forEach(l => joins.push({ s, d: l.date, kind: '재등록' }));
     });
-    const leaves = this.leavesIn(first, base, last, isCur);
+    const leaves = this.leavesIn(first, base, last, isCur), moves = this.leavesIn(first, base, last, isCur, 'transfer');
     joins.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
     const cl = (arr) => arr.map(c => `<span class="dot" style="background:${this.colorOf(c)}"></span>${esc(c.name)}`).join(', ') || '-';
     const joinRows = joins.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.kind === '재등록' ? ' <span class="kd">재등록</span>' : ''}</td><td>${cl(clsAt(o.s.id, o.d))}</td></tr>`).join('');
-    const leaveRows = leaves.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(o.cls)}</td></tr>`).join('');
+    const outRows = (arr) => arr.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(o.cls)}</td></tr>`).join('');
+    const leaveRows = outRows(leaves), moveRows = outRows(moves);
+    const planN = (arr, lb) => (arr.some(o => o.plan) ? `<small>(${lb} 예정 ${arr.filter(o => o.plan).length}명 포함)</small>` : '');
     // 요약 — '초6, 9명' / '금천중 7명 (중1, 3명 / 중2, 4명)'
     const chips = (arr) => arr.map(x => `<span class="chip">${x.g ? `<b>${esc(x.name)} ${x.n}명</b><small>(${x.g.map(g => esc(g.label) + ', ' + g.n + '명').join(' / ')})</small>` : `${esc(x.label)}, <b>${x.n}명</b>`}</span>`).join('') || '-';
     const upHtml = sm.upcoming.map(u => `<span class="chip"><b>${this.mdDow(u.from)}</b> ${esc(u.s.name)} <small>${esc(stTag(u.s))}${u.kind ? ' · ' + u.kind : ''} · ${u.items.map(i => esc(i.c.name)).join(', ')}</small></span>`).join('');
@@ -747,7 +752,7 @@ const Classes = {
         <div class="ln"><span class="k">학년별</span><span class="v">${chips(sm.grades)}</span></div>
         <div class="ln"><span class="k">학교별</span><span class="v">${chips(sm.schools)}</span></div>
         ${isCur ? `<div class="ln"><span class="k">등록 예정 ${sm.upcoming.length}명</span><span class="v">${upHtml || '-'}</span></div>` : ''}
-        <div class="ln"><span class="k">이번 달 변동</span><span class="v"><span class="chip">신규 등록 <b>${joins.length}명</b></span><span class="chip">퇴원 <b>${leaves.length}명</b>${leaves.some(o => o.plan) ? `<small>(퇴원 예정 ${leaves.filter(o => o.plan).length}명 포함)</small>` : ''}</span></span></div>
+        <div class="ln"><span class="k">이번 달 변동</span><span class="v"><span class="chip">신규 등록 <b>${joins.length}명</b></span><span class="chip">퇴원 <b>${leaves.length}명</b>${planN(leaves, '퇴원')}</span><span class="chip">반이동 <b>${moves.length}명</b>${planN(moves, '반이동')}</span></span></div>
       </div></div>`;
     const title = `반현황_${month}`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
@@ -790,6 +795,8 @@ const Classes = {
       ${joins.length ? `<table><thead><tr><th style="width:18mm">등록일</th><th style="width:50mm">학생</th><th>반</th></tr></thead><tbody>${joinRows}</tbody></table>` : '<div class="empty">이 달에 새로 등록한 학생이 없습니다.</div>'}
       <h2>퇴원<small>${leaves.length}명</small></h2>
       ${leaves.length ? `<table><thead><tr><th style="width:18mm">퇴원일</th><th style="width:50mm">학생</th><th>다니던 반</th></tr></thead><tbody>${leaveRows}</tbody></table>` : '<div class="empty">이 달에 퇴원한 학생이 없습니다.</div>'}
+      <h2>반이동<small>${moves.length}명</small></h2>
+      ${moves.length ? `<table><thead><tr><th style="width:18mm">반이동일</th><th style="width:50mm">학생</th><th>다니던 반</th></tr></thead><tbody>${moveRows}</tbody></table>` : '<div class="empty">이 달에 반이동한 학생이 없습니다.</div>'}
     </body></html>`;
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
@@ -1277,7 +1284,7 @@ document.addEventListener('change', (e) => {
 .cls-sum-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .cls-sum-head h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
 .cls-sum-head .sub { color: var(--ink-soft); font-size: 13px; }
-/* 윗줄: 전체 인원·학년별·등록 예정·이번 달 퇴원 4개 (같은 높이 = 가장 긴 카드에 맞춤, 아주 길 때만 카드 안 스크롤)
+/* 윗줄: 전체 인원·학년별·등록 예정·이번 달 퇴원·반이동 4개 (같은 높이 = 가장 긴 카드에 맞춤, 아주 길 때만 카드 안 스크롤)
    아랫줄: 학교별 막대 그래프 (가로 전체) */
 .cls-sum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
 @media (max-width: 900px) { .cls-sum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -1285,7 +1292,10 @@ document.addEventListener('change', (e) => {
 .cls-sum-card > .lbl { flex: none; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
 .cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
 .cls-sum-card > .lbl .cnt.lv { color: var(--danger); }
-.cls-sum-body { flex: 1; max-height: 240px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.cls-sum-card > .lbl .cnt.tr { color: var(--accent-ink); margin-left: 8px; }
+.cls-sum-card > .lbl .cnt.lv + .cnt.tr::before { content: '·'; color: var(--ink-mute); margin-right: 8px; }
+.cls-tr-badge { background: var(--accent-soft); color: var(--accent-ink); }
+.cls-sum-body { flex: 1; max-height: 300px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .cls-sum-body::-webkit-scrollbar { width: 6px; } .cls-sum-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
 .cls-sum-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--ink-mute); font-size: 13px; }
 .cls-sum-sch { grid-column: 1 / -1; min-height: 0; }
@@ -1314,6 +1324,7 @@ document.addEventListener('change', (e) => {
 .cls-sum-body > .cls-sum-up:first-child { border-top: 0; padding-top: 0; }
 .cls-sum-up .dt { font-weight: 700; color: var(--warn); white-space: nowrap; }
 .cls-sum-up .dt.lv { color: var(--danger); }
+.cls-sum-up .dt.tr { color: var(--accent-ink); }
 .cls-sum-up .nm .tag { color: var(--ink-mute); font-size: 12px; }
 .cls-sum-up .cs { grid-column: 2; font-size: 12px; color: var(--ink-soft); }
 `;

@@ -1,7 +1,7 @@
 /* =========================================================
    students.js — 학생 관리 (등록 / 수정 / 휴원 / 복귀 / 퇴원 / 완전 삭제)
    student: { name, phone, parentPhone, school, grade, status:'active'|'pause'|'left',
-              leftKind:'leave'|'graduate', statusDate, statusReason, schoolPending, memo, createdAt }
+              leftKind:'leave'|'graduate'|'transfer'(반이동: 다른 선생님 반으로 감 — 퇴원과 똑같이 처리, 탭·표시만 따로), statusDate, statusReason, schoolPending, memo, createdAt }
    레벨테스트(meta 테이블, 학생당 하나): id = LT_학생ID, { kind:'ltest', studentId, date, school, grade(시험 본 날의 학교·학년),
               word, read, gram, listen(영역별 자유 메모 · 본 영역만), memo(전체 메모), createdAt, updatedAt }
    ========================================================= */
@@ -9,7 +9,7 @@
 const LT_AREAS = [['word', '단어', '예: 중3 단어장 70개 맞음'], ['read', '독해', '예: 고1 10월 모고 75점'], ['gram', '문법', '예: 중2 문법 테스트 80점'], ['listen', '듣기', '예: 중3 것으로 19/20']];
 const STATUS_LABEL = { active: '재원', pause: '휴원', left: '퇴원' };
 const LOG_LABEL = {
-  join: '등록', pause: '휴원', resume: '복귀', leave: '퇴원', rejoin: '재등록',
+  join: '등록', pause: '휴원', resume: '복귀', leave: '퇴원', transfer: '반이동', rejoin: '재등록',
   graduate: '졸업', promote: '진급', school: '학교 입력',
 };
 
@@ -23,9 +23,14 @@ const Students = {
 
   statusBadge(s) {
     if (s.status === 'pause') return '<span class="badge orange">휴원</span>';
-    if (s.status === 'left') return s.leftKind === 'graduate' ? '<span class="badge purple">졸업</span>' : '<span class="badge gray">퇴원</span>';
+    if (s.status === 'left') return s.leftKind === 'graduate' ? '<span class="badge purple">졸업</span>'
+      : s.leftKind === 'transfer' ? '<span class="badge" style="background:var(--accent-soft);color:var(--accent-ink)">반이동</span>' : '<span class="badge gray">퇴원</span>';
     return '<span class="badge green">재원</span>';
   },
+  // 반이동 = 퇴원 상태(status 'left')에 leftKind 'transfer'. 처리는 퇴원과 같고, 학생 탭과 표시만 따로 나눈다
+  isTransfer(s) { return !!s && s.status === 'left' && s.leftKind === 'transfer'; },
+  tabOf(s) { return this.isTransfer(s) ? 'transfer' : (s.status || 'active'); },
+  statusText(s) { return this.isTransfer(s) ? '반이동' : STATUS_LABEL[s.status] || s.status; },
 
   activeClassesOf(sid, date = todayStr()) {
     return Store.where('enrollments', e => e.studentId === sid && Classes.enrollValid(e, date))
@@ -94,21 +99,21 @@ const Students = {
 
   render(main) {
     const all = Store.all('students');
-    const counts = { active: 0, pause: 0, left: 0 };
-    all.forEach(s => { counts[s.status || 'active'] = (counts[s.status || 'active'] || 0) + 1; });
+    const counts = { active: 0, transfer: 0, pause: 0, left: 0 };
+    all.forEach(s => { const t = this.tabOf(s); counts[t] = (counts[t] || 0) + 1; });
     const q = this.q.trim().toLowerCase();
-    const list = all.filter(s => (s.status || 'active') === this.tab)
+    const list = all.filter(s => this.tabOf(s) === this.tab)
       .filter(s => !this.grade || +s.grade === +this.grade)
       .filter(s => !q || [s.name, s.school, s.phone, s.parentPhone, s.memo, stTag(s)].some(v => String(v || '').toLowerCase().includes(q)));
     this.sortList(list);
     // 지금 목록에 보이지 않는 학생은 선택에서 뺀다 (탭·검색·학년이 바뀌면 보이는 학생만 남음)
     const vis = new Set(list.map(s => s.id));
     [...this.sel].forEach(id => { if (!vis.has(id)) this.sel.delete(id); });
-    const bulkActs = this.tab === 'active' ? [['pause', '휴원'], ['leave', '퇴원'], ['graduate', '졸업']]
-      : this.tab === 'pause' ? [['leave', '퇴원'], ['graduate', '졸업']] : [];
+    const bulkActs = this.tab === 'active' ? [['transfer', '반이동'], ['pause', '휴원'], ['leave', '퇴원'], ['graduate', '졸업']]
+      : this.tab === 'pause' ? [['transfer', '반이동'], ['leave', '퇴원'], ['graduate', '졸업']] : [];
 
     let h = `<div class="page-narrow"><div class="page-head"><h1>학생</h1><button class="btn primary" data-a="add">+ 학생 등록</button><button class="btn" data-a="gimport">구글 연락처 가져오기</button></div>
-      <div class="tabs">${['active', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
+      <div class="tabs">${['active', 'transfer', 'pause', 'left'].map(t => `<button data-tab="${t}" class="${this.tab === t ? 'active' : ''}">${t === 'left' ? '퇴원·졸업' : t === 'transfer' ? '반이동' : STATUS_LABEL[t]}<span class="cnt">${counts[t] || 0}</span></button>`).join('')}</div>
       <div class="toolbar">
         <input type="search" data-q placeholder="이름, 학교, 연락처, 메모 검색" value="${esc(this.q)}" style="width:280px">
         <select data-grade>${gradeOptions(this.grade, '전체 학년')}</select>
@@ -212,11 +217,11 @@ const Students = {
     this.openBulkStatus(act, list);
   },
   openBulkStatus(act, list) {
-    const titles = { pause: '휴원 처리', leave: '퇴원 처리', graduate: '졸업 처리' };
+    const titles = { pause: '휴원 처리', transfer: '반이동 처리', leave: '퇴원 처리', graduate: '졸업 처리' };
     const busy = (s) => !!(s.sched && isYmd(s.sched.date));
     const skip = list.filter(busy), go = list.filter(s => !busy(s));
     if (!go.length) { alertDlg('선택 ' + titles[act], '선택한 학생 모두 이미 예약이 걸려 있어 처리할 수 없습니다.\n학생별 “상태·이력”에서 예약을 먼저 취소하세요.'); return; }
-    const help = act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : (act === 'leave' ? '퇴원' : '졸업') + '일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.';
+    const help = act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : (act === 'leave' ? '퇴원' : act === 'transfer' ? '반이동' : '졸업') + '일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' + (act === 'transfer' ? ' (퇴원과 똑같이 처리되고, 학생 목록의 반이동 탭에 들어갑니다)' : '');
     const body = `<div class="form">
       <label class="req">날짜</label><div class="row"><input type="date" name="d" value="${todayStr()}"></div>
       <label class="top">사유</label><textarea name="reason" rows="3" placeholder="선택 입력 (모든 학생에게 같게 들어감)"></textarea>
@@ -628,7 +633,7 @@ const Students = {
         <input type="date" data-adddate value="${today}"><button class="btn primary sm" data-add ${addable.length ? '' : 'disabled'}>반 추가</button>
         <span class="muted small">선택한 날짜부터 출석부에 들어갑니다. 요일을 끄면 그 요일은 빼고 수강합니다.</span></div>`;
     } else {
-      h += `<div class="muted small" style="margin-top:8px">${STATUS_LABEL[s.status]} 상태에서는 반을 배정할 수 없습니다. 상태·이력 탭에서 복귀 또는 재등록하면서 반을 고르세요.</div>`;
+      h += `<div class="muted small" style="margin-top:8px">${this.statusText(s)} 상태에서는 반을 배정할 수 없습니다. 상태·이력 탭에서 복귀 또는 재등록하면서 반을 고르세요.</div>`;
     }
     h += '<h2 style="font-size:14px;margin:18px 0 6px">지난 수강 기록</h2>';
     h += past.length ? '<div class="list">' + past.map(e => {
@@ -730,9 +735,11 @@ const Students = {
     const logs = Store.where('student_log', l => l.studentId === s.id).sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt));
     let acts = '';
     if (s.sched && isYmd(s.sched.date)) acts = `<span class="badge orange">${fmtDate(s.sched.date)} ${LOG_LABEL[s.sched.act] || ''} 예정</span><button class="btn" data-act="cancelsched">예약 취소</button>`;
-    else if (s.status === 'active') acts = '<button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
-    else if (s.status === 'pause') acts = '<button class="btn primary" data-act="resume">복귀 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
-    else acts = '<button class="btn primary" data-act="rejoin">재등록</button>';
+    else if (s.status === 'active') acts = '<button class="btn" data-act="transfer">반이동 처리</button><button class="btn" data-act="pause">휴원 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
+    else if (s.status === 'pause') acts = '<button class="btn primary" data-act="resume">복귀 처리</button><button class="btn" data-act="transfer">반이동 처리</button><button class="btn danger" data-act="leave">퇴원 처리</button><button class="btn" data-act="graduate">졸업 처리</button>';
+    else acts = (this.isTransfer(s) ? '<button class="btn" data-kind="leave" title="날짜·수강 기록은 그대로 두고 종류만 퇴원으로 바꿉니다">퇴원으로 바꾸기</button>'
+      : s.leftKind !== 'graduate' ? '<button class="btn" data-kind="transfer" title="날짜·수강 기록은 그대로 두고 종류만 반이동으로 바꿉니다">반이동으로 바꾸기</button>' : '')
+      + '<button class="btn primary" data-act="rejoin">재등록</button>';
     let h = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       <span>현재 상태</span> ${this.statusBadge(s)} <span class="small soft">${fmtDate(s.statusDate)}</span><span class="grow" style="flex:1"></span>${acts}</div>`;
     if (s.sched && s.sched.reason) h += `<div class="panel" style="margin-bottom:12px"><div class="small soft">예약 사유</div><div class="pre">${esc(s.sched.reason)}</div></div>`;
@@ -743,6 +750,14 @@ const Students = {
       <button class="icon-btn" data-dellog="${l.id}" title="이력 삭제">✕</button></div>`).join('') + '</div>' : '<div class="empty">이력이 없습니다.</div>';
     pane.innerHTML = h;
     pane.onclick = async (e) => {
+      const kb = e.target.closest('[data-kind]');
+      if (kb) {
+        const to = kb.dataset.kind, lb = to === 'transfer' ? '반이동' : '퇴원';
+        if (!await confirmDlg(`${s.name} 학생을 ${lb}(으)로 바꿀까요?\n날짜·사유·수강 기록은 그대로 두고 종류만 바뀝니다.`, lb + '(으)로 바꾸기')) return;
+        this.setLeftKind(s.id, to);
+        toast(lb + '(으)로 바꿨습니다'); this.renderPane(m, s.id); App.render();
+        return;
+      }
       const a = e.target.closest('[data-act]');
       if (a && a.dataset.act === 'cancelsched') {
         const cur = Store.get('students', s.id);
@@ -773,12 +788,12 @@ const Students = {
 
   openStatusAction(act, sid, done) {
     const s = Store.get('students', sid);
-    const titles = { pause: '휴원 처리', leave: '퇴원 처리', graduate: '졸업 처리', resume: '복귀 처리', rejoin: '재등록' };
+    const titles = { pause: '휴원 처리', transfer: '반이동 처리', leave: '퇴원 처리', graduate: '졸업 처리', resume: '복귀 처리', rejoin: '재등록' };
     const needCls = act === 'resume' || act === 'rejoin';
     const body = `<div class="form">
       <label class="req">날짜</label><div class="row"><input type="date" name="d" value="${todayStr()}"></div>
       ${needCls ? `<label class="top">수강반</label><div>${this.classPickHtml()}</div>` : `<label class="top">사유</label><textarea name="reason" rows="3" placeholder="선택 입력"></textarea>`}
-    </div><p class="small muted">${act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : act === 'leave' ? '퇴원일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : act === 'graduate' ? '졸업일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : '선택한 반의 출석부에 날짜부터 들어갑니다.'}</p>`;
+    </div><p class="small muted">${act === 'pause' ? '휴원일부터 출석부에서 빠지고, 복귀할 때 반을 다시 고릅니다.' : act === 'leave' ? '퇴원일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : act === 'transfer' ? '반이동일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다. (퇴원과 똑같이 처리되고, 학생 목록의 반이동 탭에 들어갑니다)' : act === 'graduate' ? '졸업일부터 출석부에서 빠집니다. 기록은 모두 보존됩니다.' : '선택한 반의 출석부에 날짜부터 들어갑니다.'}</p>`;
     Modal.open({
       title: s.name + ' · ' + titles[act], body,
       onMount: (b) => { enhanceAll(b); if (needCls) this.bindClassPick(b); },
@@ -790,7 +805,7 @@ const Students = {
         const cur = Store.get('students', sid);
         const future = d > todayStr();          // 미래 날짜면 예약 → 그 날짜가 되면 자동으로 상태가 바뀜
         const before = this.enSnap(sid);
-        if (act === 'pause' || act === 'leave' || act === 'graduate') {
+        if (act === 'pause' || act === 'leave' || act === 'transfer' || act === 'graduate') {
           const reason = stripZws($('[name=reason]', m.body).value);
           if (this.statusOut(sid, act, d, reason)) this.contactRemove([cur]);
         } else {
@@ -820,7 +835,16 @@ const Students = {
     this.addLog(sid, act, d, reason, { undo });
     return true;
   },
-  leftKindOf(act, cur) { return act === 'leave' ? 'leave' : act === 'graduate' ? 'graduate' : (cur.leftKind || ''); },
+  leftKindOf(act, cur) { return act === 'leave' ? 'leave' : act === 'transfer' ? 'transfer' : act === 'graduate' ? 'graduate' : (cur.leftKind || ''); },
+  // 퇴원 ↔ 반이동 종류만 바꾸기 (날짜·사유·수강 기록은 그대로). 지금 상태를 만든 이력의 종류도 함께 바꾼다
+  setLeftKind(sid, kind) {
+    const s = Store.get('students', sid);
+    if (!s || s.status !== 'left' || s.leftKind === 'graduate') return;
+    Store.put('students', Object.assign({}, s, { leftKind: kind }));
+    const lg = Store.where('student_log', l => l.studentId === sid && (l.type === 'leave' || l.type === 'transfer') && l.date === s.statusDate)
+      .sort((a, b) => ko(b.createdAt, a.createdAt))[0];
+    if (lg && lg.type !== kind) Store.put('student_log', Object.assign({}, lg, { type: kind }));
+  },
 
   /* ---------- 예약(미래 날짜 상태 변경) · 되돌리기 ---------- */
   // 학생의 수강 기록 사진 { id: JSON }
@@ -865,7 +889,7 @@ const Students = {
     Store.where('students', s => s.sched && isYmd(s.sched.date) && s.sched.date <= today).forEach(s => {
       const sc = s.sched, d = sc.date;
       const logId = 'LG_sc_' + s.id + '_' + compactDate(d) + '_' + sc.act;
-      if (sc.act === 'pause' || sc.act === 'leave' || sc.act === 'graduate') {
+      if (sc.act === 'pause' || sc.act === 'leave' || sc.act === 'transfer' || sc.act === 'graduate') {
         const before = this.enSnap(s.id);
         Classes.closeEnrollments(s.id, d);          // 예약 뒤에 추가된 수강도 정리
         const undo = this.mergeUndo(sc.undo, this.enDiff(before, s.id));
@@ -885,10 +909,10 @@ const Students = {
   },
   // 가장 최근의 휴원·퇴원·졸업 이력이고 지금 상태가 그 이력 때문인지
   isRevertible(s, l) {
-    if (!s || !['pause', 'leave', 'graduate'].includes(l.type)) return false;
+    if (!s || !['pause', 'leave', 'transfer', 'graduate'].includes(l.type)) return false;
     if (!((l.type === 'pause' && s.status === 'pause') || (l.type !== 'pause' && s.status === 'left'))) return false;
     if (s.statusDate !== l.date) return false;
-    const top = Store.where('student_log', x => x.studentId === s.id && ['join', 'pause', 'resume', 'leave', 'rejoin', 'graduate'].includes(x.type))
+    const top = Store.where('student_log', x => x.studentId === s.id && ['join', 'pause', 'resume', 'leave', 'transfer', 'rejoin', 'graduate'].includes(x.type))
       .sort((a, b) => ko(b.date, a.date) || ko(b.createdAt, a.createdAt))[0];
     return !!top && top.id === l.id;
   },
@@ -1028,7 +1052,7 @@ const Students = {
     if (m) m.sibAsked = k;
     const sibs = this.sibsOf(sid, oldP);
     if (!sibs.length) return;
-    const names = sibs.map(x => x.name + ((x.status || 'active') !== 'active' ? `(${STATUS_LABEL[x.status] || x.status})` : '')).join(', ');
+    const names = sibs.map(x => x.name + ((x.status || 'active') !== 'active' ? `(${this.statusText(x)})` : '')).join(', ');
     if (!await confirmDlg(`같은 부모님 번호(${oldP})를 쓰는 형제가 있습니다.\n${names}\n\n이 학생들의 부모님 연락처도 ${newP}(으)로 바꿀까요?`, '함께 바꾸기')) return;
     sibs.forEach(x => Store.put('students', Object.assign({}, x, { parentPhone: newP })));
     toast(`형제 ${sibs.length}명의 부모님 연락처도 바꿨습니다`);
