@@ -1495,3 +1495,38 @@ input.fp-in:disabled { cursor: not-allowed; opacity: .55; background-color: var(
 .fp-tb:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
 .fp-tb.on, .fp-tb.on:hover { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; box-shadow: 0 3px 8px var(--accent-shadow); }
 .fp-tb:disabled { opacity: .35; cursor: default; }
+
+/* 결석 예정 카드의 보강 입력줄 (lessons.js Makeups.preCtlHtml) */
+.ab-card .ab-ctl { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ab-card .ab-ctl + .ab-ctl { margin-top: 6px; padding-top: 6px; }
+.ab-ctl .ab-cls { font-weight: 700; color: var(--accent-ink); min-width: 70px; }
+
+/* 할일 검색 (todo-ext.js TodoX.search) */
+.tx-sbtn { display: inline-flex; align-items: center; gap: 6px; }
+.txs-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.txs-in { flex: 1; position: relative; display: flex; align-items: center; }
+.txs-in svg { position: absolute; left: 12px; color: var(--ink-mute); pointer-events: none; }
+.txs-in input { width: 100%; padding: 10px 12px 10px 38px; font-size: 15px; border-radius: 10px; }
+.txs-res { max-height: 62vh; min-height: 140px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.txs-empty { text-align: center; color: var(--ink-soft); padding: 40px 10px; line-height: 1.8; }
+.txs-sec + .txs-sec { margin-top: 14px; }
+.txs-h { position: sticky; top: 0; z-index: 1; background: var(--surface); font-size: 13px; font-weight: 800; color: var(--accent-ink); padding: 4px 2px 6px; border-bottom: 1px solid var(--line); }
+.txs-h span { color: var(--ink-mute); font-weight: 600; margin-left: 2px; }
+.txs-row { display: flex; align-items: stretch; gap: 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 8px 6px; cursor: pointer; border-radius: 0; font: inherit; color: var(--ink); }
+.txs-row:hover { background: var(--accent-soft); }
+.txs-row .tx-imp { margin-left: 0; }
+.txs-when { flex: none; width: 92px; display: flex; flex-direction: column; gap: 1px; font-variant-numeric: tabular-nums; }
+.txs-when b { font-size: 14px; font-weight: 700; }
+.txs-when i { font-style: normal; font-size: 12.5px; color: var(--ink-soft); }
+.txs-when em { font-style: normal; font-size: 11.5px; color: var(--ink-mute); }
+.txs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.txs-t { font-size: 14.5px; line-height: 1.45; word-break: break-all; }
+.txs-row.done .txs-t { color: var(--ink-mute); text-decoration: line-through; }
+.txs-ok { display: inline-block; text-decoration: none; font-size: 11.5px; font-weight: 700; color: var(--ok); background: var(--ok-soft); border-radius: 5px; padding: 0 5px; margin-right: 5px; vertical-align: 1px; }
+.txs-ex { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.txs-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.txs-tag { font-size: 11.5px; color: var(--ink-soft); background: var(--tint-strong); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+.txs-tag.cls { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent-line); }
+.txs-row mark { background: #FFE89A; color: inherit; border-radius: 3px; padding: 0 1px; }
+.txs-more { font-size: 12.5px; color: var(--ink-mute); padding: 8px 4px; }
+.mk-ctl input.fp-in { flex: none; }              /* 보강 줄: 메모 칸만 늘어나게 (날짜·시간 칸은 원래 크기) */

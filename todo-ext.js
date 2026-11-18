@@ -318,6 +318,108 @@ const TodoX = {
   },
   add(date, opts = {}) { this.editor(null, isYmd(date) ? date : todayStr(), opts); },
 
+  /* ---------- 할일 검색 (날짜 요약의 '할일 검색') ----------
+     지난 할일·앞으로 할 일 모두: 할일 내용 · 메모 · 체크리스트 항목 (수업일지·자동 할일 포함, 띄어 쓴 낱말은 모두 들어간 것만)
+     · 반복 할일은 원본 한 번만 (다음 회차 표시) · '이 날짜만 수정'한 회차는 그 날짜 할일로
+     · 누르면 그 날짜로 이동하고 수정 창을 연다 */
+  sq: '', sDone: true,
+  searchItems(q, withDone) {
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+    const hay = (v) => [v.text, v.memo, ...(Array.isArray(v.checklist) ? v.checklist.map(x => x.t) : [])].join('\n').toLowerCase();
+    const hit = (v) => { const h = hay(v); return words.every(w => h.includes(w)); };
+    const today = todayStr(), S = this.snapshot();
+    const up = [], past = [], rep = [];
+    S.direct.forEach(t => {
+      if (!isYmd(t.date) || !hit(t)) return;
+      const it = this.dItem(t);
+      if (it.done && !withDone) return;
+      (t.date >= today ? up : past).push(it);
+    });
+    S.masters.forEach(m => {
+      if (hit(m)) {
+        let next = '';
+        const end = isYmd(m.repeat.endDate) ? m.repeat.endDate : addDaysStr(today, 400);
+        for (let d = m.date > today ? m.date : today; d <= end; d = addDaysStr(d, 1)) {
+          if (!this.match(m, d)) continue;
+          const x = S.ex[m.id + '|' + d];
+          if (x && x.deleted) continue;
+          next = d; break;
+        }
+        rep.push({ m, next });
+      }
+    });
+    Object.values(S.ex).forEach(x => {                         // 이 날짜만 수정한 회차
+      const m = Store.get('todos', x.rm);
+      if (!x.ov || x.deleted || !this.isMaster(m) || !isYmd(x.date)) return;
+      const it = this.oItem(m, x, x.date);
+      if (!hit(it) || hit(m) || (it.done && !withDone)) return;
+      (x.date >= today ? up : past).push(it);
+    });
+    up.sort((a, b) => ko(a.date, b.date) || this.cmp(a, b));
+    past.sort((a, b) => ko(b.date, a.date) || this.cmp(a, b));
+    rep.sort((a, b) => ko(a.next || '9999', b.next || '9999') || TX_TITLE_CMP.compare(a.m.text || '', b.m.text || ''));
+    return { up, past, rep, words };
+  },
+  search() {
+    const LIM = 100;
+    const mark = (s, words) => {
+      let h = esc(s);
+      words.forEach(w => { h = h.replace(new RegExp('(' + esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark>$1</mark>'); });
+      return h;
+    };
+    // 내용 밖(메모·체크리스트)에서 찾은 경우 그 줄을 보여 준다
+    const extra = (v, words) => {
+      const inText = words.every(w => String(v.text || '').toLowerCase().includes(w));
+      if (inText) return '';
+      const lines = [...stripZws(v.memo || '').split('\n'), ...(Array.isArray(v.checklist) ? v.checklist.map(x => '☑ ' + x.t) : [])].map(x => x.trim()).filter(Boolean);
+      const ln = lines.find(l => words.some(w => l.toLowerCase().includes(w)));
+      return ln ? `<div class="txs-ex">${mark(ln, words)}</div>` : '';
+    };
+    const row = (it, words) => {
+      const c = it.lesson ? Store.get('classes', it.classId) : null;
+      const tags = [];
+      if (it.repeat) tags.push('<span class="txs-tag">반복 회차</span>');
+      if (c) tags.push(`<span class="txs-tag cls">${esc(c.name)}</span>`);
+      return `<button type="button" class="txs-row${it.done ? ' done' : ''}" data-sk="${esc(it.k)}" data-sd="${it.date}">
+        <span class="tx-imp imp-${it.importance}"></span>
+        <span class="txs-when"><b>${fmtMD(it.date)}</b>${it.time ? `<i>${esc(it.time)}</i>` : ''}<em>${it.date.slice(0, 4) !== todayStr().slice(0, 4) ? it.date.slice(0, 4) : ''}</em></span>
+        <span class="txs-main"><span class="txs-t">${it.done ? '<span class="txs-ok">완료</span>' : ''}${mark(it.text, words)}</span>${extra(it, words)}${tags.length ? `<span class="txs-tags">${tags.join('')}</span>` : ''}</span></button>`;
+    };
+    const repRow = (o, words) => `<button type="button" class="txs-row" data-sk="o:${esc(o.m.id)}:${o.next || o.m.date}" data-sd="${o.next || o.m.date}">
+        <span class="tx-imp rep"></span>
+        <span class="txs-when"><b>${esc(this.repLabel(o.m.repeat))}</b><i>${o.next ? '다음 ' + fmtMD(o.next) : '끝남'}</i></span>
+        <span class="txs-main"><span class="txs-t"><span class="tx-star">★</span>${mark(o.m.text || '', words)}</span>${extra(o.m, words)}</span></button>`;
+    const sec = (title, list, fn, words) => !list.length ? '' : `<div class="txs-sec"><div class="txs-h">${title} <span>${list.length}</span></div>${list.slice(0, LIM).map(x => fn(x, words)).join('')}${list.length > LIM ? `<div class="txs-more">${list.length - LIM}건 더 있습니다. 검색어를 더 넣어 좁혀 보세요.</div>` : ''}</div>`;
+    const md = Modal.open({
+      title: '할일 검색', size: 'md', autofocus: false,
+      body: `<div class="txs-bar"><div class="txs-in"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><input type="search" data-sq placeholder="할일 내용, 메모, 체크리스트 검색" value="${esc(this.sq)}" autocomplete="off"></div>
+        <label class="chk small"><input type="checkbox" data-sdone ${this.sDone ? 'checked' : ''}>완료 포함</label></div><div class="txs-res" data-sres></div>`,
+      buttons: [{ text: '닫기' }],
+      onMount: (b) => {
+        const box = $('[data-sres]', b), inp = $('[data-sq]', b);
+        const draw = () => {
+          const r = this.searchItems(this.sq, this.sDone);
+          if (!r) { box.innerHTML = '<div class="txs-empty">찾을 말을 입력하세요.<br><span class="small muted">지난 할일과 앞으로 할 일, 반복 할일, 수업일지 할일을 모두 찾습니다.</span></div>'; return; }
+          const n = r.up.length + r.past.length + r.rep.length;
+          box.innerHTML = n ? sec('앞으로 할 일', r.up, row, r.words) + sec('반복 할일', r.rep, repRow, r.words) + sec('지난 할일', r.past, row, r.words)
+            : '<div class="txs-empty">찾는 할일이 없습니다.</div>';
+        };
+        draw();
+        setTimeout(() => { inp.focus(); inp.select(); }, 30);
+        inp.addEventListener('input', debounce(() => { this.sq = inp.value; draw(); }, 150));
+        $('[data-sdone]', b).addEventListener('change', (e) => { this.sDone = e.target.checked; draw(); });
+        box.addEventListener('click', (e) => {
+          const r = e.target.closest('[data-sk]'); if (!r) return;
+          const k = r.dataset.sk, d = r.dataset.sd;
+          md.close();
+          if (isYmd(d)) App.pickDate(d);
+          setTimeout(() => this.open(k), 0);
+        });
+      },
+    });
+  },
+
   menu(k, anchor, opts = {}) {
     const it = this.resolve(k);
     if (!it || it.rem) return;

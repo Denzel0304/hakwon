@@ -446,7 +446,8 @@ const DayPage = {
 
     let h = `<div class="page-head"><h1 class="dnav-h1">${isToday ? '오늘' : '날짜'}</h1>
       ${NavBar.day(date)}
-      <button class="btn primary" data-a="addtodo">+ 할일 추가</button></div>`;
+      <button class="btn primary" data-a="addtodo">+ 할일 추가</button>
+      <button class="btn tx-sbtn" data-a="tdsearch" title="지난 할일·앞으로 할 일 모두 검색"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>할일 검색</button></div>`;
     if (pending.length) h += `<div class="panel notice" style="margin-bottom:14px"><b>학교 입력이 필요한 학생 ${pending.length}명</b> <span class="small soft">진급으로 학교미정이 된 학생입니다.</span> <button class="btn sm" data-a="school">학교 입력</button></div>`;
     // 카드 배치: 왼쪽 열(수업 → 다가오는 일정 → 시험 일정 → 일정) / 오른쪽 열(할일 → 밀린 할일)
     // 수업·할일은 항상 맨 위에 고정, 일정 카드들은 수업 아래에 붙는다.
@@ -492,6 +493,7 @@ const DayPage = {
         const act = a.dataset.a;
         if (act === 'add') { EventModal.open(null, { date }); return; }
         if (act === 'addtodo') { TodoX.add(date); return; }
+        if (act === 'tdsearch') { TodoX.search(); return; }
         if (act === 'school') { Promo.openSchoolModal(); return; }
         App.pickDate(act === 'today' ? today : addDaysStr(date, act === 'prev' ? -1 : 1));
         return;

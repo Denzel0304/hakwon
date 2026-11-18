@@ -891,8 +891,9 @@ const Lessons = {
   onLeave() { this.form = null; this.ret = null; },
   // 새 일지: 출석은 그 날 수강생 전원 '출석'이 기본
   // 결석 예정으로 등록한 학생은 '결석'이 기본
-  defAtt(classId, date) { const a = {}; if (classId) Classes.rosterOn(classId, date).forEach(s => { a[s.id] = Makeups.preRec(classId, date, s.id) ? 'A' : 'P'; }); return a; },
-  newForm(date, classId) { return { date, classId, att: this.defAtt(classId, date), mkpre: {}, progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
+  // 결석 예정 → 결석, 결석일 전에 보강을 끝낸 결석 예정 → 선보강
+  defAtt(classId, date) { const a = {}; if (classId) Classes.rosterOn(classId, date).forEach(s => { const pr = Makeups.preRec(classId, date, s.id); a[s.id] = pr ? (Makeups.isPreMk(pr) ? 'M' : 'A') : 'P'; }); return a; },
+  newForm(date, classId) { return { date, classId, att: this.defAtt(classId, date), mkpre: Makeups.preMkpre(classId, date), progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
   // 출석이 기본값(전원 출석) 그대로인지
   attIsDefault(f) {
     const d = this.defAtt(f.classId, f.date), a = f.att || {};
@@ -2224,9 +2225,14 @@ const Makeups = {
             const pre = this.prefix(s, st.date);
             const now = Date.now(), iso = new Date(now).toISOString();
             const memos = {};                                // 결석일을 옮길 때 반별 메모 유지
+            const carry = {};                                // 결석일을 옮길 때 반별 보강일·시간·상태 유지
             if (moved) {                                     // 이전 결석일의 결석 예정 기록 정리 (결석 예정 취소와 같은 방식)
               g0.items.forEach(o => {
-                if (o.mk) { if (o.mk.memo) memos[o.mk.classId] = o.mk.memo; Store.del('makeups', o.mk.id); }
+                if (o.mk) {
+                  if (o.mk.memo) memos[o.mk.classId] = o.mk.memo;
+                  if (isYmd(o.mk.date) || (o.mk.status && o.mk.status !== 'none')) carry[o.mk.classId] = { date: o.mk.date || '', time: o.mk.time || '', status: o.mk.status || 'none' };
+                  Store.del('makeups', o.mk.id);
+                }
                 const l = Store.get('lessons', o.l.id);
                 if (l && l.att && l.att[s.id] === 'A') {
                   const att = Object.assign({}, l.att); delete att[s.id];
@@ -2236,10 +2242,12 @@ const Makeups = {
               });
             }
             if (!edit || moved) {
-              cs.forEach(c => {
+              cs.forEach((c, i) => {
                 const lid = Lessons.lessonId(c.id, st.date), id = this.id(lid, s.id);
                 const old = Store.get('makeups', id) || {};
-                Store.put('makeups', Object.assign({}, old, { id, lessonId: lid, studentId: s.id, classId: c.id, absentDate: st.date, date: '', time: '', status: 'none', memo: old.memo || memos[c.id] || '',
+                // 결석일을 옮김: 같은 반의 보강 일정 그대로 (반이 바뀌었고 이전 반이 하나뿐이면 그 일정을 첫 반에)
+                const cv = carry[c.id] || (moved && i === 0 && Object.keys(carry).length === 1 && g0.items.length === 1 ? Object.values(carry)[0] : null) || { date: '', time: '', status: 'none' };
+                Store.put('makeups', Object.assign({}, old, { id, lessonId: lid, studentId: s.id, classId: c.id, absentDate: st.date, date: cv.date, time: cv.time, status: cv.status, memo: old.memo || memos[c.id] || '',
                   pre: true, absKey: k, createdAt: iso }));
               });
             }
@@ -2305,8 +2313,30 @@ const Makeups = {
           <button class="btn sm danger" data-abscancel="${g.key}">결석 예정 취소</button></div>
         ${tds.length ? `<div class="ab-tds">${tds.map(t => `<label class="ab-td ${t.done ? 'done' : ''} ${!t.done && t.date < today ? 'late' : ''}"><input type="checkbox" data-abstd="${t.id}" ${t.done ? 'checked' : ''}>
           <span class="nowrap when">${fmtMD(t.date)}${t.time ? ' ' + esc(t.time) : ''}</span><span>${esc(String(t.text || '').startsWith(pre) ? t.text.slice(pre.length) : t.text)}</span></label>`).join('')}</div>`
-          : '<div class="small muted">연결된 할일이 없습니다.</div>'}</div>`;
+          : '<div class="small muted">연결된 할일이 없습니다.</div>'}
+        ${g.items.map(o => this.preCtlHtml(o, g.items.length > 1)).join('')}</div>`;
     }).join('');
+  },
+  // 결석 예정의 보강 입력줄 (반마다 한 줄 · 처리 필요 카드와 같은 칸, '보강 안 함'은 결석 당일 이후에만)
+  PRE_ST: ['none', 'plan', 'info', 'done'],
+  preCtlHtml(o, showCls) {
+    const mk = o.mk || {}, st = mk.status || 'none', key = this.id(o.l.id, o.s.id);
+    const early = this.isPreMk(mk);
+    return `<div class="mk-ctl ab-ctl" data-key="${key}">${showCls ? `<span class="small ab-cls">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>` : ''}
+      <span class="small soft">보강일</span><input type="date" data-mf="date" value="${esc(mk.date || '')}">
+      <input type="time" data-mf="time" step="300" value="${esc(mk.time || '')}">
+      <select data-mf="status" title="안내 완료: 진도·숙제 안내만 함 / 보강 완료: 따로 불러 보강함 (결석일 전 날짜면 그 날 출결이 선보강으로 들어감)">${this.PRE_ST.map(k => `<option value="${k}" ${st === k ? 'selected' : ''}>${MK_STATUS[k]}</option>`).join('')}</select>
+      ${early ? '<span class="badge green" title="결석일 전에 보강함 → 그 날 수업일지 출결이 선보강으로 들어갑니다">선보강</span>' : ''}
+      <input type="text" data-mf="memo" value="${esc(mk.memo || '')}" placeholder="보강 메모"></div>`;
+  },
+  // 결석일 전에 보강을 끝낸 결석 예정 (= 선보강)
+  isPreMk(mk) { return !!mk && mk.status === 'done' && isYmd(mk.date) && isYmd(mk.absentDate) && mk.date < mk.absentDate; },
+  // 그 반·날짜에서 선보강으로 들어갈 학생 { 학생ID: 보강한 날 } (수업일지 새로 쓸 때 기본값)
+  preMkpre(classId, date) {
+    const out = {};
+    if (!classId) return out;
+    Classes.rosterOn(classId, date).forEach(s => { const m = this.preRec(classId, date, s.id); if (this.isPreMk(m)) out[s.id] = m.date; });
+    return out;
   },
 
   /* ---------- 결석 후 첫 등원 할일 ----------
@@ -2393,16 +2423,17 @@ const Makeups = {
      처리 필요의 보강 상태가 '예정'이고 보강일이 있으면 그 날(보강 시간)에 "홍길동 학생 11/14 결석 보강"(중요도 높음)을 만든다.
      할일 id TDM_보강ID · 기록 meta MT_보강ID { kind:'mk_todo', mkId }
      · 보강일·시간이 바뀌면 할일도 옮김 (아직 안 한 할일만) · 보강 완료 → 할일 완료(mkAuto) / 다시 예정 → 자동 완료한 것만 되돌림
-     · 미지정·안내 완료·보강 안 함·결석이 없어짐 → 할일 삭제 · 직접 지운 할일은 다시 만들지 않음 (예정을 풀었다 다시 걸면 새로 만듦) */
+     · 미지정·안내 완료·보강 안 함 → 할일 삭제 · 결석이 없어짐(결석 예정 취소·선보강·출석) → 아직 안 한 할일만 삭제
+     · 직접 지운 할일은 다시 만들지 않음 (예정을 풀었다 다시 걸면 새로 만듦) */
   mkText(s, date) { const d = parseYmd(date); return `${s.name} 학생 ${d.getMonth() + 1}/${d.getDate()} 결석 보강`; },
   mkSync() {
     const iso = new Date().toISOString();
     let add = 0, chg = 0;
     const live = {};
     this.collect().forEach(o => { if (o.mk) live[o.mk.id] = o; });
-    const drop = (mkId) => {
+    const drop = (mkId, keepDone) => {
       const t = Store.get('todos', 'TDM_' + mkId);
-      if (t) { Store.del('todos', t.id); chg++; }
+      if (t && !(keepDone && t.done)) { Store.del('todos', t.id); chg++; }
       Store.del('meta', 'MT_' + mkId);
     };
     Object.keys(live).forEach(id => {
@@ -2435,7 +2466,7 @@ const Makeups = {
       }
     });
     // 보강 기록·결석이 없어진 것
-    Store.where('meta', m => m.kind === 'mk_todo' && !live[m.mkId]).forEach(m => drop(m.mkId));
+    Store.where('meta', m => m.kind === 'mk_todo' && !live[m.mkId]).forEach(m => drop(m.mkId, true));   // 완료한 할일은 기록으로 남김 (선보강 등)
     if (add) toast(`보강 할일 ${add}개를 추가했습니다`);
     return add + chg;
   },
@@ -2550,6 +2581,7 @@ const Makeups = {
     });
     main.innerHTML = h;
     const byKey = {}; list.forEach(o => { byKey[this.id(o.l.id, o.s.id)] = o; });
+    if (this.tab === 'pre') groups.forEach(g => g.items.forEach(o => { byKey[this.id(o.l.id, o.s.id)] = o; }));   // 결석 예정의 보강 입력줄
     const gByKey = {}; groups.forEach(g => { gByKey[g.key] = g; });
     const saveField = (card, field, val) => {
       const o = byKey[card.dataset.key]; if (!o) return;
@@ -2609,6 +2641,10 @@ const Makeups = {
         toast('보강 목록에서 삭제했습니다');
         App.render();
         return;
+      }
+      if (f.dataset.mf === 'status' && f.value === 'done' && (byKey[f.closest('[data-key]').dataset.key] || {}).fut) {
+        const cur = Store.get('makeups', f.closest('[data-key]').dataset.key);
+        if (cur && isYmd(cur.date) && cur.date > todayStr()) { toast('보강 완료는 오늘이나 지난 보강일에만 고를 수 있습니다'); App.render(); return; }
       }
       if (f.dataset.mf === 'status' && f.value === 'plan') {
         const cur = Store.get('makeups', f.closest('[data-key]').dataset.key);
