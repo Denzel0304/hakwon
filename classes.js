@@ -627,7 +627,9 @@ const Classes = {
     const gl = (g) => (g ? gradeLabel(g) : '학년 없음');
     const grades = Object.keys(byGrade).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b))
       .map(g => ({ label: gl(g), n: byGrade[g] }));
-    const schools = Object.keys(bySchool).sort((a, b) => (!a) - (!b) || bySchool[b].n - bySchool[a].n || ko(a, b))
+    // 학교 순서: 학교 없음은 맨 뒤, 초→중→고 (그 학교 학생의 가장 낮은 학년 기준), 같은 급이면 인원 많은 학교 먼저
+    const lvl = (k) => { const g = Math.min(...Object.keys(bySchool[k].g).map(x => this.gradeKey(x))); return g <= 6 ? 0 : g <= 9 ? 1 : g <= 12 ? 2 : 3; };
+    const schools = Object.keys(bySchool).sort((a, b) => (!a) - (!b) || lvl(a) - lvl(b) || bySchool[b].n - bySchool[a].n || ko(a, b))
       .map(k => ({ name: k || '학교 없음', n: bySchool[k].n,
         g: Object.keys(bySchool[k].g).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b)).map(g => ({ label: gl(g), n: bySchool[k].g[g] })) }));
     // 등록 예정: 반마다의 예정 학생을 학생별로 모은다 (지금 다른 반에 다니면 반 이동·반 추가로 표시)
@@ -663,7 +665,10 @@ const Classes = {
     const maxG = Math.max(1, ...sm.grades.map(x => x.n)), maxS = Math.max(1, ...sm.schools.map(x => x.n));
     const bar = (label, n, max, sub) => `<div class="cls-sum-bar"><span class="lb">${esc(label)}</span><span class="tr"><i style="width:${Math.max(4, n / max * 100)}%"></i></span><b>${n}</b>${sub ? `<span class="gs">${sub}</span>` : ''}</div>`;
     const grades = sm.grades.map(x => bar(x.label, x.n, maxG)).join('') || '<div class="muted small">-</div>';
-    const schools = sm.schools.map(x => bar(x.name, x.n, maxS, x.g.map(g => `${esc(g.label)} ${g.n}`).join(' · '))).join('') || '<div class="muted small">-</div>';
+    // 학교별: 가로 전체 막대 그래프 (학교 수에 맞춰 칸을 나누고, 너무 많을 때만 가로 스크롤)
+    const schools = sm.schools.map(x => `<div class="cls-sch" title="${esc(x.name + ' ' + x.n + '명 (' + x.g.map(g => g.label + ' ' + g.n + '명').join(', ') + ')')}">
+      <b class="n">${x.n}명</b><span class="col"><i style="height:${Math.max(4, x.n / maxS * 100)}%"></i></span>
+      <span class="nm">${esc(x.name)}</span><span class="gs">${x.g.map(g => `${esc(g.label)} ${g.n}`).join(' · ')}</span></div>`).join('');
     const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
       <span class="cs">${u.items.map(i => `${this.dot(i.c)}${esc(i.c.name)}${i.from !== u.from ? ` <span class="muted">${this.md(i.from)}~</span>` : ''}`).join('<br>')}</span></div>`).join('');
     const newUp = sm.upcoming.filter(u => !u.kind).length;
@@ -680,9 +685,10 @@ const Classes = {
           <div class="soft small">반별 수강 합계 ${sm.seats}명</div>${sm.seats !== sm.n ? `<div class="muted small">여러 반 수강 ${sm.seats - sm.n}명</div>` : ''}
           ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div></div>
         <div class="cls-sum-card"><div class="lbl">학년별</div><div class="cls-sum-body">${grades}</div></div>
-        <div class="cls-sum-card"><div class="lbl">학교별 <span class="cnt">${sm.schools.length}곳</span></div><div class="cls-sum-body">${schools}</div></div>
-        <div class="cls-sum-card wide"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div><div class="cls-sum-body">${ups || empty('등록 예정인 학생이 없습니다.')}</div></div>
-        <div class="cls-sum-card wide"><div class="lbl">${M}월 퇴원 <span class="cnt lv">${lv.length}명</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원한 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div><div class="cls-sum-body">${ups || empty('등록 예정인 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card"><div class="lbl">${M}월 퇴원 <span class="cnt lv">${lv.length}명</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원한 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card cls-sum-sch"><div class="lbl">학교별 <span class="cnt">${sm.schools.length}곳</span></div>
+          ${schools ? `<div class="cls-sch-wrap"><div class="cls-sch-row">${schools}</div></div>` : empty('-')}</div>
       </div></div>`;
   },
   // 월별 반 현황 PDF (A4 세로) — 지난 달은 말일, 이번 달은 오늘 기준. 그 달의 신규 등록·퇴원 포함
@@ -709,7 +715,17 @@ const Classes = {
     }).join('');
     // 그 달의 신규 등록 (처음 등록 + 재등록) · 퇴원 (이번 달은 이후 날짜의 퇴원 예약도 '예정'으로)
     const inM = (d) => isYmd(d) && d >= first && d <= base;
-    const clsAt = (sid, d) => Store.where('enrollments', e => e.studentId === sid && this.enrollValid(e, d)).map(e => Store.get('classes', e.classId)).filter(Boolean);
+    // 신규 등록 학생의 반: 기준일(이번 달은 오늘, 지난 달은 말일)에 다니는 반 — 위 반 표와 같게.
+    // 기준일 전에 빠졌으면(퇴원 등) 등록일 이후 마지막으로 다니던 반, 그것도 없으면 등록일에 다니던 반
+    const clsAt = (sid, d) => {
+      const mine = Store.where('enrollments', e => e.studentId === sid);
+      const uniqC = (arr) => [...new Set(arr.map(e => e.classId))].map(id => Store.get('classes', id)).filter(Boolean);
+      const now = mine.filter(e => this.enrollValid(e, base));
+      if (now.length) return uniqC(now);
+      const ended = mine.filter(e => e.to && e.to > d && e.to <= base);
+      if (ended.length) { const lastTo = ended.reduce((m, e) => (e.to > m ? e.to : m), ''); return uniqC(ended.filter(e => e.to === lastTo)); }
+      return uniqC(mine.filter(e => this.enrollValid(e, d)));
+    };
     const joins = [];
     Store.all('students').forEach(s => {
       const jd = Students.joinDateOf(s);
@@ -1260,17 +1276,27 @@ document.addEventListener('change', (e) => {
 .cls-sum-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .cls-sum-head h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
 .cls-sum-head .sub { color: var(--ink-soft); font-size: 13px; }
-/* 카드 높이는 모두 같게 고정 — 위 줄 3개(전체·학년·학교), 아래 줄 2개(등록 예정·이번 달 퇴원). 내용이 많으면 카드 안에서 스크롤 */
-.cls-sum-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 250px; gap: 12px; }
-@media (max-width: 900px) { .cls-sum-grid > .cls-sum-card { grid-column: span 3; } .cls-sum-grid > .cls-sum-card:last-child { grid-column: span 6; } }
-.cls-sum-card { grid-column: span 2; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); min-width: 0; }
-.cls-sum-card.wide { grid-column: span 3; }
+/* 윗줄: 전체 인원·학년별·등록 예정·이번 달 퇴원 4개 (같은 높이 = 가장 긴 카드에 맞춤, 아주 길 때만 카드 안 스크롤)
+   아랫줄: 학교별 막대 그래프 (가로 전체) */
+.cls-sum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+@media (max-width: 900px) { .cls-sum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cls-sum-card { display: flex; flex-direction: column; min-height: 170px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
 .cls-sum-card > .lbl { flex: none; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
 .cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
 .cls-sum-card > .lbl .cnt.lv { color: var(--danger); }
-.cls-sum-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.cls-sum-body { flex: 1; max-height: 240px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .cls-sum-body::-webkit-scrollbar { width: 6px; } .cls-sum-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
 .cls-sum-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--ink-mute); font-size: 13px; }
+.cls-sum-sch { grid-column: 1 / -1; min-height: 0; }
+.cls-sch-wrap { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.cls-sch-wrap::-webkit-scrollbar { height: 6px; } .cls-sch-wrap::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.cls-sch-row { display: flex; gap: 10px; align-items: stretch; padding-bottom: 4px; }
+.cls-sch { flex: 1 0 92px; max-width: 160px; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.cls-sch .n { font-size: 13px; color: var(--ink); margin-bottom: 4px; }
+.cls-sch .col { width: 34px; height: 110px; background: var(--tint-strong); border-radius: 6px 6px 3px 3px; display: flex; align-items: flex-end; overflow: hidden; }
+.cls-sch .col i { display: block; width: 100%; background: var(--accent); opacity: .8; border-radius: 6px 6px 0 0; }
+.cls-sch .nm { margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--ink); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cls-sch .gs { margin-top: 2px; font-size: 11.5px; color: var(--ink-mute); line-height: 1.35; }
 .cls-sum-total { background: linear-gradient(160deg, var(--accent-soft), var(--surface) 75%); border-color: var(--accent-line); text-align: center; }
 .cls-sum-total .cls-sum-body { justify-content: center; align-items: center; }
 .cls-sum-total .big { font-size: 44px; font-weight: 800; color: var(--accent-ink); line-height: 1.05; letter-spacing: -1px; }
