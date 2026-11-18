@@ -2389,6 +2389,57 @@ const Makeups = {
   // 결석 기록을 보고 할일을 만들기 · 완료 · 되돌리기 · 날짜 옮기기 · 삭제 (서버 내용을 처음 받은 뒤에만). 바뀐 개수를 돌려준다
   // 첫 등원 할일: 그 날 결석이 모두 안내 완료·보강 완료 → 자동 완료(retAuto 표시, meta.auto) / 다시 미지정·예정이 되면 자동 완료한 것만 되돌림
   //              아직 안 한 할일인데 그 날 학생이 오지 않게 되면(결석·결석 예정·선보강) 다음 등원일로 옮김 (직접 날짜를 바꾼 할일은 그대로)
+  /* ---------- 보강 예정 할일 ----------
+     처리 필요의 보강 상태가 '예정'이고 보강일이 있으면 그 날(보강 시간)에 "홍길동 학생 11/14 결석 보강"(중요도 높음)을 만든다.
+     할일 id TDM_보강ID · 기록 meta MT_보강ID { kind:'mk_todo', mkId }
+     · 보강일·시간이 바뀌면 할일도 옮김 (아직 안 한 할일만) · 보강 완료 → 할일 완료(mkAuto) / 다시 예정 → 자동 완료한 것만 되돌림
+     · 미지정·안내 완료·보강 안 함·결석이 없어짐 → 할일 삭제 · 직접 지운 할일은 다시 만들지 않음 (예정을 풀었다 다시 걸면 새로 만듦) */
+  mkText(s, date) { const d = parseYmd(date); return `${s.name} 학생 ${d.getMonth() + 1}/${d.getDate()} 결석 보강`; },
+  mkSync() {
+    const iso = new Date().toISOString();
+    let add = 0, chg = 0;
+    const live = {};
+    this.collect().forEach(o => { if (o.mk) live[o.mk.id] = o; });
+    const drop = (mkId) => {
+      const t = Store.get('todos', 'TDM_' + mkId);
+      if (t) { Store.del('todos', t.id); chg++; }
+      Store.del('meta', 'MT_' + mkId);
+    };
+    Object.keys(live).forEach(id => {
+      const o = live[id], mk = o.mk, mid = 'MT_' + id, meta = Store.get('meta', mid), t = Store.get('todos', 'TDM_' + id);
+      const want = (mk.status === 'plan' || mk.status === 'done') && isYmd(mk.date);
+      if (!want) { if (meta || t) drop(id); return; }
+      if (mk.status === 'done') {                                     // 보강 완료 → 할일 완료 체크 (만든 할일이 있을 때만)
+        if (t && !t.done) { Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, mkAuto: true })); chg++; }
+        return;
+      }
+      const text = this.mkText(o.s, o.l.date), time = mk.time || '';
+      if (!meta) {
+        Store.put('meta', { id: mid, kind: 'mk_todo', mkId: id, createdAt: iso });
+        if (!t) {
+          Store.put('todos', Object.assign({ id: 'TDM_' + id, lessonId: '', classId: '', date: mk.date, text, done: false, createdAt: iso,
+            order: TodoX.maxOrder(mk.date) + 1, doneAt: '', remindDone: false, mkKey: id }, TodoX.detailVals({ importance: 3, time })));
+          add++;
+        }
+        return;
+      }
+      if (!t) return;                                                 // 직접 지운 할일
+      if (t.done && t.mkAuto) {                                       // 보강 완료 → 다시 예정
+        const b = Object.assign({}, t, { done: false, doneAt: '' }); delete b.mkAuto;
+        Store.put('todos', b); chg++;
+        return;
+      }
+      if (!t.done && (t.date !== mk.date || (t.time || '') !== time || t.text !== text)) {
+        Store.put('todos', Object.assign({}, t, { date: mk.date, time, text, remindDone: false }, t.date !== mk.date ? { order: TodoX.maxOrder(mk.date) + 1 } : {}));
+        chg++;
+      }
+    });
+    // 보강 기록·결석이 없어진 것
+    Store.where('meta', m => m.kind === 'mk_todo' && !live[m.mkId]).forEach(m => drop(m.mkId));
+    if (add) toast(`보강 할일 ${add}개를 추가했습니다`);
+    return add + chg;
+  },
+
   retSync() {
     if (!Store.firstPullDone || !Auth.key()) return 0;
     const ps = this.preSync();
@@ -2398,7 +2449,7 @@ const Makeups = {
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
-    let add = 0, chg = ps.done + ps.undone + ps.del;
+    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0);   // 보강 예정 할일 · 첫 등원 할일
     Object.keys(groups).forEach(k => {
       const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
       const meta = Store.get('meta', mid);
@@ -2506,7 +2557,9 @@ const Makeups = {
       const rec = Object.assign({}, cur, { [field]: val });
       if (field === 'date' && val && rec.status === 'none') rec.status = 'plan';
       if (field === 'status' && val === 'done' && !rec.date) rec.date = todayStr();
+      if (field === 'status' && val === 'none') { rec.date = ''; rec.time = ''; }     // 미지정 → 보강일·시간 비움
       Store.put('makeups', rec);
+      if (['date', 'time', 'status'].includes(field) && Store.firstPullDone) this.mkSync();   // 보강 예정 할일을 바로 맞춘다
     };
     main.onclick = async (e) => {
       const tb = e.target.closest('[data-tab]'); if (tb) { this.tab = tb.dataset.tab; App.render(); return; }
@@ -2557,6 +2610,10 @@ const Makeups = {
         App.render();
         return;
       }
+      if (f.dataset.mf === 'status' && f.value === 'plan') {
+        const cur = Store.get('makeups', f.closest('[data-key]').dataset.key);
+        if (!(cur && isYmd(cur.date))) { toast('보강일을 먼저 고르세요'); App.render(); return; }
+      }
       saveField(f.closest('[data-key]'), f.dataset.mf, f.value.trim());
       if (f.dataset.mf !== 'memo') App.render();
     };
@@ -2570,10 +2627,10 @@ const Makeups = {
   },
 };
 
-// 이 기기에서 수업일지(출결)·보강 기록을 고치면 결석 후 첫 등원 할일을 맞춘다 (서버에서 받아온 변경은 그 기기가 이미 맞춤)
+// 이 기기에서 수업일지(출결)·보강 기록·학생·수강반을 고치면 결석 후 첫 등원 · 보강 예정 · 신규생 첫 등원 할일을 맞춘다 (서버에서 받아온 변경은 그 기기가 이미 맞춤)
 ['put', 'del'].forEach(fn => {
   const f0 = Store[fn];
-  Store[fn] = function (t, ...a) { const r = f0.call(this, t, ...a); if (t === 'lessons' || t === 'makeups') Makeups.retSoon(); return r; };
+  Store[fn] = function (t, ...a) { const r = f0.call(this, t, ...a); if (t === 'lessons' || t === 'makeups' || t === 'students' || t === 'enrollments' || t === 'classes') Makeups.retSoon(); return r; };
 });
 
 /* =========================================================

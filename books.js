@@ -43,6 +43,123 @@ const Books = {
     return this.recsOfMat(mid).filter(r => r.status === 'ing').map(r => Store.get('students', r.studentId)).filter(Boolean);
   },
 
+  /* ---------- 반 교재 자동 등록 (독해·문법) ----------
+     시험+교재 › 일반 교재에서 독해·문법 교재에 반을 지정하면, 그 반 학생(등원 예정 포함)에게 학생 교재를 자동으로 만든다.
+     · 그 반·분류의 '지금 교재' = 그 반에 가장 늦게 연결된 교재 (연결일: 교재의 clsFrom[반ID], 없으면 교재 만든 날)
+     · 시작일 = 연결일과 그 학생이 반에 들어온 날 중 늦은 날 · 나중에 반에 들어온 학생도 들어온 날로 자동 등록
+     · 같은 분류의 다른 진행 교재: 같은 반 교재(이전 책)면 '완료', 아니면(반을 옮김 등) '중단' — 끝난 날 = 새 교재 시작 전날
+       (학생이 함께 다니는 다른 반의 지금 교재는 그대로)
+     · 반 연결을 풀거나 학생이 반에서 빠지면(반이동·퇴원·졸업) 자동 등록한 진행 교재는 '중단' (휴원은 그대로)
+       → 일주일 안에 되돌리면(연결 다시·퇴원 취소) 다시 진행 중으로
+     · 학생·교재마다 한 번만 (meta BKA_학생_교재 표시) — 직접 지운 기록을 다시 만들지 않음. id가 정해져 있어 기기 간 중복 없음
+     · 시작일 전에 반에서 빠지거나 교재가 바뀐 자동 기록은 쓴 적이 없으므로 중단·완료 대신 지운다 */
+  AUTO_CATS: ['read', 'gram'],
+  _auT: null,
+  linkDate(m, cid) {
+    const f = m.clsFrom && m.clsFrom[cid];
+    if (isYmd(f)) return f;
+    const d = new Date(m.createdAt || 0);
+    return isNaN(d) || !m.createdAt ? '2000-01-01' : ymd(d);
+  },
+  autoSync() {
+    if (!Store.firstPullDone || !Auth.key() || typeof NP === 'undefined') return 0;
+    const today = todayStr(), iso = new Date().toISOString();
+    let add = 0, chg = 0;
+    const lk = (m, cid) => this.linkDate(m, cid) + '|' + (m.createdAt || '');
+    const linked = (m, cid) => !!m && (m.classIds || []).includes(cid);
+    // 반·분류마다 지금 교재
+    const cur = {};
+    NP.genMats().filter(m => this.AUTO_CATS.includes(m.cat)).forEach(m => (m.classIds || []).forEach(cid => {
+      const c = Store.get('classes', cid);
+      if (!c || c.active === false) return;
+      const k = cid + '|' + m.cat, o = cur[k];
+      if (!o || lk(m, cid) > lk(o, cid)) cur[k] = m;
+    }));
+    // 학생마다 지금 다니거나 다닐 반 { 반ID: 반에 들어온 날 }
+    const enr = {};
+    Store.all('enrollments').forEach(e => {
+      if (e.to && e.to <= today) return;
+      const s = Store.get('students', e.studentId), c = Store.get('classes', e.classId);
+      if (!s || !c || c.active === false) return;
+      let from = e.from;
+      if (Classes.enrollValid(e, today)) { const ch = Classes.chainOf(e.studentId, e.classId, today); if (ch.length) from = ch[0].from; }
+      const o = (enr[e.studentId] = enr[e.studentId] || {});
+      if (!o[e.classId] || from < o[e.classId]) o[e.classId] = from;
+    });
+    const usingCls = (sid, m) => Object.keys(enr[sid] || {}).find(cid => linked(m, cid));
+
+    // 1) 자동 등록한 진행 교재: 반에서 빠짐·연결 풀림 → 중단 / 되돌림 → 다시 진행
+    this.recs().filter(r => r.auto).forEach(r => {
+      const m = NP.mat(r.matId), s = Store.get('students', r.studentId);
+      if (!m || !s || !this.AUTO_CATS.includes(m.cat)) return;
+      const use = usingCls(r.studentId, m);
+      if (r.status === 'ing') {
+        if (use) { if (use !== r.auto) { Store.put('meta', Object.assign({}, r, { auto: use })); chg++; } return; }
+        if (s.status === 'pause') return;                                   // 휴원은 그대로
+        let end = today;
+        if (!(enr[r.studentId] || {})[r.auto]) {                            // 반에서 빠짐 → 마지막 수업 날
+          const tos = Store.where('enrollments', e => e.studentId === r.studentId && e.classId === r.auto && e.to).map(e => e.to).sort();
+          if (tos.length) end = addDaysStr(tos[tos.length - 1], -1);
+        }
+        if (end > today) end = today;
+        if (isYmd(r.start) && end < r.start) {                              // 시작 전에 빠짐 → 쓴 적 없는 기록이라 지움 (다시 들어오면 새로 등록)
+          Store.del('meta', r.id); Store.del('meta', 'BKA_' + r.studentId + '_' + r.matId);
+          chg++; return;
+        }
+        Store.put('meta', Object.assign({}, r, { status: 'stop', end, matName: m.name, autoStop: today }));
+        chg++;
+      } else if (r.status === 'stop' && isYmd(r.autoStop) && r.autoStop >= addDaysStr(today, -7) && use) {
+        const b = Object.assign({}, r, { status: 'ing', end: '', auto: use });
+        delete b.autoStop;
+        Store.put('meta', b); chg++;
+      }
+    });
+
+    // 2) 새로 등록 (학생·교재마다 한 번)
+    Object.keys(enr).forEach(sid => {
+      Object.keys(enr[sid]).forEach(cid => {
+        this.AUTO_CATS.forEach(cat => {
+          const m = cur[cid + '|' + cat];
+          if (!m) return;
+          const mk = 'BKA_' + sid + '_' + m.id;
+          if (Store.get('meta', mk)) return;
+          const marker = () => Store.put('meta', { id: mk, kind: 'bk_auto', studentId: sid, matId: m.id, createdAt: iso });
+          const recs = this.recsOf(sid);
+          const same = recs.find(r => r.matId === m.id && r.status === 'ing');
+          if (same) { if (!same.auto) Store.put('meta', Object.assign({}, same, { auto: cid })); marker(); chg++; return; }   // 이미 쓰는 중 → 자동 관리로
+          if (recs.some(r => r.matId === m.id)) { marker(); return; }       // 예전에 끝낸 교재는 다시 넣지 않음
+          const lkd = this.linkDate(m, cid), from = enr[sid][cid];
+          const start = lkd > from ? lkd : from;
+          recs.filter(r => r.status === 'ing' && r.matId !== m.id && this.catOf(r) === cat).forEach(r => {
+            const keep = Object.keys(enr[sid]).some(c2 => c2 !== cid && cur[c2 + '|' + cat] && cur[c2 + '|' + cat].id === r.matId);
+            if (keep) return;                                                // 함께 다니는 다른 반의 지금 교재
+            if (r.auto && isYmd(r.start) && r.start >= start) { Store.del('meta', r.id); chg++; return; }   // 아직 시작 전에 바뀐 자동 교재 → 지움
+            const om = NP.mat(r.matId);
+            const sameCls = r.auto === cid || linked(om, cid);
+            let end = addDaysStr(start, -1);
+            if (isYmd(r.start) && end < r.start) end = r.start;
+            Store.put('meta', Object.assign({}, r, { status: sameCls ? 'done' : 'stop', end, matName: this.nameOf(r) }));
+            chg++;
+          });
+          Store.put('meta', { id: 'SBA_' + sid + '_' + m.id, kind: 'sbook', studentId: sid, matId: m.id, matName: m.name, cat, status: 'ing', start, plan: '', end: '', memo: '', auto: cid, createdAt: iso });
+          marker();
+          add++;
+        });
+      });
+    });
+    if (add) toast(`반 교재 ${add}건을 학생 교재에 자동 등록했습니다`);
+    if (add || chg) {
+      if (App.isEditingMain && App.isEditingMain()) App._needRender = true; else App.render();
+      if (App.refreshModals) App.refreshModals();
+    }
+    return add + chg;
+  },
+  // 반·수강·학생·교재가 바뀌면 잠시 뒤 한 번
+  autoSoon() {
+    clearTimeout(this._auT);
+    this._auT = setTimeout(() => { try { this.autoSync(); } catch (e) { console.warn('[mg77] 반 교재 자동 등록 실패', e); } }, 1500);
+  },
+
   /* ---------- 반별 정렬 (반 메뉴와 같은 원칙) ----------
      반 순서: 반 메뉴 순서(요일 → 시간) / 여러 반이면 가장 앞선 반 / 반 안에서는 학년 → 학교 → 이름 / 반 없는 학생은 맨 아래 */
   // [{ c: 반 또는 null, list: [학생] }]  — fixedCls가 있으면 그 반으로 묶음 (반 필터)
@@ -571,6 +688,16 @@ const Books = {
     });
   },
 };
+
+// 반·수강·학생·교재(MT_)가 바뀌면 반 교재 자동 등록을 맞춘다 (자동 등록이 쓰는 sbook·표시 기록에는 반응하지 않음)
+['put', 'del'].forEach(fn => {
+  const f0 = Store[fn];
+  Store[fn] = function (t, a0, ...a) {
+    const r = f0.call(this, t, a0, ...a);
+    if (t === 'enrollments' || t === 'students' || t === 'classes' || (t === 'meta' && String(a0 && typeof a0 === 'object' ? a0.id : a0).startsWith('MT_'))) Books.autoSoon();
+    return r;
+  };
+});
 
 /* 교재 화면 전용 스타일 */
 (function () {

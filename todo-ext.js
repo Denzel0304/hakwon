@@ -62,7 +62,7 @@ const TodoX = {
         if (dow !== wd) return false;
         const dom = tg.getDate();
         if (wk === 5) return dom > new Date(tg.getFullYear(), tg.getMonth() + 1, 0).getDate() - 7;   // 마지막 주
-        return Math.ceil((dom + new Date(tg.getFullYear(), tg.getMonth(), 1).getDay()) / 7) === wk;
+        return Math.ceil(dom / 7) === wk;                     // 그 달의 N번째 그 요일 (1~7일 첫째, 8~14일 둘째 …)
       }
       case 'yearly': return (tg.getMonth() + 1) === (+r.yearlyMonth || 1) && tg.getDate() === (+r.yearlyDay || 1);
       case 'custom': {
@@ -419,8 +419,8 @@ const TodoX = {
         <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span>
           ${lesson ? '' : `<button type="button" class="btn sm tx-repb${st.repeat ? ' on' : ''}" data-rep>🔁 <span data-replb>${esc(this.repLabel(st.repeat) || '반복')}</span></button>`}</div>
         <div class="tx-r"><span class="tx-lb">추가</span><label class="chk"><input type="checkbox" data-cltg ${st.useCl ? 'checked' : ''}>체크리스트</label><label class="chk"><input type="checkbox" data-timetg ${st.useTime ? 'checked' : ''}>시간</label></div>
-        <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}><select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
-          <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분</div>
+        <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}>${pc ? `<input type="time" data-tt step="300" value="${pad(th)}:${pad(tm - tm % 5)}">` : `<select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
+          <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분`}</div>
         <div class="tx-clbox" ${st.useCl ? '' : 'hidden'}><div data-cllist></div>
           <div class="tx-cladd"><input type="text" data-cladd placeholder="항목 추가" autocomplete="off"><button type="button" class="btn sm" data-claddb>＋</button></div></div>
         ${lesson ? `<p class="small muted" style="margin:8px 0 0">수업일지 할일입니다 · ${esc((Store.get('classes', it.classId) || {}).name || '')} (반복은 개별 할일에만 쓸 수 있습니다)</p>` : ''}
@@ -486,7 +486,7 @@ const TodoX = {
         } }] : []),
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
-          st.time = `${pad(+$('[data-th]', m.body).value)}:${pad(+$('[data-tm]', m.body).value)}`;
+          st.time = this.readTime(m.body);
           return this.save(it, st, rep0);
         } },
       ],
@@ -602,6 +602,12 @@ const TodoX = {
     if ((d.memo || '').trim()) p.push('메모');
     return p.join(' · ');
   },
+  // 시간 칸 읽기: PC는 시간 선택 칸(data-tt, 비우면 ''), 모바일은 시·분 드롭다운
+  readTime(b) {
+    const tt = $('[data-tt]', b);
+    if (tt) return /^\d{2}:\d{2}$/.test(tt.value) ? tt.value : '';
+    return `${pad(+$('[data-th]', b).value)}:${pad(+$('[data-tm]', b).value)}`;
+  },
   // 할일 저장에 쓸 상세 값 (할일 창 save와 같은 정리 규칙)
   detailVals(d) {
     const cl = (Array.isArray(d.checklist) ? d.checklist : []).map(x => ({ t: String(x.t || '').trim(), d: !!x.d })).filter(x => x.t);
@@ -628,8 +634,8 @@ const TodoX = {
         <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
         <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span></div>
         <div class="tx-r"><span class="tx-lb">추가</span><label class="chk"><input type="checkbox" data-cltg ${st.checklist.length ? 'checked' : ''}>체크리스트</label><label class="chk"><input type="checkbox" data-timetg ${st.useTime ? 'checked' : ''}>시간</label></div>
-        <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}><select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
-          <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분</div>
+        <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}>${typeof FieldPick !== 'undefined' && FieldPick.on() ? `<input type="time" data-tt step="300" value="${pad(th)}:${pad(tm - tm % 5)}">` : `<select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
+          <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분`}</div>
         <div class="tx-clbox" ${st.checklist.length ? '' : 'hidden'}><div data-cllist></div>
           <div class="tx-cladd"><input type="text" data-cladd placeholder="항목 추가" autocomplete="off"><button type="button" class="btn sm" data-claddb>＋</button></div></div>
         <p class="small muted" style="margin:8px 0 0">${note ? esc(note) : '할일 내용과 날짜는 할일 칸에서 입력합니다. 수업일지를 저장할 때 함께 저장됩니다.'} (반복은 개별 할일에만 쓸 수 있습니다)</p>
@@ -671,7 +677,7 @@ const TodoX = {
         buttons: [
           { text: '취소' },
           { text: '확인', cls: 'primary', primary: true, onClick: (m) => {
-            const time = st.useTime ? `${pad(+$('[data-th]', m.body).value)}:${pad(+$('[data-tm]', m.body).value)}` : '';
+            const time = st.useTime ? this.readTime(m.body) : '';
             Object.assign(d, this.detailVals({ importance: st.importance, memo: st.memo, remind: st.remind, checklist: useCl ? st.checklist : [], time }));
             ok = true;
           } },

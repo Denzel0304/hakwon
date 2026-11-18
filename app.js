@@ -91,6 +91,7 @@ const App = {
     Promo.check();
     HolidayRemind.check();            // 달마다 처음 열 때 공휴일 입력 확인
     Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
+    Books.autoSync();                 // 반 교재(독해·문법) 학생 교재 자동 등록 · 정리
   },
 
   /* ---------- 로그인 ---------- */
@@ -230,5 +231,6 @@ const App = {
     Promo.check();
     HolidayRemind.check();            // 달이 바뀌면 공휴일 입력 확인
     Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
+    Books.autoSync();                 // 반 교재 자동 등록 (날짜가 바뀌면 반에서 빠진 학생 정리)
   }, 60000);
 })();

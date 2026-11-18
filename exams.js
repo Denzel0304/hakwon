@@ -692,7 +692,8 @@ const Exams = {
           $$('[data-mu]', b).forEach(x => { if (noUnit) x.style.display = 'none'; });
           $('[data-clshint]', b).textContent = noUnit
             ? '듣기·단어 교재는 수업일지에 나오지 않습니다. 고른 반 학생은 학생 › 교재에서 이 교재를 고를 때 먼저 추천됩니다.'
-            : '고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.';
+            : '고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.'
+              + (bk === 'read' || bk === 'gram' ? ' 독해·문법 교재는 고른 반 학생 모두의 학생 › 교재에 자동으로 등록됩니다 (나중에 들어오는 학생 포함).' : '');
           $('[name=mname]', b).placeholder = cat === 'gen' ? '예: 리딩튜터 2, 문법 기본편' : '예: 능률(오) 고2, 수능특강 영어독해';
         };
         // 쓰는 학교 (교과서만)
@@ -785,6 +786,13 @@ const Exams = {
               rec.cat = bc;
               delete rec.schools;
               rec.classIds = [...cls];
+              // 반에 연결한 날 (반 교재 자동 등록의 시작일) — 새로 고른 반은 오늘, 원래 있던 반은 그대로
+              const prevCls = new Set((m && m.classIds) || []), oldFrom = (m && m.clsFrom) || {}, clsFrom = {};
+              rec.classIds.forEach(cid => {
+                const f = prevCls.has(cid) ? oldFrom[cid] : todayStr();
+                if (isYmd(f)) clsFrom[cid] = f;
+              });
+              if (Object.keys(clsFrom).length) rec.clsFrom = clsFrom; else delete rec.clsFrom;
               if (noCls) rec.noCls = true; else delete rec.noCls;
             } else {
               // 지운 단위가 시험 범위에 들어 있으면 확인 후 범위에서도 뺀다
@@ -795,7 +803,7 @@ const Exams = {
                 items: e.items.map(it => it.matId === rec.id ? Object.assign({}, it, { units: it.units.filter(u => !gone.includes(u.id)) }) : it)
                   .filter(it => it.matId !== rec.id || it.units.length),
               })));
-              delete rec.classIds; delete rec.cat; delete rec.noCls;
+              delete rec.classIds; delete rec.cat; delete rec.noCls; delete rec.clsFrom;
               // 쓰는 학교: 교과서만 (입력칸에 넣고 “+ 연결”을 누르지 않은 것도 함께 넣는다)
               if (rec.type === 'text') {
                 const pend = b._addLk ? b._addLk(true) : 'empty';

@@ -612,6 +612,225 @@ const DatePicker = {
 };
 
 
+/* ---------- 날짜·시간·년월 입력칸 (PC 모든 화면 공용) ----------
+   화면에 <input type="date|time|month">가 생기면 자동으로 바꾼다 (기존 코드는 그대로: .value·change·input·disabled·min·max 모두 같음)
+   · 칸에는 보기 좋은 글자(2026.11.18 (수) / 17:30 / 2026년 11월)를 보이고, .value는 원래 형식(YYYY-MM-DD / HH:MM / YYYY-MM)을 돌려준다
+   · 누르면 칸 아래에 선택판: 날짜 = 날짜 이동 달력과 같은 모양 / 시간 = 시(9~23시)·분(5분) 버튼 / 년월 = 년·월 판
+   · 고르면 input·change 이벤트를 보낸다 · 모든 선택판에 '지우기'
+   · 시간 범위: 기본 9~23시, 사이드바 근무시간 설정(.sn-sheet)과 data-hours="0-23" 칸은 0~23시 (이미 들어 있는 시각은 범위 밖이어도 보임)
+   · 모바일 화면(body.m-body)은 휴대폰 기본 선택기를 그대로 쓴다 */
+const FieldPick = {
+  KINDS: ['date', 'time', 'month'],
+  pop: null, input: null,
+  on() { return !document.body.classList.contains('m-body'); },
+  _desc: Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value'),
+
+  norm(kind, v) {
+    v = String(v == null ? '' : v).trim();
+    if (kind === 'date') return isYmd(v) ? v : '';
+    if (kind === 'month') return /^\d{4}-\d{2}$/.test(v) ? v : '';
+    const m = v.match(/^(\d{1,2}):(\d{2})/);
+    return m && +m[1] < 24 && +m[2] < 60 ? pad(+m[1]) + ':' + m[2] : '';
+  },
+  label(kind, v) {
+    if (!v) return '';
+    if (kind === 'date') return fmtDate(v);
+    if (kind === 'month') { const [y, m] = v.split('-').map(Number); return y + '년 ' + m + '월'; }
+    return v;
+  },
+
+  enhance(inp) {
+    if (inp.dataset.fp || !this.KINDS.includes(inp.type)) return;
+    const kind = inp.type, raw = inp.value, desc = this._desc, self = this;
+    inp.dataset.fp = kind;
+    inp.type = 'text';
+    inp.readOnly = true;
+    inp.autocomplete = 'off';
+    inp.classList.add('fp-in', 'fp-' + kind);
+    if (!inp.placeholder) inp.placeholder = { date: '날짜 선택', time: '시간 선택', month: '년·월 선택' }[kind];
+    Object.defineProperty(inp, 'value', {
+      configurable: true,
+      get() { return this._fpv || ''; },
+      set(v) {
+        this._fpv = self.norm(kind, v);
+        desc.set.call(this, self.label(kind, this._fpv));
+        this.classList.toggle('fp-empty', !this._fpv);
+      },
+    });
+    inp.value = raw;
+    inp.addEventListener('click', () => { if (this.input === inp) this.close(); else this.open(inp); });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); if (this.input !== inp) this.open(inp); }
+      else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); this.commit(inp, ''); }
+    });
+  },
+  scan(root) {
+    if (!root || root.nodeType !== 1) return;
+    if (root.matches('input')) { this.enhance(root); return; }
+    root.querySelectorAll('input[type=date], input[type=time], input[type=month]').forEach(x => this.enhance(x));
+  },
+  start() {
+    if (!this.on()) return;
+    this.scan(document.body);
+    new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => this.scan(n)))).observe(document.body, { childList: true, subtree: true });
+  },
+
+  // 값을 넣고 이벤트를 보낸다 (바뀐 경우만)
+  commit(inp, v) {
+    this.close();
+    if (!inp.isConnected || inp.disabled) return;
+    const before = inp.value;
+    inp.value = v;
+    if (inp.value === before) return;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  },
+
+  /* ---------- 선택판 ---------- */
+  open(inp) {
+    this.close();
+    if (inp.disabled) return;
+    const kind = inp.dataset.fp;
+    const pop = document.createElement('div');
+    pop.className = 'fp-pop fp-pop-' + kind;
+    pop.addEventListener('mousedown', (e) => e.preventDefault());   // 칸의 포커스 유지
+    document.body.appendChild(pop);
+    this.pop = pop; this.input = inp;
+    inp.classList.add('fp-open');
+    if (kind === 'date') this.dateUi(pop, inp);
+    else if (kind === 'month') this.monthUi(pop, inp);
+    else this.timeUi(pop, inp);
+    this.place();
+    document.addEventListener('mousedown', this._out, true);
+    document.addEventListener('keydown', this._esc, true);
+    document.addEventListener('scroll', this._scroll, true);
+    window.addEventListener('resize', this._close);
+    BackGuard.add(this._close);
+  },
+  close() {
+    if (!this.pop) return;
+    this.pop.remove();
+    if (this.input) this.input.classList.remove('fp-open');
+    this.pop = null; this.input = null;
+    document.removeEventListener('mousedown', this._out, true);
+    document.removeEventListener('keydown', this._esc, true);
+    document.removeEventListener('scroll', this._scroll, true);
+    window.removeEventListener('resize', this._close);
+    BackGuard.remove(this._close);
+  },
+  // 칸 바로 아래 (아래가 모자라면 위), 화면 밖으로 나가지 않게
+  place() {
+    const p = this.pop, r = this.input.getBoundingClientRect();
+    const w = p.offsetWidth, h = p.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    let top = r.bottom + 6;
+    if (top + h > vh - 8 && r.top - h - 6 > 8) top = r.top - h - 6;
+    top = Math.max(8, Math.min(top, vh - h - 8));
+    const left = Math.max(8, Math.min(r.left, vw - w - 8));
+    p.style.top = top + 'px'; p.style.left = left + 'px';
+  },
+  _out(e) { const F = FieldPick; if (F.pop && !F.pop.contains(e.target) && e.target !== F.input) F.close(); },
+  _esc(e) { const F = FieldPick; if (e.key === 'Escape' && F.pop) { e.preventDefault(); e.stopPropagation(); F.close(); } },
+  _scroll(e) { const F = FieldPick; if (F.pop && !F.pop.contains(e.target)) F.close(); },
+  _close() { FieldPick.close(); },
+
+  foot(v, extra = '') {
+    return `<div class="fp-foot"><button type="button" class="fp-clear" data-fpclr ${v ? '' : 'disabled'}>지우기</button><span></span>${extra}</div>`;
+  },
+
+  // 날짜: 날짜 이동 달력과 같은 모양 (min·max 밖은 흐리게, 못 고름)
+  dateUi(pop, inp) {
+    const v = inp.value, today = todayStr();
+    const lo = isYmd(inp.getAttribute('min')) ? inp.getAttribute('min') : '', hi = isYmd(inp.getAttribute('max')) ? inp.getAttribute('max') : '';
+    const out = (k) => (lo && k < lo) || (hi && k > hi);
+    let month = parseYmd(v || (lo && today < lo ? lo : hi && today > hi ? hi : today));
+    month = new Date(month.getFullYear(), month.getMonth(), 1);
+    let ymMode = false, yy = month.getFullYear();
+    const draw = () => {
+      const y = month.getFullYear(), m = month.getMonth();
+      if (ymMode) {
+        const ty = new Date().getFullYear(), tm = new Date().getMonth() + 1;
+        pop.innerHTML = `<div class="mc-head"><button type="button" class="mc-nav" data-fpy="-1" aria-label="이전 해">‹</button><b class="mc-title fp-ttl">${yy}년</b><button type="button" class="mc-nav" data-fpy="1" aria-label="다음 해">›</button></div>
+          <div class="ym-grid fp-ymg">${Array.from({ length: 12 }, (_, i) => i + 1).map(k => `<button type="button" class="ym-m${yy === y && k === m + 1 ? ' sel' : ''}${yy === ty && k === tm ? ' today' : ''}" data-fpm="${k}">${k}월</button>`).join('')}</div>${this.foot(v)}`;
+        return;
+      }
+      const first = new Date(y, m, 1), st = addDays(first, -first.getDay());
+      const weeks = Math.ceil((first.getDay() + new Date(y, m + 1, 0).getDate()) / 7);
+      const hol = typeof Holidays !== 'undefined' ? Holidays.map() : {};
+      let h = `<div class="mc-head"><button type="button" class="mc-nav" data-fpd="-1" aria-label="이전 달">‹</button><button type="button" class="mc-title ym-btn fp-ttl" data-fpym title="년·월 고르기">${y}년 ${m + 1}월 ▾</button><button type="button" class="mc-today" data-fppick="${today}" ${out(today) ? 'disabled' : ''}>오늘</button><button type="button" class="mc-nav" data-fpd="1" aria-label="다음 달">›</button></div><div class="mc-grid">`;
+      DOW.forEach((w, i) => { h += `<div class="mc-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`; });
+      for (let i = 0; i < weeks * 7; i++) {
+        const d = addDays(st, i), k = ymd(d), cls = ['mc-day'];
+        if (d.getMonth() !== m) cls.push('other');
+        if (d.getDay() === 0 || hol[k]) cls.push('sun'); else if (d.getDay() === 6) cls.push('sat');
+        if (k === today) cls.push('today');
+        if (k === v) cls.push('sel');
+        if (out(k)) cls.push('fp-off');
+        h += `<button type="button" class="${cls.join(' ')}" data-fppick="${k}" ${out(k) ? 'disabled' : ''}${hol[k] ? ` title="${esc(hol[k])}"` : ''}><span class="n">${d.getDate()}</span></button>`;
+      }
+      pop.innerHTML = h + '</div>' + this.foot(v);
+    };
+    draw();
+    pop.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.closest('[data-fpclr]')) { this.commit(inp, ''); return; }
+      const pk = t.closest('[data-fppick]'); if (pk && !pk.disabled) { this.commit(inp, pk.dataset.fppick); return; }
+      const nd = t.closest('[data-fpd]'); if (nd) { month = new Date(month.getFullYear(), month.getMonth() + +nd.dataset.fpd, 1); draw(); return; }
+      if (t.closest('[data-fpym]')) { ymMode = true; yy = month.getFullYear(); draw(); this.place(); return; }
+      const ny = t.closest('[data-fpy]'); if (ny) { yy += +ny.dataset.fpy; draw(); return; }
+      const nm = t.closest('[data-fpm]'); if (nm) { month = new Date(yy, +nm.dataset.fpm - 1, 1); ymMode = false; draw(); this.place(); }
+    });
+  },
+
+  // 년·월 (max·min 밖은 못 고름)
+  monthUi(pop, inp) {
+    const v = inp.value, lo = inp.getAttribute('min') || '', hi = inp.getAttribute('max') || '';
+    const now = new Date(), ty = now.getFullYear(), tm = now.getMonth() + 1;
+    let yy = v ? +v.slice(0, 4) : ty;
+    const draw = () => {
+      pop.innerHTML = `<div class="mc-head"><button type="button" class="mc-nav" data-fpy="-1" aria-label="이전 해">‹</button><b class="mc-title fp-ttl">${yy}년</b><button type="button" class="mc-today" data-fpy="0">올해</button><button type="button" class="mc-nav" data-fpy="1" aria-label="다음 해">›</button></div>
+        <div class="ym-grid fp-ymg">${Array.from({ length: 12 }, (_, i) => i + 1).map(k => {
+          const key = yy + '-' + pad(k), off = (lo && key < lo) || (hi && key > hi);
+          return `<button type="button" class="ym-m${key === v ? ' sel' : ''}${yy === ty && k === tm ? ' today' : ''}${off ? ' fp-off' : ''}" data-fpm="${key}" ${off ? 'disabled' : ''}>${k}월</button>`;
+        }).join('')}</div>${this.foot(v)}`;
+    };
+    draw();
+    pop.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.closest('[data-fpclr]')) { this.commit(inp, ''); return; }
+      const ny = t.closest('[data-fpy]'); if (ny) { const d = +ny.dataset.fpy; yy = d ? yy + d : ty; draw(); return; }
+      const nm = t.closest('[data-fpm]'); if (nm && !nm.disabled) this.commit(inp, nm.dataset.fpm);
+    });
+  },
+
+  // 시간: 시를 고르고 분을 누르면 들어감 (분을 안 고르고 '확인'이면 정각)
+  timeUi(pop, inp) {
+    const v = inp.value;
+    const wide = inp.dataset.hours === '0-23' || !!inp.closest('.sn-sheet');
+    const H = Array.from({ length: wide ? 24 : 15 }, (_, i) => i + (wide ? 0 : 9));
+    let ph = v ? +v.slice(0, 2) : null, pm = v ? +v.slice(3, 5) : null;
+    if (ph != null && !H.includes(ph)) { H.push(ph); H.sort((a, b) => a - b); }
+    const M = Array.from({ length: 12 }, (_, i) => i * 5);
+    if (pm != null && !M.includes(pm)) { M.push(pm); M.sort((a, b) => a - b); }
+    const ampm = (h) => (h < 12 ? '오전' : '오후');
+    const draw = () => {
+      const show = ph == null ? '<span class="fp-tph">시를 고르세요</span>' : `<span class="fp-tap">${ampm(ph)}</span><b>${pad(ph)}</b><i>:</i><b class="${pm == null ? 'fp-dim' : ''}">${pm == null ? '--' : pad(pm)}</b>`;
+      pop.innerHTML = `<div class="fp-tshow">${show}</div>
+        <div class="fp-tlb">시</div><div class="fp-hours${wide ? ' wide' : ''}">${H.map(h => `<button type="button" class="fp-tb${h === ph ? ' on' : ''}" data-fph="${h}">${h}</button>`).join('')}</div>
+        <div class="fp-tlb">분</div><div class="fp-mins">${M.map(m => `<button type="button" class="fp-tb${m === pm && ph != null ? ' on' : ''}" data-fpmin="${m}" ${ph == null ? 'disabled' : ''}>${pad(m)}</button>`).join('')}</div>
+        ${this.foot(v, `<button type="button" class="fp-ok" data-fpok ${ph == null ? 'disabled' : ''}>확인</button>`)}`;
+    };
+    draw();
+    pop.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.closest('[data-fpclr]')) { this.commit(inp, ''); return; }
+      const hb = t.closest('[data-fph]'); if (hb) { ph = +hb.dataset.fph; draw(); return; }
+      const mb = t.closest('[data-fpmin]'); if (mb && ph != null) { this.commit(inp, pad(ph) + ':' + pad(+mb.dataset.fpmin)); return; }
+      if (t.closest('[data-fpok]') && ph != null) this.commit(inp, pad(ph) + ':' + pad(pm == null ? 0 : pm));
+    });
+  },
+};
+FieldPick.start();
+
 /* ---------- 날짜 이동 줄 (모든 화면 공통) ----------
    월: [‹][2026년 11월 ▾][›][이번 달]   일: [‹][2026년 11월 17일 (화) ▾][›][오늘]
    폭이 고정된 한 묶음이라 달·날짜가 바뀌어도 버튼 위치·순서가 절대 바뀌지 않는다.

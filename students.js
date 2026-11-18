@@ -1229,6 +1229,66 @@ const Students = {
     });
   },
 
+  /* ---------- 첫 등원 할일 ----------
+     등록일(첫 수업일)을 미래로 정한 학생: 그 학생이 처음 오는 날(공휴일 건너뜀)의 가장 빠른 수업 시작 시각으로
+     "[반 이름] 홍길동 학생 첫 등원"(중요도 높음)을 만든다. 할일 id TDF_학생ID · 기록 meta FD_학생ID { kind:'first_todo', studentId, date }
+     · 등록일·수강반이 바뀌면 할일 날짜·시간·반 이름을 따라 옮김 (아직 안 한 할일만)
+     · 첫 수업 전에 퇴원 처리·완전 삭제 → 아직 안 한 할일 삭제 · 첫 등원일이 지난 뒤에는 건드리지 않음
+     · 직접 지운 할일은 다시 만들지 않음 (기록이 남아 있으므로) */
+  FIRST_DAYS: 120,
+  firstText(c, s) { return `${c ? c.name + ' ' : ''}${s.name} 학생 첫 등원`; },
+  // 등록일부터 처음 오는 날 { date, time, c } (없으면 null)
+  firstDay(sid, from, hol) {
+    if (!isYmd(from) || typeof Makeups === 'undefined') return null;
+    for (let i = 0; i <= this.FIRST_DAYS; i++) {
+      const d = addDaysStr(from, i);
+      if (Holidays.has(d, hol)) continue;
+      const cs = Makeups.classesFor(sid, d, true);     // 시작 시간 순
+      if (!cs.length) continue;
+      return { date: d, time: Classes.stuTimeOn(cs[0], sid, dowOf(d)).start || '', c: cs[0] };
+    }
+    return null;
+  },
+  firstSync() {
+    if (!Store.firstPullDone || !Auth.key()) return 0;
+    const today = todayStr(), iso = new Date().toISOString(), hol = Holidays.map();
+    let add = 0, chg = 0;
+    const drop = (sid) => {
+      const t = Store.get('todos', 'TDF_' + sid);
+      if (t && !t.done) { Store.del('todos', t.id); chg++; }
+      Store.del('meta', 'FD_' + sid);
+    };
+    Store.all('students').forEach(s => {
+      const mid = 'FD_' + s.id, meta = Store.get('meta', mid), jd = this.joinDateOf(s);
+      const ok = s.status === 'active' && isYmd(jd);
+      if (!meta) {
+        if (!ok || jd <= today) return;
+        const fd = this.firstDay(s.id, jd, hol);
+        if (!fd) return;
+        Store.put('meta', { id: mid, kind: 'first_todo', studentId: s.id, date: fd.date, createdAt: iso });
+        if (!Store.get('todos', 'TDF_' + s.id)) {
+          Store.put('todos', Object.assign({ id: 'TDF_' + s.id, lessonId: '', classId: '', date: fd.date, text: this.firstText(fd.c, s), done: false, createdAt: iso,
+            order: TodoX.maxOrder(fd.date) + 1, doneAt: '', remindDone: false, firstKey: s.id }, TodoX.detailVals({ importance: 3, time: fd.time })));
+          add++;
+        }
+        return;
+      }
+      if (isYmd(meta.date) && meta.date < today) return;             // 첫 등원일이 지남 → 그대로 둠
+      const fd = ok ? this.firstDay(s.id, jd, hol) : null;
+      if (!fd) { drop(s.id); return; }                                // 퇴원 처리·수강반 없음 → 등록 취소
+      const t = Store.get('todos', 'TDF_' + s.id), text = this.firstText(fd.c, s);
+      if (t && !t.done && (t.date !== fd.date || (t.time || '') !== fd.time || t.text !== text)) {
+        Store.put('todos', Object.assign({}, t, { date: fd.date, text, time: fd.time, remindDone: false }, t.date !== fd.date ? { order: TodoX.maxOrder(fd.date) + 1 } : {}));
+        chg++;
+      }
+      if (meta.date !== fd.date) Store.put('meta', Object.assign({}, meta, { date: fd.date }));
+    });
+    // 완전 삭제한 학생
+    Store.where('meta', m => m.kind === 'first_todo' && !Store.get('students', m.studentId)).forEach(m => drop(m.studentId));
+    if (add) toast(`첫 등원 할일 ${add}개를 추가했습니다`);
+    return add + chg;
+  },
+
   hardDelete(sid) {
     Store.delWhere('enrollments', e => e.studentId === sid);
     Store.delWhere('student_log', e => e.studentId === sid);
@@ -1237,6 +1297,7 @@ const Students = {
     Store.delWhere('counsels', e => e.studentId === sid);
     Store.delWhere('makeups', e => e.studentId === sid);
     Store.delWhere('meta', e => e.kind === 'sbook' && e.studentId === sid);   // 학생 교재 기록
+    Store.delWhere('meta', e => e.kind === 'bk_auto' && e.studentId === sid); // 반 교재 자동 등록 표시
     Store.delWhere('meta', e => e.kind === 'wtest' && e.studentId === sid);   // 단어 시험 기록
     Store.delWhere('meta', e => e.kind === 'ltest' && e.studentId === sid);   // 레벨테스트 기록
     Store.delWhere('meta', e => e.kind === 'report' && e.studentId === sid);  // 월간 리포트
