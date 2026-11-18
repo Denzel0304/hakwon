@@ -1803,7 +1803,21 @@ const ProgressSum = {
         <div class="psc-h"><span class="psc-n">${i + 1}회차</span><span class="psc-d">${fmtMD(x.l.date)}</span></div>
         ${secs.join('') || '<div class="psc-none">진도 기록 없음</div>'}</div>`;
     };
-    return `<div class="psc-grid" style="--cc:${Classes.colorOf(c)}">${rows.map(card).join('')}</div>`;
+    const cc = Classes.colorOf(c);
+    // 주별: 카드가 폭을 꽉 채우게 (최소 3칸 — 수업이 1~2회여도 카드가 너무 넓어지지 않게)
+    if (this.mode === 'week') return `<div class="psc-grid fit" style="--cc:${cc};grid-template-columns:repeat(${Math.min(7, Math.max(3, rows.length))}, minmax(0, 1fr))">${rows.map(card).join('')}</div>`;
+    // 월별: 수업이 있는 주만 1주차부터 (월~일 한 주, 날짜 범위는 이 달 안으로 자름) — 주차 상자는 가로로, 그 주의 회차 카드는 상자 안에 세로로
+    const weeks = [];
+    rows.forEach((x, i) => {
+      const mon = addDaysStr(x.l.date, -((dowOf(x.l.date) + 6) % 7));
+      let w = weeks[weeks.length - 1];
+      if (!w || w.mon !== mon) weeks.push(w = { mon, items: [] });
+      w.items.push(card(x, i));
+    });
+    const r = this.range();
+    const wl = (w) => { const a = w.mon < r.from ? r.from : w.mon, z0 = addDaysStr(w.mon, 6), z = z0 > r.to ? r.to : z0; return Classes.md(a) + (a === z ? '' : '~' + Classes.md(z)); };
+    return `<div class="psw-grid" style="--cc:${cc};grid-template-columns:repeat(${Math.max(4, weeks.length)}, minmax(0, 1fr))">${weeks.map((w, k) => `<div class="psw">
+      <div class="psw-h"><b>${k + 1}주차</b><span>${wl(w)}</span><em>${w.items.length}회</em></div>${w.items.join('')}</div>`).join('')}</div>`;
   },
 
   render(main) {
@@ -1891,6 +1905,11 @@ const ProgressSum = {
       .psc-fr { white-space: pre-wrap; } .psc-gp + .psc-fr { margin-top: 0.8mm; color: #333; }
       .psc-tg { display: inline-block; font-size: 6.3pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 1.5pt; padding: 0 1.5pt; margin-right: 2pt; vertical-align: 0.5pt; }
       .psc-none { color: #999; font-size: 7.5pt; }
+      .psc-grid.fit { display: grid; }
+      .psw-grid { display: grid; gap: 2.2mm; margin-bottom: 2mm; align-items: stretch; }
+      .psw { display: flex; flex-direction: column; gap: 1.8mm; min-width: 0; padding: 1.6mm; border-radius: 2mm; background: #f2f6fa; border: 0.4pt solid #d5dde5; break-inside: avoid; page-break-inside: avoid; }
+      .psw-h { display: flex; align-items: baseline; gap: 1.5mm; font-size: 8.5pt; padding: 0 0.6mm; }
+      .psw-h b { font-weight: bold; } .psw-h span { font-size: 7.5pt; color: #555; } .psw-h em { margin-left: auto; font-style: normal; font-size: 7pt; color: #888; }
       .empty { color: #888; padding: 1mm 0 2mm; }
     </style></head><body>
       <h1>진도 요약 · ${esc(this.rangeLabel(r))}<small>${r.from} ~ ${r.to} · 출력일 ${today}</small></h1>
@@ -1941,6 +1960,14 @@ const ProgressSum = {
 .psc-gp + .psc-fr { margin-top: 3px; color: var(--ink-soft); }
 .psc-tg { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-right: 5px; vertical-align: 1px; }
 .psc-none { font-size: 13px; color: var(--ink-mute); }
+/* 월별: 주차 상자 (가로로 4~6개) — 안에 그 주 회차 카드가 세로로 */
+.psw-grid { display: grid; gap: 10px; align-items: stretch; }
+.psw { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--tint-strong); border: 1px solid var(--line); }
+.psw-h { display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 0; font-size: 13.5px; }
+.psw-h b { font-weight: 800; color: var(--ink); }
+.psw-h span { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+.psw-h em { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--ink-mute); }
+.psw .psc { padding: 9px 10px 10px; }
 `;
   document.head.appendChild(st);
 })();
