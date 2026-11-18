@@ -646,6 +646,18 @@ const Classes = {
     return { n: studs.length, seats, grades, schools, upcoming };
   },
   mdDow(d) { return this.md(d) + '(' + DOW[dowOf(d)] + ')'; },
+  // first~base 사이의 퇴원 [{ s, d, plan, cls:[반] }] (withPlan이면 base 뒤 last까지의 퇴원 예약도 '예정'으로)
+  leavesIn(first, base, last, withPlan) {
+    const out = [];
+    Store.where('student_log', l => l.type === 'leave' && isYmd(l.date) && l.date >= first && l.date <= base).forEach(l => {
+      const s = Store.get('students', l.studentId);
+      if (s) out.push({ s, d: l.date, plan: false });
+    });
+    if (withPlan) Store.where('students', s => s.sched && s.sched.act === 'leave' && isYmd(s.sched.date) && s.sched.date > base && s.sched.date <= last)
+      .forEach(s => out.push({ s, d: s.sched.date, plan: true }));
+    out.forEach(o => { o.cls = Store.where('enrollments', e => e.studentId === o.s.id && e.to === o.d).map(e => Store.get('classes', e.classId)).filter(Boolean); });
+    return out.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
+  },
   // 반 화면 아래 요약
   summaryHtml(sm, date) {
     const maxG = Math.max(1, ...sm.grades.map(x => x.n)), maxS = Math.max(1, ...sm.schools.map(x => x.n));
@@ -655,15 +667,22 @@ const Classes = {
     const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
       <span class="cs">${u.items.map(i => `${this.dot(i.c)}${esc(i.c.name)}${i.from !== u.from ? ` <span class="muted">${this.md(i.from)}~</span>` : ''}`).join('<br>')}</span></div>`).join('');
     const newUp = sm.upcoming.filter(u => !u.kind).length;
+    // 이번 달 퇴원 (1일~오늘 + 이달 안의 퇴원 예약)
+    const M = +date.slice(5, 7), first = date.slice(0, 7) + '-01', last = ymd(new Date(+date.slice(0, 4), M, 0));
+    const lv = this.leavesIn(first, date, last, true);
+    const lvs = lv.map(o => `<div class="cls-sum-up"><span class="dt lv">${this.mdDow(o.d)}</span><span class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="badge gray">예정</span>' : ''}</span>
+      <span class="cs">${o.cls.map(c => `${this.dot(c)}${esc(c.name)}`).join('<br>') || '-'}</span></div>`).join('');
+    const empty = (t) => `<div class="cls-sum-empty">${t}</div>`;
     return `<div class="cls-sum">
       <div class="cls-sum-head"><h2>요약</h2><span class="sub">${esc(fmtDate(date))} 기준 · 진행 중인 반</span></div>
       <div class="cls-sum-grid">
-        <div class="cls-sum-card cls-sum-total"><div class="lbl">전체 인원</div><div class="big">${sm.n}<small>명</small></div>
+        <div class="cls-sum-card cls-sum-total"><div class="lbl">전체 인원</div><div class="cls-sum-body"><div class="big">${sm.n}<small>명</small></div>
           <div class="soft small">반별 수강 합계 ${sm.seats}명</div>${sm.seats !== sm.n ? `<div class="muted small">여러 반 수강 ${sm.seats - sm.n}명</div>` : ''}
-          ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div>
-        <div class="cls-sum-card"><div class="lbl">학년별</div>${grades}</div>
-        <div class="cls-sum-card"><div class="lbl">학교별</div>${schools}</div>
-        <div class="cls-sum-card"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div>${ups || '<div class="muted small">등록 예정인 학생이 없습니다.</div>'}</div>
+          ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div></div>
+        <div class="cls-sum-card"><div class="lbl">학년별</div><div class="cls-sum-body">${grades}</div></div>
+        <div class="cls-sum-card"><div class="lbl">학교별 <span class="cnt">${sm.schools.length}곳</span></div><div class="cls-sum-body">${schools}</div></div>
+        <div class="cls-sum-card wide"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div><div class="cls-sum-body">${ups || empty('등록 예정인 학생이 없습니다.')}</div></div>
+        <div class="cls-sum-card wide"><div class="lbl">${M}월 퇴원 <span class="cnt lv">${lv.length}명</span></div><div class="cls-sum-body">${lvs || empty('이번 달에 퇴원한 학생이 없습니다.')}</div></div>
       </div></div>`;
   },
   // 월별 반 현황 PDF (A4 세로) — 지난 달은 말일, 이번 달은 오늘 기준. 그 달의 신규 등록·퇴원 포함
@@ -691,27 +710,19 @@ const Classes = {
     // 그 달의 신규 등록 (처음 등록 + 재등록) · 퇴원 (이번 달은 이후 날짜의 퇴원 예약도 '예정'으로)
     const inM = (d) => isYmd(d) && d >= first && d <= base;
     const clsAt = (sid, d) => Store.where('enrollments', e => e.studentId === sid && this.enrollValid(e, d)).map(e => Store.get('classes', e.classId)).filter(Boolean);
-    const clsEnd = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.to === d).map(e => Store.get('classes', e.classId)).filter(Boolean);
     const joins = [];
     Store.all('students').forEach(s => {
       const jd = Students.joinDateOf(s);
       if (inM(jd)) joins.push({ s, d: jd, kind: '신규' });
       Store.where('student_log', l => l.studentId === s.id && l.type === 'rejoin' && inM(l.date)).forEach(l => joins.push({ s, d: l.date, kind: '재등록' }));
     });
-    const leaves = [];
-    Store.where('student_log', l => l.type === 'leave' && inM(l.date)).forEach(l => {
-      const s = Store.get('students', l.studentId);
-      if (s) leaves.push({ s, d: l.date, reason: l.reason || '', plan: false });
-    });
-    if (isCur) Store.where('students', s => s.sched && s.sched.act === 'leave' && isYmd(s.sched.date) && s.sched.date > today && s.sched.date <= last)
-      .forEach(s => leaves.push({ s, d: s.sched.date, reason: s.sched.reason || '', plan: true }));
-    const bySort = (a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s);
-    joins.sort(bySort); leaves.sort(bySort);
+    const leaves = this.leavesIn(first, base, last, isCur);
+    joins.sort((a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s));
     const cl = (arr) => arr.map(c => `<span class="dot" style="background:${this.colorOf(c)}"></span>${esc(c.name)}`).join(', ') || '-';
     const joinRows = joins.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.kind === '재등록' ? ' <span class="kd">재등록</span>' : ''}</td><td>${cl(clsAt(o.s.id, o.d))}</td></tr>`).join('');
-    const leaveRows = leaves.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(clsEnd(o.s.id, o.d))}</td><td class="rs">${esc(o.reason)}</td></tr>`).join('');
-    // 요약
-    const chips = (arr) => arr.map(x => `<span class="chip">${esc(x.label || x.name)} <b>${x.n}</b>${x.g ? `<small>${x.g.map(g => esc(g.label) + ' ' + g.n).join(' · ')}</small>` : ''}</span>`).join('') || '-';
+    const leaveRows = leaves.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(o.cls)}</td></tr>`).join('');
+    // 요약 — '초6, 9명' / '금천중 7명 (중1, 3명 / 중2, 4명)'
+    const chips = (arr) => arr.map(x => `<span class="chip">${x.g ? `<b>${esc(x.name)} ${x.n}명</b><small>(${x.g.map(g => esc(g.label) + ', ' + g.n + '명').join(' / ')})</small>` : `${esc(x.label)}, <b>${x.n}명</b>`}</span>`).join('') || '-';
     const upHtml = sm.upcoming.map(u => `<span class="chip"><b>${this.mdDow(u.from)}</b> ${esc(u.s.name)} <small>${esc(stTag(u.s))}${u.kind ? ' · ' + u.kind : ''} · ${u.items.map(i => esc(i.c.name)).join(', ')}</small></span>`).join('');
     const summary = `<div class="sum">
       <div class="tot"><div class="big">${sm.n}<small>명</small></div><div class="lbl">전체 인원 (실인원)</div><div class="sub">반별 수강 합계 ${sm.seats}명</div></div>
@@ -719,7 +730,7 @@ const Classes = {
         <div class="ln"><span class="k">학년별</span><span class="v">${chips(sm.grades)}</span></div>
         <div class="ln"><span class="k">학교별</span><span class="v">${chips(sm.schools)}</span></div>
         ${isCur ? `<div class="ln"><span class="k">등록 예정 ${sm.upcoming.length}명</span><span class="v">${upHtml || '-'}</span></div>` : ''}
-        <div class="ln"><span class="k">이번 달 변동</span><span class="v"><span class="chip">신규 등록 <b>${joins.length}</b></span><span class="chip">퇴원 <b>${leaves.length}</b>${leaves.some(o => o.plan) ? `<small>예정 ${leaves.filter(o => o.plan).length} 포함</small>` : ''}</span></span></div>
+        <div class="ln"><span class="k">이번 달 변동</span><span class="v"><span class="chip">신규 등록 <b>${joins.length}명</b></span><span class="chip">퇴원 <b>${leaves.length}명</b>${leaves.some(o => o.plan) ? `<small>(퇴원 예정 ${leaves.filter(o => o.plan).length}명 포함)</small>` : ''}</span></span></div>
       </div></div>`;
     const title = `반현황_${month}`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
@@ -744,7 +755,6 @@ const Classes = {
       .pd { font-size: 6.5pt; color: #B26A00; border: 0.4pt solid #E3B873; border-radius: 2pt; padding: 0 2pt; margin-left: 2pt; }
       .end { font-size: 7pt; color: #777; border: 0.4pt solid #bbb; border-radius: 2pt; padding: 0 2pt; }
       .kd { font-size: 7pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 2pt; padding: 0 2pt; }
-      td.rs { color: #444; }
       .sum { display: flex; gap: 4mm; border: 0.5pt solid #c5ccd4; border-radius: 2mm; background: #f6f8fa; padding: 3mm; break-inside: avoid; page-break-inside: avoid; }
       .tot { flex: none; width: 34mm; text-align: center; background: #fff; border: 0.5pt solid #d6dde4; border-radius: 2mm; padding: 3mm 2mm; }
       .tot .big { font-size: 24pt; font-weight: bold; color: #1D5E93; line-height: 1; } .tot .big small { font-size: 10pt; margin-left: 1pt; }
@@ -762,7 +772,7 @@ const Classes = {
       <h2>신규 등록<small>${joins.length}명</small></h2>
       ${joins.length ? `<table><thead><tr><th style="width:18mm">등록일</th><th style="width:50mm">학생</th><th>반</th></tr></thead><tbody>${joinRows}</tbody></table>` : '<div class="empty">이 달에 새로 등록한 학생이 없습니다.</div>'}
       <h2>퇴원<small>${leaves.length}명</small></h2>
-      ${leaves.length ? `<table><thead><tr><th style="width:18mm">퇴원일</th><th style="width:50mm">학생</th><th style="width:55mm">다니던 반</th><th>사유</th></tr></thead><tbody>${leaveRows}</tbody></table>` : '<div class="empty">이 달에 퇴원한 학생이 없습니다.</div>'}
+      ${leaves.length ? `<table><thead><tr><th style="width:18mm">퇴원일</th><th style="width:50mm">학생</th><th>다니던 반</th></tr></thead><tbody>${leaveRows}</tbody></table>` : '<div class="empty">이 달에 퇴원한 학생이 없습니다.</div>'}
     </body></html>`;
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
@@ -1250,12 +1260,19 @@ document.addEventListener('change', (e) => {
 .cls-sum-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .cls-sum-head h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
 .cls-sum-head .sub { color: var(--ink-soft); font-size: 13px; }
-.cls-sum-grid { display: grid; grid-template-columns: 190px repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
-@media (max-width: 1000px) { .cls-sum-grid { grid-template-columns: 1fr 1fr; } }
-.cls-sum-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); min-width: 0; }
-.cls-sum-card > .lbl { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
+/* 카드 높이는 모두 같게 고정 — 위 줄 3개(전체·학년·학교), 아래 줄 2개(등록 예정·이번 달 퇴원). 내용이 많으면 카드 안에서 스크롤 */
+.cls-sum-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 250px; gap: 12px; }
+@media (max-width: 900px) { .cls-sum-grid > .cls-sum-card { grid-column: span 3; } .cls-sum-grid > .cls-sum-card:last-child { grid-column: span 6; } }
+.cls-sum-card { grid-column: span 2; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); min-width: 0; }
+.cls-sum-card.wide { grid-column: span 3; }
+.cls-sum-card > .lbl { flex: none; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
 .cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
+.cls-sum-card > .lbl .cnt.lv { color: var(--danger); }
+.cls-sum-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.cls-sum-body::-webkit-scrollbar { width: 6px; } .cls-sum-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.cls-sum-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--ink-mute); font-size: 13px; }
 .cls-sum-total { background: linear-gradient(160deg, var(--accent-soft), var(--surface) 75%); border-color: var(--accent-line); text-align: center; }
+.cls-sum-total .cls-sum-body { justify-content: center; align-items: center; }
 .cls-sum-total .big { font-size: 44px; font-weight: 800; color: var(--accent-ink); line-height: 1.05; letter-spacing: -1px; }
 .cls-sum-total .big small { font-size: 16px; font-weight: 700; margin-left: 2px; }
 .cls-sum-total .soft { margin-top: 6px; }
@@ -1267,8 +1284,9 @@ document.addEventListener('change', (e) => {
 .cls-sum-bar b { text-align: right; color: var(--ink); }
 .cls-sum-bar .gs { grid-column: 1 / -1; margin: -2px 0 2px; font-size: 11.5px; color: var(--ink-mute); }
 .cls-sum-up { display: grid; grid-template-columns: 62px 1fr; gap: 2px 8px; font-size: 13px; padding: 6px 0; border-top: 1px dashed var(--line); }
-.cls-sum-card > .lbl + .cls-sum-up { border-top: 0; padding-top: 0; }
+.cls-sum-body > .cls-sum-up:first-child { border-top: 0; padding-top: 0; }
 .cls-sum-up .dt { font-weight: 700; color: var(--warn); white-space: nowrap; }
+.cls-sum-up .dt.lv { color: var(--danger); }
 .cls-sum-up .nm .tag { color: var(--ink-mute); font-size: 12px; }
 .cls-sum-up .cs { grid-column: 2; font-size: 12px; color: var(--ink-soft); }
 `;
