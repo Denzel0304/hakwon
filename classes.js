@@ -828,6 +828,7 @@ const Classes = {
     Store.delWhere('lessons', t => t.classId === cid);
     Store.delWhere('meta', m => m.kind === 'lskip' && m.classId === cid);   // 일지 건너뛰기 표시
     Store.delWhere('meta', m => m.kind === 'pman' && m.classId === cid);    // 내신 수동 진도 표시
+    Store.del('meta', 'LP_' + cid);                                         // Lesson Plan
     Store.del('classes', cid);
   },
 };
