@@ -294,17 +294,23 @@ const Classes = {
     };
     let h = `<div class="page-narrow"><div class="page-head"><h1>반</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
+      <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm cls-pdfbtn" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원을 A4로 인쇄 · PDF 저장">PDF 저장</button></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     const show = this.showEnded ? [...act, ...ended] : act;
     h += show.length ? `<div class="tbl-wrap"><table class="tbl compact cls-tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
       : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 위의 “반 만들기”로 시작하세요.</div></div>';
+    if (act.length) h += this.summaryHtml(this.summaryOf(act, today), today);
     h += '</div>';
     main.innerHTML = h;
     main.onclick = (e) => {
       if (e.target.closest('[data-a=add]')) { this.openModal(null); return; }
+      if (e.target.closest('[data-a=pdf]')) { const mi = $('[data-pdfmonth]', main); this.pdf((mi && mi.value) || today.slice(0, 7)); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr) this.openModal(tr.dataset.id);
     };
-    main.onchange = (e) => { if (e.target.matches('[data-ended]')) { this.showEnded = e.target.checked; App.render(); } };
+    main.onchange = (e) => {
+      if (e.target.matches('[data-ended]')) { this.showEnded = e.target.checked; App.render(); }
+      else if (e.target.matches('[data-pdfmonth]')) this.pdfMonth = e.target.value;
+    };
   },
 
   /* ---------- 반 만들기 / 수정 ---------- */
@@ -599,6 +605,178 @@ const Classes = {
         } },
       ],
     });
+  },
+
+  /* ---------- 반 요약 · 월별 PDF ---------- */
+  pdfMonth: '',                  // PDF로 저장할 달 (YYYY-MM, 비면 이번 달)
+  gradeKey(g) { return +g || 99; },
+  // date 기준 요약 — 실인원(여러 반을 다니는 학생은 1명), 학년별, 학교별(학교 안 학년별), 등록 예정
+  summaryOf(list, date, withUp = true) {
+    const uniq = new Map();
+    let seats = 0;
+    list.forEach(c => { const r = this.rosterAt(c.id, date); seats += r.length; r.forEach(s => uniq.set(s.id, s)); });
+    const studs = [...uniq.values()];
+    const byGrade = {}, bySchool = {};
+    studs.forEach(s => {
+      const g = +s.grade || 0;
+      byGrade[g] = (byGrade[g] || 0) + 1;
+      const k = schoolShort(s.school);
+      const o = bySchool[k] = bySchool[k] || { n: 0, g: {} };
+      o.n++; o.g[g] = (o.g[g] || 0) + 1;
+    });
+    const gl = (g) => (g ? gradeLabel(g) : '학년 없음');
+    const grades = Object.keys(byGrade).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b))
+      .map(g => ({ label: gl(g), n: byGrade[g] }));
+    const schools = Object.keys(bySchool).sort((a, b) => (!a) - (!b) || bySchool[b].n - bySchool[a].n || ko(a, b))
+      .map(k => ({ name: k || '학교 없음', n: bySchool[k].n,
+        g: Object.keys(bySchool[k].g).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b)).map(g => ({ label: gl(g), n: bySchool[k].g[g] })) }));
+    // 등록 예정: 반마다의 예정 학생을 학생별로 모은다 (지금 다른 반에 다니면 반 이동·반 추가로 표시)
+    const up = new Map();
+    if (withUp) list.forEach(c => this.upcomingAt(c.id, date).forEach(o => {
+      const u = up.get(o.s.id) || { s: o.s, items: [] };
+      u.items.push({ from: o.from, c });
+      up.set(o.s.id, u);
+    }));
+    const upcoming = [...up.values()].map(u => {
+      u.items.sort((a, b) => ko(a.from, b.from));
+      u.from = u.items[0].from;
+      u.kind = !uniq.has(u.s.id) ? '' : Store.where('enrollments', e => e.studentId === u.s.id && e.to === u.from).length ? '반 이동' : '반 추가';
+      return u;
+    }).sort((a, b) => ko(a.from, b.from) || Students.sortFn(a.s, b.s));
+    return { n: studs.length, seats, grades, schools, upcoming };
+  },
+  mdDow(d) { return this.md(d) + '(' + DOW[dowOf(d)] + ')'; },
+  // 반 화면 아래 요약
+  summaryHtml(sm, date) {
+    const maxG = Math.max(1, ...sm.grades.map(x => x.n)), maxS = Math.max(1, ...sm.schools.map(x => x.n));
+    const bar = (label, n, max, sub) => `<div class="cls-sum-bar"><span class="lb">${esc(label)}</span><span class="tr"><i style="width:${Math.max(4, n / max * 100)}%"></i></span><b>${n}</b>${sub ? `<span class="gs">${sub}</span>` : ''}</div>`;
+    const grades = sm.grades.map(x => bar(x.label, x.n, maxG)).join('') || '<div class="muted small">-</div>';
+    const schools = sm.schools.map(x => bar(x.name, x.n, maxS, x.g.map(g => `${esc(g.label)} ${g.n}`).join(' · '))).join('') || '<div class="muted small">-</div>';
+    const ups = sm.upcoming.map(u => `<div class="cls-sum-up"><span class="dt">${this.mdDow(u.from)}</span><span class="nm"><b>${esc(u.s.name)}</b> <span class="tag">${esc(stTag(u.s))}</span>${u.kind ? ` <span class="badge gray">${u.kind}</span>` : ''}</span>
+      <span class="cs">${u.items.map(i => `${this.dot(i.c)}${esc(i.c.name)}${i.from !== u.from ? ` <span class="muted">${this.md(i.from)}~</span>` : ''}`).join('<br>')}</span></div>`).join('');
+    const newUp = sm.upcoming.filter(u => !u.kind).length;
+    return `<div class="cls-sum">
+      <div class="cls-sum-head"><h2>요약</h2><span class="sub">${esc(fmtDate(date))} 기준 · 진행 중인 반</span></div>
+      <div class="cls-sum-grid">
+        <div class="cls-sum-card cls-sum-total"><div class="lbl">전체 인원</div><div class="big">${sm.n}<small>명</small></div>
+          <div class="soft small">반별 수강 합계 ${sm.seats}명</div>${sm.seats !== sm.n ? `<div class="muted small">여러 반 수강 ${sm.seats - sm.n}명</div>` : ''}
+          ${newUp ? `<div class="cls-sum-plus">+ 신규 등록 예정 ${newUp}명</div>` : ''}</div>
+        <div class="cls-sum-card"><div class="lbl">학년별</div>${grades}</div>
+        <div class="cls-sum-card"><div class="lbl">학교별</div>${schools}</div>
+        <div class="cls-sum-card"><div class="lbl">등록 예정 <span class="cnt">${sm.upcoming.length}명</span></div>${ups || '<div class="muted small">등록 예정인 학생이 없습니다.</div>'}</div>
+      </div></div>`;
+  },
+  // 월별 반 현황 PDF (A4 세로) — 지난 달은 말일, 이번 달은 오늘 기준. 그 달의 신규 등록·퇴원 포함
+  pdf(month) {
+    const today = todayStr();
+    if (!/^\d{4}-\d{2}$/.test(month || '')) month = today.slice(0, 7);
+    const [Y, M] = month.split('-').map(Number);
+    const first = month + '-01', last = ymd(new Date(Y, M, 0));
+    if (first > today) { toast('앞으로 올 달은 저장할 수 없습니다'); return; }
+    const isCur = last >= today, base = isCur ? today : last;
+    // 반: 이번 달은 화면과 같이 진행 중인 반, 지난 달은 그 달에 진행 중이었거나 기준일에 학생이 있던 반
+    const list = this.sorted(Store.all('classes')).filter(c => isCur ? c.active !== false
+      : this.rosterAt(c.id, base).length || (c.active !== false && (!this.startOf(c) || this.startOf(c) <= last)));
+    const sm = this.summaryOf(list, base, isCur);
+    // 반 표
+    const rows = list.map(c => {
+      const r = this.rosterAt(c.id, base);
+      const up = isCur ? this.upcomingAt(c.id, base, r.map(s => s.id)) : [];
+      const pd = (sid, d) => { const x = this.partDays(c.id, sid, d); return x ? `<span class="pd">${esc(daysLabel(x))}만</span>` : ''; };
+      const names = r.map(s => `<span class="nw">${esc(s.name)}<span class="tag">${esc(stTag(s))}</span>${pd(s.id, base)}</span>`)
+        .concat(up.map(o => `<span class="nw up">${esc(o.s.name)}<span class="tag">${esc(stTag(o.s))} ${this.md(o.from)}~</span>${pd(o.s.id, o.from)}</span>`));
+      return `<tr><td class="cn"><span class="dot" style="background:${this.colorOf(c)}"></span><b>${esc(c.name)}</b>${c.active === false ? ' <span class="end">종료</span>' : ''}</td>
+        <td class="tm">${esc(this.timeLabel(c))}</td><td class="n"><b>${r.length}</b>${up.length ? `<small>+${up.length} 예정</small>` : ''}</td><td class="st">${names.join(', ') || '-'}</td></tr>`;
+    }).join('');
+    // 그 달의 신규 등록 (처음 등록 + 재등록) · 퇴원 (이번 달은 이후 날짜의 퇴원 예약도 '예정'으로)
+    const inM = (d) => isYmd(d) && d >= first && d <= base;
+    const clsAt = (sid, d) => Store.where('enrollments', e => e.studentId === sid && this.enrollValid(e, d)).map(e => Store.get('classes', e.classId)).filter(Boolean);
+    const clsEnd = (sid, d) => Store.where('enrollments', e => e.studentId === sid && e.to === d).map(e => Store.get('classes', e.classId)).filter(Boolean);
+    const joins = [];
+    Store.all('students').forEach(s => {
+      const jd = Students.joinDateOf(s);
+      if (inM(jd)) joins.push({ s, d: jd, kind: '신규' });
+      Store.where('student_log', l => l.studentId === s.id && l.type === 'rejoin' && inM(l.date)).forEach(l => joins.push({ s, d: l.date, kind: '재등록' }));
+    });
+    const leaves = [];
+    Store.where('student_log', l => l.type === 'leave' && inM(l.date)).forEach(l => {
+      const s = Store.get('students', l.studentId);
+      if (s) leaves.push({ s, d: l.date, reason: l.reason || '', plan: false });
+    });
+    if (isCur) Store.where('students', s => s.sched && s.sched.act === 'leave' && isYmd(s.sched.date) && s.sched.date > today && s.sched.date <= last)
+      .forEach(s => leaves.push({ s, d: s.sched.date, reason: s.sched.reason || '', plan: true }));
+    const bySort = (a, b) => ko(a.d, b.d) || Students.sortFn(a.s, b.s);
+    joins.sort(bySort); leaves.sort(bySort);
+    const cl = (arr) => arr.map(c => `<span class="dot" style="background:${this.colorOf(c)}"></span>${esc(c.name)}`).join(', ') || '-';
+    const joinRows = joins.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.kind === '재등록' ? ' <span class="kd">재등록</span>' : ''}</td><td>${cl(clsAt(o.s.id, o.d))}</td></tr>`).join('');
+    const leaveRows = leaves.map(o => `<tr><td class="dt">${this.mdDow(o.d)}</td><td class="nm"><b>${esc(o.s.name)}</b> <span class="tag">${esc(stTag(o.s))}</span>${o.plan ? ' <span class="kd">예정</span>' : ''}</td><td>${cl(clsEnd(o.s.id, o.d))}</td><td class="rs">${esc(o.reason)}</td></tr>`).join('');
+    // 요약
+    const chips = (arr) => arr.map(x => `<span class="chip">${esc(x.label || x.name)} <b>${x.n}</b>${x.g ? `<small>${x.g.map(g => esc(g.label) + ' ' + g.n).join(' · ')}</small>` : ''}</span>`).join('') || '-';
+    const upHtml = sm.upcoming.map(u => `<span class="chip"><b>${this.mdDow(u.from)}</b> ${esc(u.s.name)} <small>${esc(stTag(u.s))}${u.kind ? ' · ' + u.kind : ''} · ${u.items.map(i => esc(i.c.name)).join(', ')}</small></span>`).join('');
+    const summary = `<div class="sum">
+      <div class="tot"><div class="big">${sm.n}<small>명</small></div><div class="lbl">전체 인원 (실인원)</div><div class="sub">반별 수강 합계 ${sm.seats}명</div></div>
+      <div class="sum-r">
+        <div class="ln"><span class="k">학년별</span><span class="v">${chips(sm.grades)}</span></div>
+        <div class="ln"><span class="k">학교별</span><span class="v">${chips(sm.schools)}</span></div>
+        ${isCur ? `<div class="ln"><span class="k">등록 예정 ${sm.upcoming.length}명</span><span class="v">${upHtml || '-'}</span></div>` : ''}
+        <div class="ln"><span class="k">이번 달 변동</span><span class="v"><span class="chip">신규 등록 <b>${joins.length}</b></span><span class="chip">퇴원 <b>${leaves.length}</b>${leaves.some(o => o.plan) ? `<small>예정 ${leaves.filter(o => o.plan).length} 포함</small>` : ''}</span></span></div>
+      </div></div>`;
+    const title = `반현황_${month}`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
+      @page { size: A4 portrait; margin: 10mm; }
+      * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { margin: 0; color: #111; font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; font-size: 8.5pt; }
+      h1 { font-size: 14pt; margin: 0 0 3mm; display: flex; justify-content: space-between; align-items: baseline; }
+      h1 small { font-size: 8pt; font-weight: normal; color: #666; }
+      h2 { font-size: 10.5pt; margin: 5mm 0 2mm; padding-left: 2mm; border-left: 2.5pt solid #2B7FC1; }
+      h2 small { font-weight: normal; color: #666; font-size: 8pt; margin-left: 4pt; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 2mm; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 0.5pt solid #9aa3ad; padding: 1.2mm 1.5mm; vertical-align: top; text-align: left; }
+      th { background: #eef2f7; font-weight: bold; font-size: 8pt; }
+      .dot { display: inline-block; width: 6.5pt; height: 6.5pt; border-radius: 50%; margin-right: 3pt; vertical-align: -0.5pt; }
+      td.cn, td.tm, td.dt { white-space: nowrap; } td.tm { color: #333; }
+      td.n { text-align: center; white-space: nowrap; } td.n small { display: block; color: #888; font-size: 7pt; }
+      td.st { line-height: 1.55; }
+      .nw { white-space: nowrap; } .nw.up { color: #8a929b; }
+      .tag { color: #777; font-size: 7pt; margin-left: 2pt; }
+      .pd { font-size: 6.5pt; color: #B26A00; border: 0.4pt solid #E3B873; border-radius: 2pt; padding: 0 2pt; margin-left: 2pt; }
+      .end { font-size: 7pt; color: #777; border: 0.4pt solid #bbb; border-radius: 2pt; padding: 0 2pt; }
+      .kd { font-size: 7pt; color: #1D5E93; border: 0.4pt solid #B9D7EF; background: #E8F3FC; border-radius: 2pt; padding: 0 2pt; }
+      td.rs { color: #444; }
+      .sum { display: flex; gap: 4mm; border: 0.5pt solid #c5ccd4; border-radius: 2mm; background: #f6f8fa; padding: 3mm; break-inside: avoid; page-break-inside: avoid; }
+      .tot { flex: none; width: 34mm; text-align: center; background: #fff; border: 0.5pt solid #d6dde4; border-radius: 2mm; padding: 3mm 2mm; }
+      .tot .big { font-size: 24pt; font-weight: bold; color: #1D5E93; line-height: 1; } .tot .big small { font-size: 10pt; margin-left: 1pt; }
+      .tot .lbl { margin-top: 2mm; font-weight: bold; } .tot .sub { color: #666; font-size: 7.5pt; margin-top: 1mm; }
+      .sum-r { flex: 1; display: flex; flex-direction: column; gap: 2mm; }
+      .ln { display: flex; gap: 2mm; } .ln .k { flex: none; width: 24mm; font-weight: bold; color: #333; padding-top: 0.6mm; }
+      .ln .v { flex: 1; display: flex; flex-wrap: wrap; gap: 1.2mm; }
+      .chip { background: #fff; border: 0.5pt solid #d6dde4; border-radius: 3mm; padding: 0.5mm 2.2mm; white-space: nowrap; }
+      .chip b { color: #1D5E93; } .chip small { color: #777; font-size: 7pt; margin-left: 3pt; }
+      .empty { color: #888; padding: 1mm 0 2mm; }
+    </style></head><body>
+      <h1>${Y}년 ${M}월 반 현황<small>기준일 ${base}${isCur ? ' (오늘)' : ' (말일)'} · 출력일 ${today}</small></h1>
+      <table><thead><tr><th style="width:30mm">반 이름</th><th style="width:38mm">요일·시간</th><th style="width:13mm;text-align:center">인원</th><th>학생</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="empty">반이 없습니다.</td></tr>'}</tbody></table>
+      <h2>요약</h2>${summary}
+      <h2>신규 등록<small>${joins.length}명</small></h2>
+      ${joins.length ? `<table><thead><tr><th style="width:18mm">등록일</th><th style="width:50mm">학생</th><th>반</th></tr></thead><tbody>${joinRows}</tbody></table>` : '<div class="empty">이 달에 새로 등록한 학생이 없습니다.</div>'}
+      <h2>퇴원<small>${leaves.length}명</small></h2>
+      ${leaves.length ? `<table><thead><tr><th style="width:18mm">퇴원일</th><th style="width:50mm">학생</th><th style="width:55mm">다니던 반</th><th>사유</th></tr></thead><tbody>${leaveRows}</tbody></table>` : '<div class="empty">이 달에 퇴원한 학생이 없습니다.</div>'}
+    </body></html>`;
+    const fr = document.createElement('iframe');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+    const doc = fr.contentDocument;
+    doc.open(); doc.write(html); doc.close();
+    const t0 = document.title;
+    setTimeout(() => {
+      document.title = title;                 // 저장 파일 이름
+      try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally {
+        document.title = t0;
+        setTimeout(() => fr.remove(), 1000);
+      }
+    }, 300);
   },
 
   hardDelete(cid) {
@@ -1060,3 +1238,39 @@ document.addEventListener('change', (e) => {
   const c = t.value ? Store.get('classes', t.value) : null;
   d.style.background = c ? Classes.colorOf(c) : 'transparent';
 }, true);
+
+/* ---------- 반 화면: 아래 요약 · PDF 저장 버튼 ---------- */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+.cls-pdfbox { display: inline-flex; align-items: center; gap: 6px; }
+.cls-pdfbox input[type=month] { height: 30px; padding: 0 8px; font-size: 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.cls-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
+.cls-sum { margin-top: 22px; }
+.cls-sum-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.cls-sum-head h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
+.cls-sum-head .sub { color: var(--ink-soft); font-size: 13px; }
+.cls-sum-grid { display: grid; grid-template-columns: 190px repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+@media (max-width: 1000px) { .cls-sum-grid { grid-template-columns: 1fr 1fr; } }
+.cls-sum-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); min-width: 0; }
+.cls-sum-card > .lbl { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
+.cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
+.cls-sum-total { background: linear-gradient(160deg, var(--accent-soft), var(--surface) 75%); border-color: var(--accent-line); text-align: center; }
+.cls-sum-total .big { font-size: 44px; font-weight: 800; color: var(--accent-ink); line-height: 1.05; letter-spacing: -1px; }
+.cls-sum-total .big small { font-size: 16px; font-weight: 700; margin-left: 2px; }
+.cls-sum-total .soft { margin-top: 6px; }
+.cls-sum-plus { display: inline-block; margin-top: 10px; font-size: 12.5px; font-weight: 700; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 2px 10px; }
+.cls-sum-bar { display: grid; grid-template-columns: 64px 1fr 26px; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.cls-sum-bar .lb { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cls-sum-bar .tr { height: 8px; background: var(--tint-strong); border-radius: 99px; overflow: hidden; }
+.cls-sum-bar .tr i { display: block; height: 100%; background: var(--accent); border-radius: 99px; opacity: .8; }
+.cls-sum-bar b { text-align: right; color: var(--ink); }
+.cls-sum-bar .gs { grid-column: 1 / -1; margin: -2px 0 2px; font-size: 11.5px; color: var(--ink-mute); }
+.cls-sum-up { display: grid; grid-template-columns: 62px 1fr; gap: 2px 8px; font-size: 13px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.cls-sum-card > .lbl + .cls-sum-up { border-top: 0; padding-top: 0; }
+.cls-sum-up .dt { font-weight: 700; color: var(--warn); white-space: nowrap; }
+.cls-sum-up .nm .tag { color: var(--ink-mute); font-size: 12px; }
+.cls-sum-up .cs { grid-column: 2; font-size: 12px; color: var(--ink-soft); }
+`;
+  document.head.appendChild(st);
+})();
