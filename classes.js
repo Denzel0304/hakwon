@@ -627,9 +627,10 @@ const Classes = {
     const gl = (g) => (g ? gradeLabel(g) : '학년 없음');
     const grades = Object.keys(byGrade).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b))
       .map(g => ({ label: gl(g), n: byGrade[g] }));
-    // 학교 순서: 학교 없음은 맨 뒤, 초→중→고 (그 학교 학생의 가장 낮은 학년 기준), 같은 급이면 인원 많은 학교 먼저
-    const lvl = (k) => { const g = Math.min(...Object.keys(bySchool[k].g).map(x => this.gradeKey(x))); return g <= 6 ? 0 : g <= 9 ? 1 : g <= 12 ? 2 : 3; };
-    const schools = Object.keys(bySchool).sort((a, b) => (!a) - (!b) || lvl(a) - lvl(b) || bySchool[b].n - bySchool[a].n || ko(a, b))
+    // 학교 순서 (화면·PDF 공통): 그 학교 학생의 가장 낮은 학년 오름차순(초4→…→고3, 학년 없음은 뒤), 같은 학년이면 인원 많은 학교 먼저
+    //   '학교 없음'도 같은 규칙을 따른다
+    const minG = (k) => Math.min(...Object.keys(bySchool[k].g).map(x => this.gradeKey(x)));
+    const schools = Object.keys(bySchool).sort((a, b) => minG(a) - minG(b) || bySchool[b].n - bySchool[a].n || ko(a, b))
       .map(k => ({ name: k || '학교 없음', n: bySchool[k].n,
         g: Object.keys(bySchool[k].g).map(Number).sort((a, b) => this.gradeKey(a) - this.gradeKey(b)).map(g => ({ label: gl(g), n: bySchool[k].g[g] })) }));
     // 등록 예정: 반마다의 예정 학생을 학생별로 모은다 (지금 다른 반에 다니면 반 이동·반 추가로 표시)
