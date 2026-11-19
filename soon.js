@@ -102,7 +102,7 @@
   CEL.className = 'sn-celebrate sn-scope';
   CEL.id = 'sn-celebrate';
   CEL.hidden = true;
-  CEL.setAttribute('aria-label', '축하 연출, 누르면 닫힘');
+  CEL.setAttribute('aria-label', '축하 연출');
   CEL.innerHTML = '<canvas id="sn-confetti"></canvas>';
   document.body.appendChild(CEL);
 
@@ -165,7 +165,7 @@
   const KEY_MODE = 'soon.mode.v1';
   const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-  const CELEBRATE_MS = 4000;
+  const CELEBRATE_MS = 7000;
   const MILESTONES = [50, 75];
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -608,9 +608,6 @@
   }
 
   /* ===== 축하 연출 ===== */
-  let confettiParts = [];
-  let confettiRAF = 0;
-
   function celebrate() {
     celebrateUntil = performance.now() + CELEBRATE_MS;
     els.celebrate.hidden = false;
@@ -629,60 +626,20 @@
     stopConfetti();
   }
 
+  // 폭죽은 공용 폭죽 엔진(todo-ext.js Fireworks)의 'big' — 양옆 축포 + 가운데 불꽃 6번 + 색종이 비
   function startConfetti() {
-    const cv = els.confetti;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth, h = window.innerHeight;
-    cv.width = w * dpr; cv.height = h * dpr;
-    const ctx = cv.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (reduceMotion || typeof Fireworks === 'undefined') return;
     const colors = mode === 'sand'
       ? ['#D8A65B', '#B07D35', '#5B4636', '#E8730A', '#F0A202']
       : ['#F0A202', '#F7B733', '#FFFDF6', '#E8730A', '#FF9F6B'];
-    const count = reduceMotion ? 0 : (w < 600 ? 110 : 180);
-    confettiParts = [];
-    for (let i = 0; i < count; i++) {
-      const fromLeft = i % 2 === 0;
-      confettiParts.push({
-        x: fromLeft ? -10 : w + 10,
-        y: h * (0.55 + Math.random() * 0.35),
-        vx: (fromLeft ? 1 : -1) * (4 + Math.random() * 7),
-        vy: -(9 + Math.random() * 9),
-        s: 5 + Math.random() * 6,
-        r: Math.random() * Math.PI,
-        vr: (Math.random() - 0.5) * 0.35,
-        c: colors[i % colors.length]
-      });
-    }
-    cancelAnimationFrame(confettiRAF);
-    const step = () => {
-      ctx.clearRect(0, 0, w, h);
-      confettiParts.forEach(q => {
-        q.vy += 0.32; q.vx *= 0.99;
-        q.x += q.vx; q.y += q.vy; q.r += q.vr;
-        ctx.save();
-        ctx.translate(q.x, q.y);
-        ctx.rotate(q.r);
-        ctx.fillStyle = q.c;
-        ctx.fillRect(-q.s / 2, -q.s / 4, q.s, q.s / 2);
-        ctx.restore();
-      });
-      if (celebrateUntil) confettiRAF = requestAnimationFrame(step);
-    };
-    confettiRAF = requestAnimationFrame(step);
+    Fireworks.play('big', CELEBRATE_MS, colors);
   }
   function stopConfetti() {
-    cancelAnimationFrame(confettiRAF);
-    const ctx = els.confetti.getContext('2d');
-    ctx.clearRect(0, 0, els.confetti.width, els.confetti.height);
-    confettiParts = [];
+    if (typeof Fireworks !== 'undefined') Fireworks.stop();
   }
 
-  // 축하 화면은 클릭을 막지 않는다 → 축포 중에도 누른 탭·버튼이 바로 동작하고, 축하 연출만 닫힌다
+  // 축하 화면은 클릭을 막지 않는다 → 축포가 터지는 동안에도 누른 탭·버튼·입력이 그대로 동작하고, 축포는 끝까지 이어진다 (뒤로가기로만 닫힘)
   els.celebrate.style.pointerEvents = 'none';
-  document.addEventListener('pointerdown', () => {
-    if (celebrateUntil) { endCelebrate(); tick(); }
-  }, true);
 
   /* ===== 모드 전환 ===== */
   document.querySelectorAll('#sn-root .sn-modes button').forEach(b => {
