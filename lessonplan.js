@@ -1,14 +1,19 @@
 /* =========================================================
    lessonplan.js — Lesson Plan (선생님 › Lesson Plan)
-   반마다 영역별(단어·문법·독해·듣기·일반) 학습 방법 · 숙제 방식 · 평가 방식을 적어 두고,
-   반마다 A4 한 장 / 모든 반 요약표(가로 A4)로 PDF 저장 · 출력 (원장 보고 · 홍보용)
+   탭 두 개: [영역별] 단어·문법·독해·듣기·일반의 학습 방법 · 숙제 방식 · 평가 방식
+             [회차별] 1주 수업 회차(반의 수업 요일 수만큼)마다 수업 · 숙제 · 시험
+   반마다 A4 한 장(영역별 + 회차별) / 모든 반 요약표(가로 A4, 영역별만)로 PDF 저장 · 출력
    기록은 meta 테이블 (서버 SQL 변경 없음):
-     { id 'LP_반ID', kind:'lplan', classId, areas:{ word:{ method, hw, eval }, gram, read, listen, general }, memo(내부용 — PDF 제외), createdAt, updatedAt }
+     { id 'LP_반ID', kind:'lplan', classId, areas:{ word:{ method, hw, eval }, gram, read, listen, general },
+       sess:{ '1':{ lesson, hw, test }, '2':…, … }, memo(내부용 — PDF 제외), createdAt, updatedAt }
+   Lesson Plan을 쓰지 않는 반: 설정 meta LPCFG { kind:'lpcfg', off:[반ID] } — 목록·PDF에서 뺀다 (단어 기록과 같은 방식)
    반 정보(요일·시간)와 독해·문법 교재(시험+교재 › 일반 교재 중 그 반에 연결된 것)는 자동으로 보여 준다.
    머리말의 학원 이름·로고는 학생 › Report 설정에 저장된 것을 쓴다.
    ========================================================= */
 const LP_AREAS = [['word', '단어'], ['gram', '문법'], ['read', '독해'], ['listen', '듣기'], ['general', '일반']];
 const LP_FIELDS = [['method', '학습 방법', '예: 매 수업 30개 암기 → 스펠링·뜻 쓰기'], ['hw', '숙제 방식', '예: 다음 시간 범위 미리 외워 오기, 오답 노트'], ['eval', '평가 방식', '예: 매 수업 단어 테스트 (80점 미만 재시험)']];
+const LP_SFIELDS = [['lesson', '수업', '예: 새 단원 문법 설명 + 독해 1지문'], ['hw', '숙제', '예: 워크북 2쪽, 단어 30개 암기'], ['test', '시험', '예: 지난 시간 단어 테스트']];
+const LP_SCOLOR = '#1D3557';
 const LP_COLORS = { word: '#A9650B', gram: '#5B3FA6', read: '#1D5E93', listen: '#1F7A52', general: '#566D80' };
 
 const LessonPlan = {
@@ -16,15 +21,28 @@ const LessonPlan = {
   showEnded: false,
   pdfShape: 'page',   // 'page' 반마다 A4 한 장 / 'table' 모든 반 요약표
   pdfScope: 'cur',    // 'cur' 지금 반 / 'act' 진행 중인 반 전체 / 'pick' 직접 고르기
+  tab: 'area',        // 'area' 영역별 / 'sess' 회차별
 
   /* ---------- 데이터 ---------- */
   pid(cid) { return 'LP_' + cid; },
   plan(cid) { return Store.get('meta', this.pid(cid)); },
   val(p, area, f) { return stripZws(((p && p.areas && p.areas[area]) || {})[f] || '').trim(); },
   areaHas(p, area) { return LP_FIELDS.some(([f]) => this.val(p, area, f)); },
-  hasAny(p) { return !!p && LP_AREAS.some(([a]) => this.areaHas(p, a)); },
-  // 진행 중인 반만 (종료된 반은 보이지 않음)
-  classes() { return Classes.sorted(Store.all('classes')).filter(c => c.active !== false); },
+  areasAny(p) { return !!p && LP_AREAS.some(([a]) => this.areaHas(p, a)); },
+  // 회차: 반의 수업 요일 (월~일 순) — 요일 수 = 1주 회차 수
+  sessDays(c) { return DAY_ORDER.filter(d => ((c && c.days) || []).includes(d)); },
+  sval(p, i, f) { return stripZws(((p && p.sess && p.sess[i]) || {})[f] || '').trim(); },
+  sessHas(p, i) { return LP_SFIELDS.some(([f]) => this.sval(p, i, f)); },
+  // n을 주면 1~n회차만, 없으면 적어 둔 모든 회차
+  sessAny(p, n) { if (!p || !p.sess) return false; const ks = n == null ? Object.keys(p.sess) : Array.from({ length: n }, (_, i) => String(i + 1)); return ks.some(i => this.sessHas(p, i)); },
+  // c를 주면 그 반의 회차 수까지만 본다
+  hasAny(p, c) { return this.areasAny(p) || this.sessAny(p, c ? this.sessDays(c).length : null); },
+  // Lesson Plan을 쓰지 않는 반 설정
+  cfg() { const r = Store.get('meta', 'LPCFG'); return r && r.kind === 'lpcfg' ? r : null; },
+  isOff(cid) { const r = this.cfg(); return !!(r && (r.off || []).includes(cid)); },
+  activeAll() { return Classes.sorted(Store.all('classes')).filter(c => c.active !== false); },
+  // 진행 중이고 Lesson Plan을 쓰는 반만 (종료된 반 · 설정에서 끈 반은 보이지 않음)
+  classes() { return this.activeAll().filter(c => !this.isOff(c.id)); },
   // 그 반에 연결된 일반 교재 중 독해·문법 { read:[이름], gram:[이름] }
   books(cid) {
     const out = { read: [], gram: [] };
@@ -33,9 +51,10 @@ const LessonPlan = {
     return out;
   },
   save(cid, area, f, v) {
-    const cur = this.plan(cid) || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, memo: '', createdAt: new Date().toISOString() };
+    const cur = this.plan(cid) || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, sess: {}, memo: '', createdAt: new Date().toISOString() };
     const rec = JSON.parse(JSON.stringify(cur));
     if (area === 'memo') rec.memo = v;
+    else if (area.startsWith('s:')) { const i = area.slice(2); rec.sess = rec.sess || {}; rec.sess[i] = Object.assign({}, rec.sess[i] || {}, { [f]: v }); }
     else { rec.areas = rec.areas || {}; rec.areas[area] = Object.assign({}, rec.areas[area] || {}, { [f]: v }); }
     if (JSON.stringify(rec) === JSON.stringify(cur) && Store.get('meta', rec.id)) return;
     rec.updatedAt = new Date().toISOString();
@@ -47,15 +66,17 @@ const LessonPlan = {
     const list = this.classes();
     if (!list.some(c => c.id === this.cid)) this.cid = list.length ? list[0].id : '';
     const c = Store.get('classes', this.cid);
-    let h = `<div class="page-head"><h1>Lesson Plan</h1><span class="sub">반별 영역 학습 방법 · 숙제 · 평가 — 원장 보고 · 홍보용 PDF</span><span class="grow" style="flex:1"></span>
-      <button class="btn" data-lpa="pdf" ${Store.all('classes').length ? '' : 'disabled'}>PDF 저장</button></div>`;
+    let h = `<div class="page-head"><h1>Lesson Plan</h1><span class="sub">반별 영역 학습 방법 · 숙제 · 평가</span>
+      <button class="btn sm lp-pdfbtn" data-lpa="pdf" ${list.length ? '' : 'disabled'} title="Lesson Plan을 A4로 인쇄 · PDF 저장">PDF 저장</button><span class="grow" style="flex:1"></span>
+      <button type="button" class="btn sm ghost" data-lpa="cfg" title="Lesson Plan을 쓰지 않는 반은 목록·PDF에서 뺍니다">⚙ Lesson Plan 반</button></div>`;
+    h += `<div class="tabs lp-tabs">${[['area', '영역별'], ['sess', '회차별']].map(([k, t]) => `<button type="button" data-lptab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!list.length) {
-      main.innerHTML = h + '<div class="panel"><div class="empty">진행 중인 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.</div></div>';
+      main.innerHTML = h + `<div class="panel"><div class="empty">${this.activeAll().length ? 'Lesson Plan을 쓰는 반이 없습니다. “⚙ Lesson Plan 반”에서 고르세요.' : '진행 중인 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.'}</div></div>`;
       this.bind(main);
       return;
     }
     h += `<div class="lp-wrap"><aside class="lp-side"><div class="lp-list">${list.map(x => {
-      const has = this.hasAny(this.plan(x.id));
+      const has = this.hasAny(this.plan(x.id), x);
       return `<button type="button" class="lp-cls${x.id === this.cid ? ' on' : ''}${x.active === false ? ' end' : ''}" data-lpc="${x.id}">${Classes.dot(x)}<span class="nm">${esc(x.name)}</span>${has ? '<i class="lp-has" title="작성함"></i>' : ''}</button>`;
     }).join('')}</div></aside>`;
     h += `<section class="lp-body">${this.editorHtml(c)}</section></div>`;
@@ -68,15 +89,30 @@ const LessonPlan = {
     const chips = (arr) => arr.length ? arr.map(n => `<span class="lp-bk">${esc(n)}</span>`).join('') : '<span class="muted small">연결된 교재 없음</span>';
     let h = `<div class="panel lp-info"><div class="lp-ttl">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
         <span class="soft">${esc(Classes.timeLabel(c))}</span><span style="flex:1"></span>
-        <button type="button" class="btn sm ghost" data-lpa="copy" title="다른 반에 적어 둔 내용을 이 반으로 가져옵니다">다른 반 내용 복사</button></div>
+        <button type="button" class="btn sm ghost" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용을 이 반으로 가져옵니다">다른 반 내용 복사</button></div>
       <div class="lp-books"><div><span class="bk-cat read">독해</span>${chips(bk.read)}</div><div><span class="bk-cat gram">문법</span>${chips(bk.gram)}</div></div>
       <div class="small muted">교재는 시험+교재 › 일반 교재에서 이 반에 연결한 독해·문법 교재가 자동으로 나옵니다.</div></div>`;
-    h += '<div class="lp-areas">';
-    LP_AREAS.forEach(([a, lb]) => {
-      h += `<div class="panel lp-area" style="--lpc:${LP_COLORS[a]}"><div class="lp-ah"><b>${lb}</b>${this.areaHas(p, a) ? '' : '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>'}</div>
-        ${LP_FIELDS.map(([f, fl, ph]) => `<label class="lp-f"><span>${fl}</span><textarea rows="2" data-lpf="${a}|${f}" placeholder="${esc(ph)}">${esc(((p && p.areas && p.areas[a]) || {})[f] || '')}</textarea></label>`).join('')}</div>`;
-    });
-    h += `</div><div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">내부용 · PDF에 나오지 않습니다</span></div>
+    if (this.tab === 'sess') {
+      const days = this.sessDays(c);
+      if (!days.length) h += '<div class="panel"><div class="empty">이 반에 수업 요일이 없습니다. 반 메뉴에서 요일을 정하면 그 수만큼 회차가 나옵니다.</div></div>';
+      else {
+        h += '<div class="lp-sess">';
+        days.forEach((d, n) => {
+          const i = String(n + 1);
+          h += `<div class="panel lp-area lp-ses" style="--lpc:${LP_SCOLOR}"><div class="lp-ah"><b>${i}회차</b><span class="soft small">${DOW[d]}요일</span>${this.sessHas(p, i) ? '' : '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>'}</div>
+            <div class="lp-sf">${LP_SFIELDS.map(([f, fl, ph]) => `<label class="lp-f"><span>${fl}</span><textarea rows="2" data-lpf="s:${i}|${f}" placeholder="${esc(ph)}">${esc(((p && p.sess && p.sess[i]) || {})[f] || '')}</textarea></label>`).join('')}</div></div>`;
+        });
+        h += '</div>';
+      }
+    } else {
+      h += '<div class="lp-areas">';
+      LP_AREAS.forEach(([a, lb]) => {
+        h += `<div class="panel lp-area" style="--lpc:${LP_COLORS[a]}"><div class="lp-ah"><b>${lb}</b>${this.areaHas(p, a) ? '' : '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>'}</div>
+          ${LP_FIELDS.map(([f, fl, ph]) => `<label class="lp-f"><span>${fl}</span><textarea rows="2" data-lpf="${a}|${f}" placeholder="${esc(ph)}">${esc(((p && p.areas && p.areas[a]) || {})[f] || '')}</textarea></label>`).join('')}</div>`;
+      });
+      h += '</div>';
+    }
+    h += `<div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">내부용 · PDF에 나오지 않습니다</span></div>
       <textarea rows="3" data-lpf="memo|" placeholder="예: 다음 학기부터 독해 교재 변경 검토">${esc((p && p.memo) || '')}</textarea></div>`;
     return h;
   },
@@ -84,10 +120,13 @@ const LessonPlan = {
     main.onclick = (e) => {
       const cb = e.target.closest('[data-lpc]');
       if (cb) { if (cb.dataset.lpc !== this.cid) { this.cid = cb.dataset.lpc; App.render(); } return; }
+      const tb = e.target.closest('[data-lptab]');
+      if (tb) { if (tb.dataset.lptab !== this.tab) { this.tab = tb.dataset.lptab; App.render(); } return; }
       const a = e.target.closest('[data-lpa]');
       if (!a) return;
       if (a.dataset.lpa === 'pdf') this.pdfDlg();
       else if (a.dataset.lpa === 'copy') this.copyDlg();
+      else if (a.dataset.lpa === 'cfg') this.cfgDlg();
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-lpended]')) { this.showEnded = e.target.checked; App.render(); return; }
@@ -98,23 +137,25 @@ const LessonPlan = {
       // 화면 전체를 다시 그리지 않고 표시만 맞춘다 (입력 흐름 유지)
       const p = this.plan(this.cid);
       const btn = $(`[data-lpc="${this.cid}"]`, main);
-      if (btn) { const has = this.hasAny(p), dot = $('.lp-has', btn); if (has && !dot) btn.insertAdjacentHTML('beforeend', '<i class="lp-has" title="작성함"></i>'); if (!has && dot) dot.remove(); }
+      if (btn) { const has = this.hasAny(p, Store.get('classes', this.cid)), dot = $('.lp-has', btn); if (has && !dot) btn.insertAdjacentHTML('beforeend', '<i class="lp-has" title="작성함"></i>'); if (!has && dot) dot.remove(); }
       if (a !== 'memo') {
-        const card = t.closest('.lp-area'), hint = $('.lp-ah .muted', card), has = this.areaHas(p, a);
+        const card = t.closest('.lp-area'), hint = $('.lp-ah .muted', card), has = a.startsWith('s:') ? this.sessHas(p, a.slice(2)) : this.areaHas(p, a);
         if (has && hint) hint.remove();
         if (!has && !hint) $('.lp-ah', card).insertAdjacentHTML('beforeend', '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>');
       }
     };
   },
 
-  // 다른 반 내용을 지금 반으로 (지금 반에 적은 내용이 있으면 확인 후 덮어씀 · 메모는 가져오지 않음)
+  // 다른 반 내용을 지금 반으로 — 지금 탭(영역별 / 회차별) 내용만 (지금 반에 적은 내용이 있으면 확인 후 덮어씀 · 메모는 가져오지 않음)
   copyDlg() {
-    const cid = this.cid;
-    const src = this.classes(true).filter(c => c.id !== cid && this.hasAny(this.plan(c.id)));
-    if (!src.length) { toast('내용을 적어 둔 다른 반이 없습니다'); return; }
+    const cid = this.cid, ss = this.tab === 'sess';
+    const tn = ss ? '회차별' : '영역별', key = ss ? 'sess' : 'areas';
+    const has = (p) => ss ? this.sessAny(p) : this.areasAny(p);
+    const src = this.classes(true).filter(c => c.id !== cid && has(this.plan(c.id)));
+    if (!src.length) { toast(`${tn} 내용을 적어 둔 다른 반이 없습니다`); return; }
     Modal.open({
-      title: '다른 반 내용 복사', size: 'sm', autofocus: false,
-      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 영역별 내용(학습 방법·숙제·평가)을 이 반으로 가져옵니다. 반 전체 메모는 가져오지 않습니다.</p>
+      title: `다른 반 내용 복사 (${tn})`, size: 'sm', autofocus: false,
+      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}을 이 반으로 가져옵니다. ${ss ? '영역별' : '회차별'} 내용과 반 전체 메모는 그대로 둡니다.</p>
         <div class="pick-list lp-pick">${src.map((c, i) => `<label><input type="radio" name="lpsrc" value="${c.id}" ${i ? '' : 'checked'}>${Classes.dot(c)}${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('')}</div>`,
       buttons: [
         { text: '취소' },
@@ -122,11 +163,33 @@ const LessonPlan = {
           const sid = ($('[name=lpsrc]:checked', m.body) || {}).value, sp = sid && this.plan(sid);
           if (!sp) return false;
           const cur = this.plan(cid);
-          if (this.hasAny(cur) && !await confirmDlg('이 반에 적어 둔 영역별 내용을 고른 반 내용으로 바꿀까요?\n(반 전체 메모는 그대로)', '바꾸기')) return false;
-          const rec = Object.assign({}, cur || { id: this.pid(cid), kind: 'lplan', classId: cid, memo: '', createdAt: new Date().toISOString() },
-            { areas: JSON.parse(JSON.stringify(sp.areas || {})), updatedAt: new Date().toISOString() });
+          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용을 고른 반 내용으로 바꿀까요?\n(${ss ? '영역별' : '회차별'} 내용 · 반 전체 메모는 그대로)`, '바꾸기')) return false;
+          const rec = Object.assign({}, cur || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, sess: {}, memo: '', createdAt: new Date().toISOString() },
+            { [key]: JSON.parse(JSON.stringify(sp[key] || {})), updatedAt: new Date().toISOString() });
           Store.put('meta', rec);
           toast('내용을 가져왔습니다');
+          App.render();
+        } },
+      ],
+    });
+  },
+
+  // Lesson Plan 반 설정 (체크 = Lesson Plan을 씀)
+  cfgDlg() {
+    const all = this.activeAll();
+    const off = new Set((this.cfg() || {}).off || []);
+    Modal.open({
+      title: 'Lesson Plan 반', size: 'md', autofocus: false,
+      body: `<p class="small muted" style="margin-top:0">Lesson Plan을 쓰는 반만 체크하세요. 체크를 끈 반은 반 목록 · PDF에서 빠집니다. 이미 적은 내용은 지워지지 않습니다.</p>
+        <div class="pick-list wt-cfg">${all.map(c => `<label><input type="checkbox" name="lpo" value="${c.id}" ${off.has(c.id) ? '' : 'checked'}>${Classes.dot(c)}<b>${esc(c.name)}</b></label>`).join('') || '<div class="empty small">진행 중인 반이 없습니다.</div>'}</div>`,
+      buttons: [
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
+          const on = new Set($$('[name=lpo]:checked', m.body).map(i => i.value));
+          const keep = [...off].filter(id => !all.some(c => c.id === id));            // 종료된 반의 설정은 그대로
+          const now = new Date().toISOString();
+          Store.put('meta', Object.assign({}, this.cfg() || { id: 'LPCFG', kind: 'lpcfg', createdAt: now }, { off: keep.concat(all.filter(c => !on.has(c.id)).map(c => c.id)), updatedAt: now }));
+          toast('Lesson Plan 반을 저장했습니다');
           App.render();
         } },
       ],
@@ -139,8 +202,8 @@ const LessonPlan = {
     const body = `<div class="form">
       <label>모양</label><div class="row">${[['page', '반마다 A4 한 장'], ['table', '모든 반 요약표 (가로)']].map(([k, t]) => `<label class="chk"><input type="radio" name="lpshape" value="${k}" ${this.pdfShape === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
       <label>범위</label><div class="row">${[['cur', '지금 반'], ['act', '진행 중인 반 전체'], ['pick', '직접 고르기']].map(([k, t]) => `<label class="chk"><input type="radio" name="lpscope" value="${k}" ${this.pdfScope === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
-      <label class="top" data-lppick>반</label><div data-lppick><div class="pick-list lp-pick">${all.map(c => `<label><input type="checkbox" name="lpc" value="${c.id}" ${c.id === this.cid ? 'checked' : ''}>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}${this.hasAny(this.plan(c.id)) ? '' : ' <span class="muted small">(내용 없음)</span>'}</label>`).join('')}</div></div>
-    </div><p class="small muted" style="margin:10px 0 0">인쇄 창에서 대상을 “PDF로 저장”으로 고르면 파일로, 프린터를 고르면 바로 출력됩니다. 내용을 적지 않은 반·영역은 빠집니다.</p>`;
+      <label class="top" data-lppick>반</label><div data-lppick><div class="pick-list lp-pick">${all.map(c => `<label><input type="checkbox" name="lpc" value="${c.id}" ${c.id === this.cid ? 'checked' : ''}>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}${this.hasAny(this.plan(c.id), c) ? '' : ' <span class="muted small">(내용 없음)</span>'}</label>`).join('')}</div></div>
+    </div><p class="small muted" style="margin:10px 0 0">인쇄 창에서 대상을 “PDF로 저장”으로 고르면 파일로, 프린터를 고르면 바로 출력됩니다. 내용을 적지 않은 반·영역·회차는 빠집니다. 요약표에는 영역별만 나옵니다.</p>`;
     Modal.open({
       title: 'Lesson Plan PDF 저장', size: 'md', autofocus: false, body,
       onMount: (b) => {
@@ -158,7 +221,7 @@ const LessonPlan = {
           if (this.pdfScope === 'cur') ids = this.cid ? [this.cid] : [];
           else if (this.pdfScope === 'act') ids = this.classes(false).map(c => c.id);
           else ids = $$('[name=lpc]:checked', b).map(i => i.value);
-          const cls = all.filter(c => ids.includes(c.id) && this.hasAny(this.plan(c.id)));
+          const cls = all.filter(c => ids.includes(c.id) && (this.pdfShape === 'table' ? this.areasAny(this.plan(c.id)) : this.hasAny(this.plan(c.id), c)));
           if (!cls.length) { toast(ids.length ? '고른 반에 적어 둔 내용이 없습니다' : '반을 고르세요'); return false; }
           this.pdf(cls, this.pdfShape);
         } },
@@ -192,10 +255,13 @@ const LessonPlan = {
       body = cls.map(c => {
         const p = this.plan(c.id);
         const secs = LP_AREAS.filter(([a]) => this.areaHas(p, a)).map(([a, lb]) => `<section style="--ac:${LP_COLORS[a]}"><h3><span>${lb}</span></h3><div class="rows">${LP_FIELDS.filter(([f]) => this.val(p, a, f)).map(([f, fl]) => `<div class="row"><div class="k">${fl}</div><div class="v">${br(this.val(p, a, f))}</div></div>`).join('')}</div></section>`).join('');
+        const sd = this.sessDays(c).map((d, n) => [String(n + 1), d]).filter(([i]) => this.sessHas(p, i));
+        const ses = sd.length ? `<section class="ses" style="--ac:${LP_SCOLOR}"><h3><span>회차별 수업 계획</span><small>주 ${this.sessDays(c).length}회</small></h3>
+          <table><thead><tr><th class="sn">회차</th>${LP_SFIELDS.map(([, fl]) => `<th>${fl}</th>`).join('')}</tr></thead><tbody>${sd.map(([i, d]) => `<tr><td class="sn"><b>${i}회차</b><small>${DOW[d]}</small></td>${LP_SFIELDS.map(([f]) => `<td>${this.sval(p, i, f) ? br(this.sval(p, i, f)) : '<span class="none">-</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : '';
         const bks = bookChips(c);
         return `<div class="pg"><header>${brand}<div class="tag">LESSON PLAN</div></header>
           <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>
-          <div class="secs">${secs}</div><footer>${academy ? esc(academy) + ' · ' : ''}${today}</footer></div>`;
+          <div class="secs">${secs}${ses}</div><footer>${academy ? esc(academy) + ' · ' : ''}${today}</footer></div>`;
       }).join('');
     }
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fname)}</title><style>
@@ -225,6 +291,13 @@ const LessonPlan = {
       section .row:last-child { border-bottom: 0; }
       section .k { flex: none; width: 19mm; font-weight: 700; color: var(--ac); font-size: 9pt; padding-top: 0.3mm; }
       section .v { flex: 1; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+      section.ses h3 small { font-size: 8.5pt; font-weight: 600; opacity: .85; margin-left: 6pt; }
+      section.ses table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
+      section.ses th { background: #F1F5F9; color: var(--ac); font-size: 9pt; text-align: left; padding: 1.8mm 3mm; border-bottom: 0.6pt solid #DCE3EA; }
+      section.ses td { padding: 2mm 3mm; vertical-align: top; border-top: 0.5pt dashed #E2E8F0; word-break: keep-all; overflow-wrap: anywhere; }
+      section.ses tr { break-inside: avoid; page-break-inside: avoid; }
+      section.ses .sn { width: 17mm; } section.ses td.sn b { display: block; color: var(--ac); } section.ses td.sn small { color: #64748B; }
+      section.ses .none { color: #CBD5E1; }
       .pg footer { position: absolute; left: 15mm; right: 15mm; bottom: 8mm; text-align: right; font-size: 7.5pt; color: #94A3B8; }
       /* 요약표 */
       .thead { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3mm; margin-bottom: 4mm; border-bottom: 1.2pt solid #1D3557; }
@@ -293,7 +366,12 @@ const LessonPlan = {
 .lp-f textarea { min-height: 58px; font-size: 14px; }
 .lp-memo textarea { font-size: 14px; }
 .lp-pick { max-height: 280px; }
-@media (max-width: 1100px) { .lp-areas { grid-template-columns: 1fr; } .lp-area:last-child:nth-child(odd) { grid-column: auto; } }
+.lp-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
+.lp-sess { display: flex; flex-direction: column; gap: 12px; }
+.lp-sess > .panel { margin: 0; }
+.lp-sf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.lp-sf .lp-f { margin-bottom: 0; }
+@media (max-width: 1100px) { .lp-areas { grid-template-columns: 1fr; } .lp-area:last-child:nth-child(odd) { grid-column: auto; } .lp-sf { grid-template-columns: 1fr; } }
 `;
   document.head.appendChild(st);
 })();

@@ -14,7 +14,7 @@
    문구 안의 {년} {월} {주} {이름} {학교} 는 자동으로 바뀐다 ({학교} = 금천고1 처럼 학교·학년, {주} = 주차 숫자)
    저장된 리포트 = 보낸 리포트로 본다 (월별 요약에서 반별로 확인 · PDF 저장)
    리포트 제외 반: 설정의 excl:[반ID…] ('_none' = 반 없음). 월간·주간 공통. 학생은 앞 순서의 반 하나에만 묶이므로
-   그 반이 제외면 학생도 목록·요약·통계·PDF에서 빠진다 (왼쪽 목록 맨 아래 '제외된 반'에서 다시 포함 가능)
+   그 반이 제외면 학생도 목록·요약·통계·PDF에서 빠진다 (⚙ 설정 › 리포트 대상 반에서 고름)
    ========================================================= */
 const RP_AREAS = [['word', '단어'], ['gram', '문법'], ['read', '독해'], ['listen', '듣기'], ['general', '일반']];
 const RP_KEYS = RP_AREAS.map(a => a[0]);
@@ -35,7 +35,6 @@ const Reports = {
   tab: 'month',        // month(월간 리포트) | week(주간 테스트)
   week: 0,             // 주간 탭에서 고른 주차 (0 = 아직 안 고름 → 오늘이 든 주 / 1주)
   view: 'edit',        // edit(입력) | sum(월별 요약)
-  xOpen: false,        // 왼쪽 목록의 '제외된 반' 펼침
   _t: null,            // 자동 저장 타이머
 
   /* ---------- 주차 ---------- */
@@ -119,13 +118,6 @@ const Reports = {
   // 리포트 대상 반만 (제외한 반은 목록·요약·통계·PDF에서 빠짐)
   gKey(g) { return g.c ? g.c.id : '_none'; },
   groups() { const ex = new Set(this.cfg().excl); return this.allGroups().filter(g => !ex.has(this.gKey(g))); },
-  exGroups() { const ex = new Set(this.cfg().excl); return this.allGroups().filter(g => ex.has(this.gKey(g))); },
-  setExcl(key, on) {
-    const old = Store.get('meta', RP_CFG_ID) || { id: RP_CFG_ID, kind: 'rpcfg' };
-    const ex = new Set(Array.isArray(old.excl) ? old.excl : []);
-    if (on) ex.add(key); else ex.delete(key);
-    Store.put('meta', Object.assign({}, old, { excl: [...ex], updatedAt: new Date().toISOString() }));
-  },
 
   // 설정 창의 반 목록: 운영 중인 반(반 순서) + 반 없음 (종료된 반은 보이지 않음)
   cfgClasses(excl) {
@@ -202,7 +194,7 @@ const Reports = {
     let n = 0, d = 0;
     let lh = '';
     groups.forEach(g => {
-      lh += `<div class="rp-grp">${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}<button type="button" class="rp-xbtn" data-rpx="${this.gKey(g)}" title="이 반을 리포트에서 제외 (월간·주간 공통)">제외</button></div>`;
+      lh += `<div class="rp-grp">${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}</div>`;
       g.list.forEach(s => {
         const done = this.hasText(this.rec(s.id, this.month, wk));
         n++; if (done) d++;
@@ -210,14 +202,7 @@ const Reports = {
           <b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span><span class="mk"></span></button>`;
       });
     });
-    // 맨 아래: 제외된 반 (접힘 · 펼치면 '포함'으로 되돌림)
-    const exg = this.exGroups();
-    if (exg.length) {
-      lh += `<div class="rp-xsec"><button type="button" class="rp-xhead" data-rpxo>제외된 반 (${exg.length}개) <span>${this.xOpen ? '▾' : '▸'}</span></button>`;
-      if (this.xOpen) lh += exg.map(g => `<div class="rp-xrow">${g.c ? Classes.dot(g.c) + esc(g.c.name) : '반 없음'}<span class="muted small">${g.list.length}명</span><button type="button" class="rp-xbtn in" data-rpi="${this.gKey(g)}" title="다시 리포트 대상으로">포함</button></div>`).join('');
-      lh += '</div>';
-    }
-    h += `<div class="rp-grid"><div class="panel rp-list"><div class="rp-cnt muted small" data-rp-cnt>작성 ${d} / ${n}명</div>${lh || '<div class="empty">재원생이 없습니다.</div>'}</div>`;
+    h += `<div class="rp-grid"><div class="panel rp-list"><div class="rp-cnt muted small" data-rp-cnt>작성 ${d} / ${n}명</div>${lh || `<div class="empty">${this.allGroups().length ? '리포트 대상 반이 없습니다. ⚙ 설정에서 고르세요.' : '재원생이 없습니다.'}</div>`}</div>`;
 
     // 오른쪽: 입력
     const s = this.sid ? Store.get('students', this.sid) : null;
@@ -362,11 +347,6 @@ const Reports = {
         this.tab = w ? 'week' : 'month'; if (w) this.week = w; this.view = 'edit';
         App.render(); return;
       }
-      if (e.target.closest('[data-rpxo]')) { this.xOpen = !this.xOpen; App.render(); return; }
-      const xb = e.target.closest('[data-rpx]');
-      if (xb) { this.flushSave(); this.setExcl(xb.dataset.rpx, true); toast('리포트에서 제외했습니다 (목록 맨 아래에서 다시 포함 가능)'); App.render(); return; }
-      const ib = e.target.closest('[data-rpi]');
-      if (ib) { this.setExcl(ib.dataset.rpi, false); App.render(); return; }
       const st = e.target.closest('.rp-st[data-sid]');
       if (st) { this.flushSave(); this.sid = st.dataset.sid; App.render(); return; }
       const b = e.target.closest('[data-rp]');
@@ -871,15 +851,6 @@ const Reports = {
 .rp-cfg-h:first-child { padding-top: 0; }
 .rp-cls { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .rp-cls .chk { display: inline-flex; align-items: center; }
-.rp-grp .rp-xbtn { margin-left: auto; }
-.rp-xbtn { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft); font-size: 11.5px; font-weight: 600; padding: 0 7px; line-height: 19px; border-radius: 6px; cursor: pointer; }
-.rp-xbtn:hover { border-color: var(--danger); color: var(--danger); }
-.rp-xbtn.in:hover { border-color: var(--ok); color: var(--ok); }
-.rp-xsec { margin-top: 14px; border-top: 1px dashed var(--line-strong); padding-top: 6px; }
-.rp-xhead { width: 100%; display: flex; justify-content: space-between; border: 0; background: none; padding: 6px 8px; font-size: 13px; font-weight: 700; color: var(--ink-mute); cursor: pointer; border-radius: 7px; }
-.rp-xhead:hover { background: var(--tint); color: var(--ink-soft); }
-.rp-xrow { display: flex; align-items: center; gap: 6px; padding: 5px 8px; font-size: 13px; color: var(--ink-mute); }
-.rp-xrow .rp-xbtn { margin-left: auto; }
 .rp-pv { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 18px; }
 .rp-pv-item img { display: block; width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 2px 8px rgba(30, 70, 105, .10); }
 .rp-pv-bar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
