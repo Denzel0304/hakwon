@@ -127,9 +127,9 @@ const Reports = {
     Store.put('meta', Object.assign({}, old, { excl: [...ex], updatedAt: new Date().toISOString() }));
   },
 
-  // 설정 창의 반 목록: 운영 중인 반(반 순서) + 이미 제외해 둔 종료 반 + 반 없음
+  // 설정 창의 반 목록: 운영 중인 반(반 순서) + 반 없음 (종료된 반은 보이지 않음)
   cfgClasses(excl) {
-    const out = Classes.sorted(Store.all('classes')).filter(c => c.active !== false || excl.includes(c.id)).map(c => ({ k: c.id, c }));
+    const out = Classes.sorted(Store.all('classes')).filter(c => c.active !== false).map(c => ({ k: c.id, c }));
     out.push({ k: '_none', c: null });
     return out;
   },

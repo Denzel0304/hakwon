@@ -34,7 +34,7 @@ const Students = {
 
   activeClassesOf(sid, date = todayStr()) {
     return Store.where('enrollments', e => e.studentId === sid && Classes.enrollValid(e, date))
-      .map(e => Store.get('classes', e.classId)).filter(Boolean).sort((a, b) => ko(a.name, b.name));
+      .map(e => Store.get('classes', e.classId)).filter(c => c && c.active !== false).sort((a, b) => ko(a.name, b.name));   // 종료된 반은 어디에도 보이지 않게
   },
 
   // 오늘 이후 수강을 시작할 예정인 반 [{ c, from }] (오늘 이미 수강 중인 반은 제외)
@@ -45,7 +45,7 @@ const Students = {
       if (now.has(e.classId)) return;
       if (!best[e.classId] || e.from < best[e.classId]) best[e.classId] = e.from;
     });
-    return Object.keys(best).map(id => ({ c: Store.get('classes', id), from: best[id] })).filter(o => o.c).sort((a, b) => ko(a.from, b.from));
+    return Object.keys(best).map(id => ({ c: Store.get('classes', id), from: best[id] })).filter(o => o.c && o.c.active !== false).sort((a, b) => ko(a.from, b.from));
   },
   schedBadge(s) {
     return s.sched && isYmd(s.sched.date) ? ` <span class="badge orange">${Classes.md(s.sched.date)} ${LOG_LABEL[s.sched.act] || ''} 예정</span>` : '';
@@ -610,7 +610,8 @@ const Students = {
 
   pane_cls(pane, s, m) {
     const today = todayStr();
-    const ens = Store.where('enrollments', e => e.studentId === s.id).sort((a, b) => ko(b.from, a.from));
+    // 종료된 반의 수강 기록은 보이지 않게 (반 › 종료된 반 보기에서만 봄)
+    const ens = Store.where('enrollments', e => e.studentId === s.id && !((Store.get('classes', e.classId) || {}).active === false)).sort((a, b) => ko(b.from, a.from));
     const cur = ens.filter(e => !e.to || e.to > today);
     const past = ens.filter(e => e.to && e.to <= today);
     // 오늘 수강 중이면서 끝날짜가 없는 반만 추가 목록에서 뺀다 (예정·빠짐 예정인 반은 날짜를 바꿔 다시 추가 가능)

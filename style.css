@@ -328,6 +328,14 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl.cls-tbl th:nth-child(1), .tbl.cls-tbl td:nth-child(1) { padding-right: 24px; }
 .tbl.cls-tbl th:nth-child(3), .tbl.cls-tbl td:nth-child(3) { padding-right: 28px; }
 .tbl.cls-tbl th:nth-child(4), .tbl.cls-tbl td:nth-child(4) { padding-left: 18px; }
+/* 반 화면: 종료된 반 (‘종료된 반 보기’를 켰을 때만, 진행 중인 반 아래 구분선 + 회색 음영) */
+.tbl.cls-tbl tr.cls-endsep td { background: #E9ECEF; color: #5F6B76; font-weight: 800; font-size: 12.5px; letter-spacing: .3px; padding: 7px 12px; border-top: 2px solid #9AA3AD; cursor: default; }
+.tbl.cls-tbl tr.cls-endsep td span { font-weight: 500; color: #8A949E; margin-left: 6px; }
+.tbl.cls-tbl tr.cls-endsep:hover td { background: #E9ECEF; }
+.tbl.cls-tbl tr.cls-ended td { background: #F3F4F6; color: #8A949E; }
+.tbl.cls-tbl tr.cls-ended:hover td { background: #ECEEF0; }
+.tbl.cls-tbl tr.cls-ended td b { color: #6B7680; font-weight: 600; }
+.tbl.cls-tbl tr.cls-ended td:first-child > span:first-child { filter: grayscale(1); opacity: .55; }
 .tbl th.sortable { cursor: pointer; user-select: none; }
 /* 반 관리 학생 목록: 이름+학교는 한 덩어리로 줄바꿈 */
 .nw { white-space: nowrap; }

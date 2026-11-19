@@ -23,10 +23,8 @@ const LessonPlan = {
   val(p, area, f) { return stripZws(((p && p.areas && p.areas[area]) || {})[f] || '').trim(); },
   areaHas(p, area) { return LP_FIELDS.some(([f]) => this.val(p, area, f)); },
   hasAny(p) { return !!p && LP_AREAS.some(([a]) => this.areaHas(p, a)); },
-  classes(withEnded) {
-    const all = Classes.sorted(Store.all('classes'));
-    return withEnded ? all.filter(c => c.active !== false).concat(all.filter(c => c.active === false)) : all.filter(c => c.active !== false);
-  },
+  // 진행 중인 반만 (종료된 반은 보이지 않음)
+  classes() { return Classes.sorted(Store.all('classes')).filter(c => c.active !== false); },
   // 그 반에 연결된 일반 교재 중 독해·문법 { read:[이름], gram:[이름] }
   books(cid) {
     const out = { read: [], gram: [] };
@@ -46,22 +44,20 @@ const LessonPlan = {
 
   /* ---------- 화면 ---------- */
   render(main) {
-    const list = this.classes(this.showEnded);
-    const ended = Store.all('classes').filter(c => c.active === false).length;
+    const list = this.classes();
     if (!list.some(c => c.id === this.cid)) this.cid = list.length ? list[0].id : '';
     const c = Store.get('classes', this.cid);
     let h = `<div class="page-head"><h1>Lesson Plan</h1><span class="sub">반별 영역 학습 방법 · 숙제 · 평가 — 원장 보고 · 홍보용 PDF</span><span class="grow" style="flex:1"></span>
       <button class="btn" data-lpa="pdf" ${Store.all('classes').length ? '' : 'disabled'}>PDF 저장</button></div>`;
     if (!list.length) {
-      main.innerHTML = h + `<div class="panel"><div class="empty">${ended ? '진행 중인 반이 없습니다.' : '만들어진 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.'}</div></div>`
-        + (ended ? `<label class="chk small" style="margin-top:10px"><input type="checkbox" data-lpended>종료된 반 보기 (${ended})</label>` : '');
+      main.innerHTML = h + '<div class="panel"><div class="empty">진행 중인 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.</div></div>';
       this.bind(main);
       return;
     }
     h += `<div class="lp-wrap"><aside class="lp-side"><div class="lp-list">${list.map(x => {
       const has = this.hasAny(this.plan(x.id));
       return `<button type="button" class="lp-cls${x.id === this.cid ? ' on' : ''}${x.active === false ? ' end' : ''}" data-lpc="${x.id}">${Classes.dot(x)}<span class="nm">${esc(x.name)}</span>${has ? '<i class="lp-has" title="작성함"></i>' : ''}</button>`;
-    }).join('')}</div>${ended ? `<label class="chk small lp-ended"><input type="checkbox" data-lpended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended})</label>` : ''}</aside>`;
+    }).join('')}</div></aside>`;
     h += `<section class="lp-body">${this.editorHtml(c)}</section></div>`;
     main.innerHTML = h;
     enhanceAll(main);
@@ -139,7 +135,7 @@ const LessonPlan = {
 
   /* ---------- PDF ---------- */
   pdfDlg() {
-    const all = this.classes(true);
+    const all = this.classes();
     const body = `<div class="form">
       <label>모양</label><div class="row">${[['page', '반마다 A4 한 장'], ['table', '모든 반 요약표 (가로)']].map(([k, t]) => `<label class="chk"><input type="radio" name="lpshape" value="${k}" ${this.pdfShape === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
       <label>범위</label><div class="row">${[['cur', '지금 반'], ['act', '진행 중인 반 전체'], ['pick', '직접 고르기']].map(([k, t]) => `<label class="chk"><input type="radio" name="lpscope" value="${k}" ${this.pdfScope === k ? 'checked' : ''}>${t}</label>`).join('')}</div>

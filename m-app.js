@@ -183,18 +183,18 @@ const MProgress = {
   classId: '', q: '', npOn: false, npSel: {}, gpOn: false,   // gpOn: 비내신 요약
   jump: '',                 // 보강에서 '진도 보기'로 왔을 때 그 날짜로 스크롤
 
-  classes() { return Classes.sorted(Store.all('classes')).sort((a, b) => (a.active === false) - (b.active === false)); },
+  classes() { return Classes.sorted(Store.all('classes')).filter(c => c.active !== false); },     // 종료된 반은 보이지 않음
   todosOf(lid) { return Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt)); },
 
   render(main, p) {
     if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정의 시험 일정에 맞춤 (내신 요약용)
     const classes = this.classes();
     if (p.classId) this.classId = p.classId;
-    if (!this.classId || !Store.get('classes', this.classId)) this.classId = classes[0] ? classes[0].id : '';
-    const act = classes.filter(c => c.active !== false), ended = classes.filter(c => c.active === false);
+    if (!this.classId || !classes.some(c => c.id === this.classId)) this.classId = classes[0] ? classes[0].id : '';
+    const act = classes;
     if (!this.classId) { main.innerHTML = '<div class="panel"><div class="empty">반이 없습니다.</div></div>'; this.bind(main); return; }
     const opt = (c) => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}</option>`;
-    let h = `<div class="m-bar">${Classes.selDot(Store.get('classes', this.classId))}<select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}${ended.length ? `<optgroup label="종료된 반">${ended.map(opt).join('')}</optgroup>` : ''}</select></div>`;
+    let h = `<div class="m-bar">${Classes.selDot(Store.get('classes', this.classId))}<select data-clsel class="m-grow m-clsel" aria-label="반 선택">${act.map(opt).join('')}</select></div>`;
     h += `<div class="m-bar" style="flex-wrap:wrap">${mSearchHtml(this.q, '전체 반에서 진도·숙제·메모·할일 검색')}<label class="chk m-tg"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk m-tg"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     // 요약은 한 반 기준이라 전체 반 검색 중에는 숨김 (검색어 입력 때 #m-sum 표시를 바꿈)
     h += `<div id="m-sum" ${this.q.trim() ? 'style="display:none"' : ''}>`;

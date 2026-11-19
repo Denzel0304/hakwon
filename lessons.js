@@ -1461,14 +1461,9 @@ const AttBook = {
     return h + '</tbody></table></div>';
   },
 
-  // 출석부에 보일 반: 진행 중인 반은 모두, 종료된 반은 이 달에 보일 학생이 있을 때만 (맨 아래)
-  shownClasses(Y, M) {
-    const all = Classes.sorted(Store.all('classes'));
-    const pre = this.month + '-';
-    const act = all.filter(c => c.active !== false);
-    const ended = all.filter(c => c.active === false).filter(c =>
-      this.monthData(c, Y, M).studs.length || Object.keys(this.extra).some(k => k.startsWith(c.id + '|' + pre)));
-    return [...act, ...ended];
+  // 출석부에 보일 반: 진행 중인 반만 (종료된 반은 보이지 않음)
+  shownClasses() {
+    return Classes.sorted(Store.all('classes')).filter(c => c.active !== false);
   },
 
   // 월별 출석부 PDF: A4 가로, 1~말일, 반마다 표를 이어 붙여 넘치면 다음 쪽 (반 이름은 쪽마다 표 머리에 반복)
@@ -1634,12 +1629,9 @@ const ProgressBook = {
 
   render(main, p) {
     if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정 탭의 시험 일정에 맞춤 (내신 요약 D-day·자동 선택용)
-    // 진도 탭은 진행 중인 반만 (종료된 반은 제외)
-    // 단, 할일·보강 등 다른 화면의 링크로 종료된 반의 기록을 열 때는 그 반을 잠시 목록에 넣어 보여준다
+    // 진도 탭은 진행 중인 반만 (종료된 반은 어떤 경로로 와도 보이지 않음 → '선택 안 함')
     const act = Classes.sorted(Store.all('classes')).filter(c => c.active !== false);
     if (p.classId) this.classId = p.classId;
-    const linked = p.classId && Store.get('classes', p.classId);
-    if (linked && linked.active === false && this.classId === linked.id) act.push(linked);
     if (this.classId && !act.some(c => c.id === this.classId)) this.classId = '';    // 목록에 없는 반 → 선택 안 함
     const cur = act.find(c => c.id === this.classId);
     let h = `<div class="page-narrow">${PL.head('progress')}`;
@@ -1731,7 +1723,7 @@ const ProgressBook = {
    진도 요약 — 기간(월·주) 동안 반별로 수업일지의 진도를 날짜별 표로 (화면 + PDF A4 가로)
    · 내신 진도: 학교·학년별 열 (그 날 일지에서 고른 시험의 교재로 나눔 — 보강용 Lessons.forStudent와 같은 기준)
    · 공통 진도: 비내신(독해·문법 교재만, 듣기·단어 제외) + 그 외 진도(자유 입력 글)
-   · 반: 진행 중인 반 + 그 기간에 수업일지가 있는 종료된 반
+   · 반: 진행 중인 반만
    ========================================================= */
 const ProgressSum = {
   mode: 'month',      // 'month' 월 / 'week' 주(월~일)
@@ -1796,7 +1788,7 @@ const ProgressSum = {
       rows.forEach(x => Object.keys(x.p.np).forEach(lb => { key[lb] = Math.min(key[lb] ?? 1e9, x.p.info[lb]); }));
       const labels = Object.keys(key).sort((a, b) => key[a] - key[b] || (a === '내신') - (b === '내신') || ko(a, b));
       return { c, rows, labels };
-    }).filter(o => o.c.active !== false || o.rows.length);       // 종료된 반은 기록이 있을 때만
+    }).filter(o => o.c.active !== false);       // 종료된 반은 보이지 않음
   },
   // 회차 카드 묶음 (화면·PDF 공통 마크업) — 회차마다 카드 한 장: [n회차 · 날짜] / 공통 진도(비내신 + 그 외 진도) / 학교·학년별 내신
   cardsHtml(o, pdf) {

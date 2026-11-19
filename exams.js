@@ -237,7 +237,7 @@ const Exams = {
   },
   // 교재가 연결된 곳 (시험 교재: 시험 / 일반 교재: 반) → 문장 목록
   matLinks(m) {
-    if (m.type === 'gen') return (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean).map(c => '반: ' + c.name + (c.active === false ? ' (종료)' : ''))
+    if (m.type === 'gen') return (m.classIds || []).map(id => Store.get('classes', id)).filter(c => c && c.active !== false).map(c => '반: ' + c.name)
       .concat(Books.studentsOfMat(m.id).sort((a, b) => ko(a.name, b.name)).map(s => '학생(진행 중): ' + s.name + (stTag(s) ? ' ' + stTag(s) : '')));
     return Store.where('exams', e => (e.items || []).some(it => it.matId === m.id))
       .sort((a, b) => b.year - a.year || b.semester - a.semester || ko(a.school, b.school) || a.grade - b.grade)
@@ -856,7 +856,7 @@ const Exams = {
     const ids = list.map(m => m.id);
     [...this.sel].forEach(id => { if (!ids.includes(id)) this.sel.delete(id); });
     const usedBy = (m) => Store.where('exams', e => (e.items || []).some(it => it.matId === m.id)).length;
-    const clsOf = (m) => (m.classIds || []).map(id => Store.get('classes', id)).filter(Boolean);
+    const clsOf = (m) => (m.classIds || []).map(id => Store.get('classes', id)).filter(c => c && c.active !== false);   // 종료된 반은 표시하지 않음
     let h = this.headHtml() + this.tabsHtml();
     h += gen ? `<div class="toolbar"><span class="muted small">${list.length}개 · 비내신 수업에 쓰는 교재 (시험 범위에는 쓰지 않음)</span></div>`
       : `<div class="toolbar"><select data-mtype><option value="">전체 종류</option>${Object.keys(MAT_TYPE).map(k => `<option value="${k}" ${this.matType === k ? 'selected' : ''}>${MAT_TYPE[k]}</option>`).join('')}</select>
@@ -870,7 +870,7 @@ const Exams = {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>분류</th><th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap">${Books.catTag(m.cat)}</td><td class="nowrap"><b>${esc(m.name)}</b></td>
       <td class="small">${m.cat === 'listen' || m.cat === 'word' ? '<span class="muted">-</span>' : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
-      <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' (종료)' : ''}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
+      <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th>쓰는 학교</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
@@ -902,7 +902,7 @@ const Exams = {
     const cls = new Set(((m && m.classIds) || []).filter(cid => Store.get('classes', cid)));
     let noCls = !!(m && m.noCls) && !cls.size;
     let links = this.linksOf(m);                 // 교과서 ↔ 학교 연결 (편집용 사본)   // 반 미지정: 수업일지에 나오지 않고 학생 교재 관리에만 쓰는 교재
-    const clsList = Classes.sorted(Store.all('classes')).filter(c => c.active !== false || cls.has(c.id));
+    const clsList = Classes.sorted(Store.all('classes')).filter(c => c.active !== false);   // 종료된 반은 보이지 않음 (이미 연결된 것은 그대로 저장됨)
     const body = `<div class="form">
       <label class="req">구분</label><div class="row">${[['exam', '시험 교재'], ['gen', '일반 교재']].map(([k, t]) => `<label class="chk"><input type="radio" name="mcat" value="${k}" ${cat === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${t}</label>`).join('')}
         <span class="hint">${m ? '등록한 뒤에는 바꿀 수 없습니다' : '시험 교재는 시험 범위·내신, 일반 교재는 비내신 수업에 씁니다'}</span></div>

@@ -288,7 +288,7 @@ const Classes = {
       const cd = DAY_ORDER.filter(d => (c.days || []).includes(d));
       const byDay = cd.length > 1 && r.some(s => this.partDays(c.id, s.id, today))
         ? `<div class="small soft nowrap">${cd.map(d => DOW[d] + ' ' + this.rosterOnDow(c.id, d, today).length).join(' · ')}</div>` : '';
-      return `<tr class="click" data-id="${c.id}"><td class="nowrap">${this.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}</td>
+      return `<tr class="click${c.active === false ? ' cls-ended' : ''}" data-id="${c.id}"><td class="nowrap">${this.dot(c)}<b>${esc(c.name)}</b></td>
         <td class="nowrap">${esc(this.timeLabel(c))}${c.perDay ? '' : ` <span class="muted small">(${+c.duration || 90}분)</span>`}</td>
         <td class="num">${r.length}${byDay}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
     };
@@ -296,8 +296,10 @@ const Classes = {
       <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
       <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm cls-pdfbtn" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원·반이동을 A4로 인쇄 · PDF 저장">PDF 저장</button></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
+    // 종료된 반: '종료된 반 보기'를 켰을 때만, 진행 중인 반 아래 구분선 + '종료된 반' 글씨 + 회색 음영으로
+    const endRows = this.showEnded && ended.length ? `<tr class="cls-endsep"><td colspan="4">종료된 반 <span>${ended.length}개</span></td></tr>${ended.map(row).join('')}` : '';
     const show = this.showEnded ? [...act, ...ended] : act;
-    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact cls-tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${show.map(row).join('')}</tbody></table></div>`
+    h += show.length ? `<div class="tbl-wrap"><table class="tbl compact cls-tbl"><thead><tr><th>반 이름</th><th>요일·시간</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>${act.map(row).join('')}${endRows}</tbody></table></div>`
       : '<div class="panel"><div class="empty">만들어진 반이 없습니다. 위의 “반 만들기”로 시작하세요.</div></div>';
     if (act.length) h += this.summaryHtml(this.summaryOf(act, today), today);
     h += '</div>';
@@ -376,7 +378,7 @@ const Classes = {
       <label class="top">메모</label><textarea name="memo" rows="3">${esc(v.memo)}</textarea>
       <label>시간표 색</label><div><div data-colors style="display:flex;gap:6px;flex-wrap:wrap">${colorsHtml()}</div>
         <div class="hint" data-colorhint style="margin-top:4px">${pickedColor ? '흐린 색은 다른 진행 중인 반이 쓰고 있어 고를 수 없습니다.' : '남은 색이 없습니다. 다른 반을 종료하면 그 색을 쓸 수 있습니다.'}</div></div>
-      <label>진행 상태</label><label class="chk"><input type="checkbox" name="ended" ${v.active === false ? 'checked' : ''}>종료된 반 (시간표·수업일지에서 숨김)</label>
+      <label>진행 상태</label><label class="chk"><input type="checkbox" name="ended" ${v.active === false ? 'checked' : ''}>종료된 반 (반 화면의 ‘종료된 반 보기’에서만 보이고, 다른 모든 화면에서 숨김)</label>
       <label class="top">학생</label><div>
         <div class="row" style="margin-bottom:6px"><input type="search" data-filter placeholder="학생 검색" style="flex:1"><span class="small soft">반 등록일(이동일)</span><input type="date" name="apply" value="${today}"></div>
         <div class="pick-list" data-picks>${picksHtml(today)}</div>
@@ -729,9 +731,9 @@ const Classes = {
     const first = month + '-01', last = ymd(new Date(Y, M, 0));
     if (first > today) { toast('앞으로 올 달은 저장할 수 없습니다'); return; }
     const isCur = last >= today, base = isCur ? today : last;
-    // 반: 이번 달은 화면과 같이 진행 중인 반, 지난 달은 그 달에 진행 중이었거나 기준일에 학생이 있던 반
-    const list = this.sorted(Store.all('classes')).filter(c => isCur ? c.active !== false
-      : this.rosterAt(c.id, base).length || (c.active !== false && (!this.startOf(c) || this.startOf(c) <= last)));
+    // 반: 진행 중인 반만 (종료된 반은 넣지 않음) — 지난 달은 그 달에 진행 중이었거나 기준일에 학생이 있던 반
+    const list = this.sorted(Store.all('classes')).filter(c => c.active !== false && (isCur
+      || this.rosterAt(c.id, base).length || !this.startOf(c) || this.startOf(c) <= last));
     const sm = this.summaryOf(list, base, isCur);
     // 반 표
     const rows = list.map(c => {

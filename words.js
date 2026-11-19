@@ -74,9 +74,7 @@ const WordBook = {
 
   shownClasses(Y, M) {
     const all = Classes.sorted(Store.all('classes'));
-    const act = all.filter(c => c.active !== false && !this.isOff(c.id));          // 단어 시험 안 하는 반은 뺀다
-    const ended = all.filter(c => c.active === false && !this.isOff(c.id)).filter(c => this.monthData(c, Y, M).studs.length);
-    return [...act, ...ended];
+    return all.filter(c => c.active !== false && !this.isOff(c.id));          // 진행 중인 반만 · 단어 시험 안 하는 반은 뺀다
   },
 
   /* ---------- 학생 한 줄 = 그 학생이 오는 날만 ----------
@@ -175,7 +173,7 @@ const WordBook = {
       const bk = this.curBook(s.id);
       const n = this.countOf(s.id, o.list.map(it => it.d));
       const multi = o.cls.size > 1;
-      const others = multi ? [...o.cls].filter(id => id !== g.c.id).map(id => Store.get('classes', id)).filter(Boolean) : [];
+      const others = multi ? [...o.cls].filter(id => id !== g.c.id).map(id => Store.get('classes', id)).filter(c => c && c.active !== false) : [];
       h += `<tr data-row="${s.id}"><td class="nowrap ab-name"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span>
         ${others.length ? `<div class="wt-oc">${others.map(c => `${Classes.dot(c)}${esc(c.name)}`).join(' ')}</div>` : ''}
         <div class="wt-bk">${bk ? `<button type="button" class="wt-bkname" data-bk="${bk.id}" title="단어장 수정">${esc(Books.nameOf(bk))}</button>` : `<button type="button" class="wt-bkadd" data-bkadd="${s.id}">+ 단어장 연결</button>`}
@@ -219,8 +217,8 @@ const WordBook = {
     res.forEach(g => g.rows.sort((a, b) => Students.sortFn(a.s, b.s)));
     return res.filter(g => set.has(g.c.id));
   },
-  // 드롭다운에 넣을 반: 진행 중인 반 + 이 달에 학생이 있는 종료된 반 (단어 시험 안 하는 반 제외 — build에서 이미 뺌)
-  listOf(groups) { return groups.filter(g => g.c.active !== false || g.had); },
+  // 드롭다운에 넣을 반: 진행 중인 반 (종료된 반 · 단어 시험 안 하는 반은 build에서 이미 뺌)
+  listOf(groups) { return groups.filter(g => g.c.active !== false); },
 
   render(main) {
     if (!this.month) this.month = App.selDate.slice(0, 7);
@@ -235,7 +233,7 @@ const WordBook = {
     if (this.cls && !list.some(g => g.c.id === this.cls)) this.cls = '';
     const cur = this.cls ? Store.get('classes', this.cls) : null;
     h += `<div class="toolbar wt-bar"><span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-wcls style="min-width:220px">
-        <option value="" ${cur ? '' : 'selected'}>선택 안 함</option>${list.map(g => `<option value="${g.c.id}" ${g.c.id === this.cls ? 'selected' : ''}>${esc(g.c.name)} · ${esc(Classes.timeLabel(g.c))}${g.c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>
+        <option value="" ${cur ? '' : 'selected'}>선택 안 함</option>${list.map(g => `<option value="${g.c.id}" ${g.c.id === this.cls ? 'selected' : ''}>${esc(g.c.name)}</option>`).join('')}</select></span>
       <button type="button" class="btn sm ghost" data-wcfg title="단어 시험을 보지 않는 반은 목록·PDF에서 뺍니다">⚙ 단어 시험 반</button>
       <span class="small soft wt-help">칸을 누르면 기록합니다. 결과를 고르면 다음 시험(당일 · 다음 수업 · 다른 날)을 바로 잡을 수 있고, 결과가 없는 시험은 ‘예정’입니다. 수업 없는 날은 이름 아래 “+ 날짜”.</span></div>`;
     if (!cur) h += `<div class="panel"><div class="empty">${list.length ? '반을 선택하세요.<div class="small muted" style="margin-top:6px">수업 시간에 열면 그 시간 반이 자동으로 선택됩니다.</div>' : '단어 시험을 보는 반이 없습니다. “⚙ 단어 시험 반”에서 고르세요.'}</div></div>`;
@@ -295,7 +293,7 @@ const WordBook = {
     Modal.open({
       title: '단어 시험 반', size: 'md', autofocus: false,
       body: `<p class="small muted" style="margin-top:0">단어 시험을 보는 반만 체크하세요. 체크를 끈 반은 반 목록 · PDF · ‘다음 수업’ 날짜 계산에서 빠집니다. 이미 적은 기록은 지워지지 않습니다.</p>
-        <div class="pick-list wt-cfg">${all.map(c => `<label><input type="checkbox" name="wc" value="${c.id}" ${off.has(c.id) ? '' : 'checked'}>${Classes.dot(c)}<b>${esc(c.name)}</b><span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('') || '<div class="empty small">진행 중인 반이 없습니다.</div>'}</div>`,
+        <div class="pick-list wt-cfg">${all.map(c => `<label><input type="checkbox" name="wc" value="${c.id}" ${off.has(c.id) ? '' : 'checked'}>${Classes.dot(c)}<b>${esc(c.name)}</b></label>`).join('') || '<div class="empty small">진행 중인 반이 없습니다.</div>'}</div>`,
       buttons: [
         { text: '취소' },
         { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
@@ -479,7 +477,7 @@ const WordBook = {
       const b = (k, label, dis) => `<button type="button" data-fut="${i}|${k}" class="${f.tgt === k ? 'on' : ''}" ${dis ? 'disabled' : ''}>${label}</button>`;
       const go = f.tgt === 'next' || (f.tgt === 'other' && f.date);
       let h = `<div class="wt-fu ${pass ? 'pass' : 'fail'}"><div class="wt-fu-row"><span class="wt-fu-h">${pass ? '다음 시험' : '재시험'}</span>
-        <div class="wt-seg">${b('same', pass ? '당일 새 시험' : '당일 재시험')}${b('next', nx ? `다음 수업 <small>${fmtMD(nx.date)}</small>` : '다음 수업 없음', !nx)}${b('other', f.tgt === 'other' && f.date ? `다른 날 <small>${fmtMD(f.date)}</small>` : '다른 날…')}${b('none', pass ? '안 함' : '나중에')}</div></div>`;
+        <div class="wt-seg">${b('same', pass ? '당일 새 시험' : '당일 재시험')}${b('next', nx ? `다음 수업 <small>${fmtMD(nx.date)}</small>` : '다음 수업 없음', !nx)}${b('other', f.tgt === 'other' && f.date ? `다른 날 <small>${fmtMD(f.date)}</small>` : '다른 날')}${b('none', pass ? '안 함' : '나중에')}</div></div>`;
       if (go && !pass) h += `<div class="wt-fu-row"><span class="wt-fu-h"></span><span class="wt-chip re">재 ${esc(this.rangeLabel(baseOf(t) || {}) || '범위 없음')}</span><label class="chk"><input type="checkbox" data-fuw="${i}" ${f.withNew ? 'checked' : ''}>새 시험도 함께</label></div>`;
       if (go && (pass || f.withNew)) h += `<div class="wt-fu-row"><span class="wt-fu-h">${pass ? '범위' : '새 시험'}</span>${rngHtml(i, f)}</div>`;
       if (go) h += `<div class="wt-fu-note">저장하면 ${fmtMD(f.tgt === 'next' ? nx.date : f.date)} 칸에 예정으로 들어갑니다${pass || f.withNew ? ' (범위를 비우면 새 시험은 넣지 않음)' : ''}</div>`;
@@ -701,7 +699,7 @@ const WordBook = {
     const picked = new Set(this.pdfPick || (cur ? [cur.c.id] : []));
     const body = `<div class="form">
       <label>범위</label><div class="row">${[['cur', cur ? `지금 반 (${esc(cur.c.name)})` : '지금 반', !cur], ['all', '단어 시험 반 전체'], ['pick', '직접 고르기']].map(([k, t, dis]) => `<label class="chk"><input type="radio" name="wpscope" value="${k}" ${scope === k ? 'checked' : ''} ${dis ? 'disabled' : ''}>${t}</label>`).join('')}</div>
-      <label class="top" data-wppick>반</label><div data-wppick><div class="pick-list">${list.map(g => `<label><input type="checkbox" name="wpc" value="${g.c.id}" ${picked.has(g.c.id) ? 'checked' : ''}>${Classes.dot(g.c)}${esc(g.c.name)} <span class="muted small">${esc(Classes.timeLabel(g.c))}</span>${g.c.active === false ? ' <span class="badge gray">종료</span>' : ''}</label>`).join('')}</div></div>
+      <label class="top" data-wppick>반</label><div data-wppick><div class="pick-list">${list.map(g => `<label><input type="checkbox" name="wpc" value="${g.c.id}" ${picked.has(g.c.id) ? 'checked' : ''}>${Classes.dot(g.c)}${esc(g.c.name)}</label>`).join('')}</div></div>
       <label>쪽 나누기</label><div class="row"><label class="chk"><input type="checkbox" name="wppage" ${this.pdfPage ? 'checked' : ''}>반마다 새 페이지에서 시작</label></div>
     </div><p class="small muted" style="margin:10px 0 0">${Y}년 ${M}월 기록입니다. 여러 반을 넣으면 여러 반에 다니는 학생은 앞선 반에 한 번만 나옵니다. 인쇄 창에서 “PDF로 저장”을 고르면 파일로 저장됩니다.</p>`;
     Modal.open({
