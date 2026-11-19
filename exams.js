@@ -11,12 +11,15 @@
    mock:  { year, month, grade, memo }
    mock_score: id = MS_회차_학생, { mockId, studentId, raw, wrong:[번호], date(시행일 — 없으면 회차 달 1일로 봄) }
    성적 설정(meta): id SC_CFG, { kind:'sccfg', start:{ y, s, k } }  ← 성적 화면의 시작 시험
+   교재 목록(meta, 보기 전용 — 다른 교재와 연결 없음): { id 'LU…', kind:'lineup', area:'read'|'gram'|'word'|'listen',
+     series(시리즈), name, pub(출판사), level, memo, g1, g2(g1 또는 g1+1) }
+   교재 목록 시리즈 순서(meta): id LU_ORDER, { kind:'luorder', areas:{ read:[시리즈 키…], … } }  ← 시리즈 키 = 시리즈명 (없으면 '#'+책 id)
    ========================================================= */
 const Exams = {
   year: '',
   sem: '',
   q: '',
-  tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재
+  tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재 / 'lu' 교재 목록
   matType: '',
   matSchool: '',        // 시험 교재 목록의 학교 필터 ('' 전체 / 학교 / '__none' 학교 연결 없는 교과서)
   sel: new Set(),       // 체크한 항목 (탭을 바꾸거나 조건을 바꾸면 비움)
@@ -59,7 +62,7 @@ const Exams = {
   tabsHtml() {
     const ex = Store.all('exams'), dn = ex.filter(e => e.done).length;
     const t = (k, label, n) => `<button data-xtab="${k}" class="${this.tab === k ? 'active' : ''}">${label}<span class="cnt">${n}</span></button>`;
-    return `<div class="tabs">${t('exam', '진행중인 시험', ex.length - dn)}${t('done', '완료된 시험', dn)}${t('mat', '시험 교재', NP.examMats().length)}${t('gen', '일반 교재', NP.genMats().length)}</div>`;
+    return `<div class="tabs">${t('exam', '진행중인 시험', ex.length - dn)}${t('done', '완료된 시험', dn)}${t('mat', '시험 교재', NP.examMats().length)}${t('gen', '일반 교재', NP.genMats().length)}${t('lu', '교재 목록', this.luBooks().length)}</div>`;
   },
   tabClick(e) {
     const t = e.target.closest('[data-xtab]'); if (!t) return false;
@@ -90,7 +93,7 @@ const Exams = {
   commonClick(e, main) {
     if (this.tabClick(e)) return true;
     if (e.target.closest('[data-a=add]')) { this.openModal(null); return true; }
-    if (e.target.closest('[data-a=addmat]')) { this.openMatModal(null); return true; }
+    if (e.target.closest('[data-a=addmat]')) { if (this.tab === 'lu') this.openLuModal(null); else this.openMatModal(null); return true; }
     const bk = e.target.closest('[data-bulk]');
     if (bk) { if (!bk.disabled) this.bulk(bk.dataset.bulk); return true; }
     if (e.target.closest('.chk-hit')) return true;       // 체크박스 칸은 창을 열지 않음
@@ -108,6 +111,7 @@ const Exams = {
   /* ---------- 시험 목록 (진행중 / 완료) ---------- */
   render(main) {
     this.syncDates();                   // 다른 기기에서 바뀐 시험 일정도 반영
+    if (this.tab === 'lu') { this.renderLineup(main); return; }
     if (this.tab === 'mat' || this.tab === 'gen') { this.renderMats(main); return; }
     const done = this.tab === 'done';
     const all = Store.all('exams');
@@ -585,6 +589,258 @@ const Exams = {
     return h;
   },
 
+  /* ---------- 교재 목록 (학원 전체 교재 라인업 — 선생님 안내·신규 상담용 보기 전용) ----------
+     영역(독해·문법·단어·듣기) × 학년(초6~고3) 로드맵 표. 시리즈마다 한 줄, 같은 시리즈에서 학년이 겹치는 권은 아랫줄로.
+     시험 교재·일반 교재·학생 교재와 연결되지 않는다 */
+  LU_AREAS: [['read', '독해'], ['gram', '문법'], ['word', '단어'], ['listen', '듣기']],
+  LU_GRADES: [6, 7, 8, 9, 10, 11, 12],
+  LU_ORDER_ID: 'LU_ORDER',
+  luGrade: 0,             // 학년 필터 (0 전체) — 다른 학년은 흐리게, PDF는 그 학년 교재만
+  luBooks() { return Store.where('meta', m => m.kind === 'lineup'); },
+  luKey(b) { const s = String(b.series || '').trim(); return s || '#' + b.id; },
+  luG2(b) { return Math.max(+b.g1, +b.g2 || +b.g1); },
+  luHas(b, g) { return +g >= +b.g1 && +g <= this.luG2(b); },
+  luGradeText(b) { return gradeLabel(b.g1) + (this.luG2(b) !== +b.g1 ? '~' + gradeLabel(this.luG2(b)) : ''); },
+  luOrder() { const r = Store.get('meta', this.LU_ORDER_ID); return (r && r.areas) || {}; },
+  // 영역의 시리즈 묶음 [{ key, series, books, lines:[[책…]], min, max }] — 저장한 순서 먼저, 나머지는 낮은 학년부터
+  luGroups(area, books) {
+    const by = new Map();
+    books.filter(b => b.area === area).forEach(b => { const k = this.luKey(b); if (!by.has(k)) by.set(k, []); by.get(k).push(b); });
+    const gs = [...by.entries()].map(([key, bs]) => {
+      bs.sort((a, b) => a.g1 - b.g1 || this.luG2(a) - this.luG2(b) || ko(a.name, b.name));
+      const lines = [];
+      bs.forEach(b => {     // 학년이 겹치지 않는 첫 줄에 넣는다
+        let ln = lines.find(l => l.every(x => this.luG2(x) < +b.g1 || +x.g1 > this.luG2(b)));
+        if (!ln) { ln = []; lines.push(ln); }
+        ln.push(b);
+      });
+      return { key, series: String(bs[0].series || '').trim(), books: bs, lines,
+        min: Math.min(...bs.map(b => +b.g1)), max: Math.max(...bs.map(b => this.luG2(b))) };
+    });
+    const ord = this.luOrder()[area] || [];
+    const pos = (k) => { const i = ord.indexOf(k); return i < 0 ? 1e9 : i; };
+    return gs.sort((a, b) => pos(a.key) - pos(b.key) || a.min - b.min || a.max - b.max || ko(a.series || a.books[0].name, b.series || b.books[0].name));
+  },
+  luHeadHtml() {
+    const fg = this.luGrade;
+    return `<colgroup><col class="c-area"><col class="c-ser">${this.LU_GRADES.map(() => '<col>').join('')}</colgroup>
+      <thead><tr><th>영역</th><th>시리즈</th>${this.LU_GRADES.map(g => `<th class="${fg === g ? 'on' : ''}">${gradeLabel(g)}</th>`).join('')}</tr></thead>`;
+  },
+  luBarHtml(b, a, pdf) {
+    const dim = this.luGrade && !this.luHas(b, this.luGrade);
+    const sub = [b.pub, b.level].map(s => String(s || '').trim()).filter(Boolean).join(' · ');
+    const memo = String(b.memo || '').trim();
+    const tip = [b.name, sub, this.luGradeText(b), memo].filter(Boolean).join('\n');
+    return `<div class="lu-bar ${a}${dim ? ' dim' : ''}"${pdf ? '' : ` data-lu="${b.id}" title="${esc(tip)}"`}><b>${esc(b.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${memo ? `<p>${esc(memo).replace(/\n/g, '<br>')}</p>` : ''}</div>`;
+  },
+  // 표 본문 (화면·PDF 공용). PDF는 교재가 없는 영역을 뺀다
+  luRowsHtml(books, pdf) {
+    const G = this.LU_GRADES, fg = this.luGrade, last = G[G.length - 1];
+    let h = '';
+    this.LU_AREAS.forEach(([a, lb]) => {
+      const gs = this.luGroups(a, books);
+      if (pdf && !gs.length) return;
+      const n = gs.reduce((s, g) => s + g.lines.length, 0) || 1;
+      const areaTd = `<td class="lu-area ${a}" rowspan="${n}"><div class="lu-albl">${lb}</div>${pdf ? '' : `<div class="lu-aact"><button type="button" class="btn sm ghost" data-luadd="${a}" title="${lb} 교재 등록">+ 등록</button>${gs.length > 1 ? `<button type="button" class="btn sm ghost" data-luord="${a}" title="${lb} 시리즈 순서 바꾸기">순서</button>` : ''}</div>`}</td>`;
+      if (!gs.length) { h += `<tr class="lu-first">${areaTd}<td class="lu-ser"></td><td colspan="${G.length}" class="lu-none">등록된 ${lb} 교재가 없습니다</td></tr>`; return; }
+      let first = true;
+      gs.forEach(g => g.lines.forEach((ln, li) => {
+        h += `<tr class="${first ? 'lu-first' : li === 0 ? 'lu-sfirst' : ''}">`;
+        if (first) h += areaTd;
+        if (li === 0) h += `<td class="lu-ser" rowspan="${g.lines.length}">${esc(g.series)}</td>`;
+        first = false;
+        for (let i = 0; i < G.length;) {
+          const gr = G[i], b = ln.find(x => +x.g1 === gr);
+          if (b) {
+            const span = Math.min(this.luG2(b), last) - gr + 1;
+            h += `<td colspan="${span}" class="lu-cell${fg && this.luHas(b, fg) ? ' on' : ''}">${this.luBarHtml(b, a, pdf)}</td>`;
+            i += span;
+          } else { h += `<td class="lu-cell${fg === gr ? ' on' : ''}"></td>`; i++; }
+        }
+        h += '</tr>';
+      }));
+    });
+    return h;
+  },
+  renderLineup(main) {
+    const all = this.luBooks(), fg = this.luGrade;
+    let h = this.headHtml() + this.tabsHtml();
+    h += `<div class="toolbar"><select data-lugr><option value="">전체 학년</option>${this.LU_GRADES.map(g => `<option value="${g}" ${fg === g ? 'selected' : ''}>${gradeLabel(g)}</option>`).join('')}</select>
+      <span class="muted small">${all.length}권${fg ? ` · ${gradeLabel(fg)} 대상 ${all.filter(b => this.luHas(b, fg)).length}권` : ''} · 학원 전체 교재 라인업 (선생님 안내·상담용 보기 전용)</span><span style="flex:1"></span>
+      <button class="btn sm lu-pdfbtn" data-lupdf ${all.length ? '' : 'disabled'} title="${fg ? gradeLabel(fg) + ' 대상 교재만' : '전체 교재 로드맵을'} A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+    h += `<div class="tbl-wrap"><table class="lu-tbl">${this.luHeadHtml()}<tbody>${this.luRowsHtml(all, false)}</tbody></table></div>`;
+    main.innerHTML = h;
+    main.onclick = (e) => {
+      if (this.commonClick(e, main)) return;
+      const ad = e.target.closest('[data-luadd]'); if (ad) { this.openLuModal(null, ad.dataset.luadd); return; }
+      const od = e.target.closest('[data-luord]'); if (od) { this.openLuOrder(od.dataset.luord); return; }
+      if (e.target.closest('[data-lupdf]')) { this.luPdf(); return; }
+      const bar = e.target.closest('[data-lu]'); if (bar) this.openLuModal(bar.dataset.lu);
+    };
+    main.onchange = (e) => { if (e.target.matches('[data-lugr]')) { this.luGrade = +e.target.value || 0; App.render(); } };
+    main.oninput = null;
+  },
+
+  /* ---------- 교재 목록: 등록 / 수정 ---------- */
+  openLuModal(id, area) {
+    const m = id ? Store.get('meta', id) : null;
+    if (id && (!m || m.kind !== 'lineup')) { toast('교재를 찾을 수 없습니다'); App.render(); return; }
+    const G = this.LU_GRADES;
+    const ar0 = m ? m.area : (area || 'read');
+    const g10 = m && G.includes(+m.g1) ? +m.g1 : 7, two0 = !!m && this.luG2(m) > +m.g1;
+    const v = (k) => esc(m ? m[k] || '' : '');
+    const body = `<div class="form">
+      <label class="req">영역</label><div class="row">${this.LU_AREAS.map(([k, t]) => `<label class="chk"><input type="radio" name="luarea" value="${k}" ${ar0 === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
+      <label>시리즈</label><input type="text" name="luser" value="${v('series')}" placeholder="예: 리딩튜터 (같은 시리즈의 책은 한 줄로 묶입니다)" maxlength="40" autocomplete="off">
+      <label class="req">책 이름</label><input type="text" name="luname" value="${v('name')}" placeholder="예: 리딩튜터 2" maxlength="40">
+      <label>출판사</label><input type="text" name="lupub" value="${v('pub')}" placeholder="예: 능률, 쎄듀, EBS" maxlength="30" autocomplete="off">
+      <label class="req">대상 학년</label><div class="row"><select name="lug1">${G.map(g => `<option value="${g}" ${g10 === g ? 'selected' : ''}>${gradeLabel(g)}</option>`).join('')}</select>
+        <select name="lug2"></select><span class="hint">한 학년 또는 이어지는 두 학년</span></div>
+      <label>레벨</label><input type="text" name="lulevel" value="${v('level')}" placeholder="예: 기초, 기본, 심화, Lv.2" maxlength="20">
+      <label class="top">설명</label><textarea name="lumemo" rows="3" maxlength="300" placeholder="상담 때 보여줄 특징 한두 줄 (화면·PDF에 나옵니다)">${v('memo')}</textarea>
+    </div>`;
+    Modal.open({
+      title: m ? '교재 목록 · 교재 수정' : '교재 목록 · 교재 등록', size: 'lg', body,
+      onMount: (b) => {
+        const s1 = $('[name=lug1]', b), s2 = $('[name=lug2]', b);
+        const drawG2 = (two) => {
+          const g = +s1.value;
+          s2.innerHTML = `<option value="${g}">한 학년만</option>` + (g < G[G.length - 1] ? `<option value="${g + 1}" ${two ? 'selected' : ''}>${gradeLabel(g)}~${gradeLabel(g + 1)}</option>` : '');
+        };
+        drawG2(two0);
+        s1.addEventListener('change', () => drawG2(s2.selectedIndex === 1));   // 두 학년을 골라 두었으면 유지
+        const curArea = () => ($('[name=luarea]:checked', b) || {}).value || ar0;
+        bindCombo($('[name=luser]', b), () => [...new Set(this.luBooks().filter(x => x.area === curArea()).map(x => String(x.series || '').trim()).filter(Boolean))].sort(ko));
+        bindCombo($('[name=lupub]', b), () => [...new Set(this.luBooks().map(x => String(x.pub || '').trim()).filter(Boolean))].sort(ko));
+      },
+      buttons: [
+        ...(m ? [{ text: '삭제', cls: 'danger', left: true, onClick: async () => {
+          if (!await confirmDlg(`교재 목록에서 “${m.name}”을(를) 삭제할까요?`, '삭제', true)) return false;
+          Store.del('meta', m.id);
+          toast('교재를 삭제했습니다'); App.render();
+        } }] : []),
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: (md) => {
+          const b = md.body;
+          const val = (n) => stripZws($(`[name=${n}]`, b).value || '').trim();
+          const area = ($('[name=luarea]:checked', b) || {}).value;
+          const name = val('luname'), series = val('luser');
+          const g1 = +$('[name=lug1]', b).value, g2 = +$('[name=lug2]', b).value || g1;
+          if (!area) { toast('영역을 고르세요'); return false; }
+          if (!name) { toast('책 이름을 입력하세요'); return false; }
+          if (!G.includes(g1) || (g2 !== g1 && g2 !== g1 + 1) || !G.includes(g2)) { toast('대상 학년을 확인하세요'); return false; }
+          if (this.luBooks().some(x => x.id !== (m && m.id) && x.area === area && String(x.name || '').trim() === name)) { toast('같은 영역에 같은 이름의 교재가 이미 있습니다'); return false; }
+          const rec = Object.assign({}, m || { id: uid('LU'), kind: 'lineup', createdAt: new Date().toISOString() },
+            { area, series, name, pub: val('lupub'), level: val('lulevel'), memo: String($('[name=lumemo]', b).value || '').trim(), g1, g2, updatedAt: new Date().toISOString() });
+          // 시리즈 이름을 바꿔서 옛 시리즈에 남은 책이 없으면, 정해 둔 순서 자리를 새 이름이 이어받는다
+          if (m) {
+            const ok = this.luKey(m), nk = this.luKey(rec), ord = this.luOrder();
+            const left = this.luBooks().some(x => x.id !== m.id && x.area === m.area && this.luKey(x) === ok);
+            if ((ok !== nk || m.area !== area) && !left && (ord[m.area] || []).includes(ok)) {
+              const areas = Object.assign({}, ord);
+              areas[m.area] = ord[m.area].filter(k => k !== ok);
+              if (m.area === area && !(ord[area] || []).includes(nk)) areas[area] = ord[area].map(k => k === ok ? nk : k);
+              const old = Store.get('meta', this.LU_ORDER_ID);
+              Store.put('meta', Object.assign({}, old, { areas, updatedAt: new Date().toISOString() }));
+            }
+          }
+          Store.put('meta', rec);
+          toast('교재를 저장했습니다');
+          if (this.tab !== 'lu') { this.tab = 'lu'; this.sel.clear(); }
+          if (App.page === 'exams') App.render(); else App.go('exams', {});
+        } },
+      ],
+    });
+  },
+
+  /* ---------- 교재 목록: 영역 안 시리즈 순서 ---------- */
+  openLuOrder(area) {
+    const lb = (this.LU_AREAS.find(x => x[0] === area) || [])[1] || '';
+    const items = this.luGroups(area, this.luBooks()).map(g => ({ key: g.key, label: g.series || g.books[0].name,
+      gr: gradeLabel(g.min) + (g.max !== g.min ? '~' + gradeLabel(g.max) : ''), n: g.books.length }));
+    Modal.open({
+      title: `${lb} 시리즈 순서`, size: 'sm', autofocus: false,
+      body: `<div class="small muted" style="margin-bottom:8px">위에 있을수록 표에서 먼저 나옵니다.</div><div data-luol></div>`,
+      onMount: (b) => {
+        const box = $('[data-luol]', b);
+        const draw = () => {
+          box.innerHTML = items.map((it, i) => `<div class="np-urow lu-orow"><span class="small muted" style="width:22px">${i + 1}</span><span style="flex:1"><b>${esc(it.label)}</b> <span class="small muted">${it.gr} · ${it.n}권</span></span>
+            <button type="button" class="icon-btn" data-oup="${i}" title="위로" ${i ? '' : 'disabled'}>↑</button><button type="button" class="icon-btn" data-odn="${i}" title="아래로" ${i < items.length - 1 ? '' : 'disabled'}>↓</button></div>`).join('');
+        };
+        draw();
+        box.addEventListener('click', (e) => {
+          const up = e.target.closest('[data-oup]'), dn = e.target.closest('[data-odn]');
+          const i = up ? +up.dataset.oup : dn ? +dn.dataset.odn : -1, j = up ? i - 1 : i + 1;
+          if (i < 0 || j < 0 || j >= items.length) return;
+          [items[i], items[j]] = [items[j], items[i]]; draw();
+        });
+      },
+      buttons: [
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: () => {
+          const old = Store.get('meta', this.LU_ORDER_ID) || { id: this.LU_ORDER_ID, kind: 'luorder', areas: {} };
+          Store.put('meta', Object.assign({}, old, { areas: Object.assign({}, old.areas || {}, { [area]: items.map(it => it.key) }), updatedAt: new Date().toISOString() }));
+          toast('순서를 저장했습니다'); App.render();
+        } },
+      ],
+    });
+  },
+
+  /* ---------- 교재 목록: PDF (A4 가로) — 학년 필터를 골랐으면 그 학년 교재만 ---------- */
+  luPdf() {
+    const today = todayStr(), fg = this.luGrade;
+    const books = this.luBooks().filter(b => !fg || this.luHas(b, fg));
+    if (!books.length) { toast(fg ? `${gradeLabel(fg)} 대상 교재가 없습니다` : '등록된 교재가 없습니다'); return; }
+    const cfg = typeof Reports !== 'undefined' && Reports.cfg ? Reports.cfg() : { academy: '', logo: '' };
+    const academy = String(cfg.academy || '').trim(), logo = cfg.logo || '';
+    const brand = `<div class="brand">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${academy ? `<span>${esc(academy)}</span>` : ''}</div>`;
+    const fname = '교재로드맵_' + (fg ? gradeLabel(fg) + '_' : '') + today;
+    const body = `<div class="thead">${brand}<div class="ttl"><h1>교재 로드맵<small>영역별 · 학년별 교재 라인${fg ? ` · ${gradeLabel(fg)} 대상` : ''}</small></h1><div class="dt">${academy ? esc(academy) + ' · ' : ''}${today}</div></div></div>
+      <table class="lu-tbl">${this.luHeadHtml()}<tbody>${this.luRowsHtml(books, true)}</tbody></table>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fname)}</title><style>
+      @page { size: A4 landscape; margin: 9mm; }
+      * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { margin: 0; color: #1E2A36; font-family: 'Pretendard', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; font-size: 8.5pt; line-height: 1.45; }
+      .brand { display: flex; align-items: center; gap: 6pt; min-height: 10mm; }
+      .brand img { max-height: 11mm; max-width: 40mm; object-fit: contain; }
+      .brand span { font-size: 11pt; font-weight: 800; color: #1D3557; letter-spacing: .3pt; }
+      .thead { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3mm; margin-bottom: 4mm; border-bottom: 1.2pt solid #1D3557; }
+      .thead .ttl { text-align: right; } .thead h1 { margin: 0; font-size: 16pt; color: #12304D; letter-spacing: .5pt; }
+      .thead h1 small { font-size: 8.5pt; color: #64748B; font-weight: 600; margin-left: 6pt; letter-spacing: 0; }
+      .thead .dt { font-size: 8pt; color: #94A3B8; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      col.c-area { width: 15mm; } col.c-ser { width: 30mm; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 0.5pt solid #D5DDE6; padding: 1.2mm; vertical-align: middle; }
+      th { background: #F1F5F9; font-size: 9pt; text-align: center; padding: 1.8mm 1mm; }
+      th.on, td.on { background: #FFF6DA; }
+      tr.lu-first > td { border-top: 1.2pt solid #94A3B8; }
+      td.lu-area { text-align: center; font-size: 10.5pt; font-weight: 800; }
+      td.lu-area.read { color: #1D5E93; } td.lu-area.gram { color: #5B3FA6; } td.lu-area.word { color: #A9650B; } td.lu-area.listen { color: #1F7A52; }
+      td.lu-ser { font-weight: 700; font-size: 8.5pt; color: #12304D; word-break: keep-all; overflow-wrap: anywhere; }
+      .lu-bar { border-radius: 1.5mm; padding: 1.3mm 2mm; border-left: 1.2mm solid; word-break: keep-all; overflow-wrap: anywhere; }
+      .lu-bar.read { background: #E3F0FB; border-color: #1D5E93; } .lu-bar.gram { background: #EDE7FA; border-color: #5B3FA6; }
+      .lu-bar.word { background: #FCEFDC; border-color: #A9650B; } .lu-bar.listen { background: #E2F4EC; border-color: #1F7A52; }
+      .lu-bar b { display: block; font-size: 8.8pt; color: #12304D; }
+      .lu-bar small { display: block; font-size: 7.3pt; color: #475569; }
+      .lu-bar p { margin: 0.6mm 0 0; font-size: 7.3pt; color: #334155; }
+    </style></head><body>${body}</body></html>`;
+    const fr = document.createElement('iframe');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+    const doc = fr.contentDocument;
+    doc.open(); doc.write(html); doc.close();
+    const t0 = document.title;
+    setTimeout(() => {
+      document.title = fname;                 // 저장 파일 이름
+      try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally {
+        document.title = t0;
+        setTimeout(() => fr.remove(), 1000);
+      }
+    }, 400);
+  },
+
   /* ---------- 교재 목록 (시험 교재 / 일반 교재) ---------- */
   renderMats(main) {
     const gen = this.tab === 'gen';
@@ -848,6 +1104,29 @@ const Exams = {
 .x7-lk button { border: 0; background: none; padding: 0 2px; color: var(--ink-mute); cursor: pointer; font-size: 12px; line-height: 1; }
 .x7-lk button:hover { color: var(--danger); }
 .x7-sug { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 8px; background: var(--accent-soft); border-radius: 6px; }
+/* 교재 목록 (로드맵 표) */
+.lu-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
+.lu-tbl { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; background: var(--surface); }
+.lu-tbl col.c-area { width: 96px; } .lu-tbl col.c-ser { width: 140px; }
+.lu-tbl th, .lu-tbl td { border: 1px solid var(--line); padding: 5px; vertical-align: middle; }
+.lu-tbl th { background: var(--tint-2); font-size: 13.5px; font-weight: 700; text-align: center; padding: 9px 4px; }
+.lu-tbl th.on, .lu-tbl td.on { background: var(--accent-soft); }
+.lu-tbl tr.lu-first > td { border-top: 2px solid var(--line-strong); }
+.lu-tbl td.lu-area { text-align: center; }
+.lu-albl { font-size: 15px; font-weight: 800; }
+.lu-area.read .lu-albl { color: #1D5E93; } .lu-area.gram .lu-albl { color: #5B3FA6; } .lu-area.word .lu-albl { color: #A9650B; } .lu-area.listen .lu-albl { color: #1F7A52; }
+.lu-aact { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 6px; }
+.lu-tbl td.lu-ser { font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+.lu-tbl td.lu-none { text-align: center; color: var(--ink-mute); font-size: 13px; padding: 14px; }
+.lu-bar { border-radius: 8px; padding: 6px 9px; border-left: 4px solid; cursor: pointer; word-break: keep-all; overflow-wrap: anywhere; transition: opacity .15s, box-shadow .15s; }
+.lu-bar:hover { box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.lu-bar.read { background: #E3F0FB; border-color: #1D5E93; } .lu-bar.gram { background: #EDE7FA; border-color: #5B3FA6; }
+.lu-bar.word { background: #FCEFDC; border-color: #A9650B; } .lu-bar.listen { background: #E2F4EC; border-color: #1F7A52; }
+.lu-bar b { display: block; font-size: 13.5px; color: #12304D; }
+.lu-bar small { display: block; font-size: 11.5px; color: #475569; }
+.lu-bar p { margin: 3px 0 0; font-size: 11.5px; color: #334155; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lu-bar.dim { opacity: .25; }
+.lu-orow { align-items: center; gap: 6px; }
 `;
   document.head.appendChild(st);
 })();
