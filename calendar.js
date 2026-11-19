@@ -486,6 +486,22 @@ const DayPage = {
     </div></div>`;
     main.innerHTML = h;
     TodoX.mount(main);
+    // 왼쪽 열 고정 위치 = 고정된 제목줄 바로 아래 (처음 놓인 자리 그대로, 스크롤해도 움직이지 않음)
+    // --dh: 고정 위치(sticky top) / --dmax: 왼쪽 열 최대 높이 (넘치면 왼쪽 열 안에서 따로 스크롤) — style.css .day-cols
+    // 제목줄 높이나 창 높이가 바뀌면 다시 맞춘다
+    const dHead = $('.page-head', main), dCols = $('.day-cols', main);
+    if (this._dhRO) { this._dhRO.disconnect(); this._dhRO = null; }
+    if (dHead && dCols) {
+      const setDh = () => {
+        if (!dHead.isConnected) return;
+        const hs = getComputedStyle(dHead), padT = parseFloat(getComputedStyle(main).paddingTop) || 0;
+        const top = (parseFloat(hs.top) || 0) + dHead.offsetHeight + (parseFloat(hs.marginBottom) || 0);   // 제목줄 아래 + 간격 (main 위 여백 기준)
+        dCols.style.setProperty('--dh', top + 'px');
+        dCols.style.setProperty('--dmax', Math.max(200, main.clientHeight - padT - top - 16) + 'px');
+      };
+      setDh();
+      if (window.ResizeObserver) { this._dhRO = new ResizeObserver(setDh); this._dhRO.observe(dHead); this._dhRO.observe(main); }
+    }
     main.onclick = (e) => {
       if (e.target.closest('[data-dpick]')) { DatePicker.open(date, '날짜 이동').then(d => { if (d && d !== date) App.pickDate(d); }); return; }
       const a = e.target.closest('[data-a]');

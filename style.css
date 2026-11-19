@@ -287,6 +287,17 @@ label.chk { display: inline-flex; align-items: center; gap: 5px; cursor: pointer
   .day-cols .day-col { display: contents; }
   .day-cols .panel { order: var(--o, 9); }
 }
+/* 넓은 화면(두 열)에서는 왼쪽 열(수업 · 다가오는 일정 · 시험 일정 · 일정)을 고정된 제목줄 바로 아래에 세워 두고,
+   오른쪽 할일만 스크롤되어 제목줄 아래로 들어가게 한다. (--dh 고정 위치 · --dmax 최대 높이 = calendar.js DayPage 가 넣음)
+   왼쪽 열이 화면보다 길면 왼쪽 열 안에서만 따로 스크롤 */
+@media (min-width: 1101px) {
+  .day-cols > .day-col:first-child {
+    position: sticky; top: var(--dh, 73px);
+    max-height: var(--dmax, calc(100vh - 130px)); overflow-y: auto;
+    padding-bottom: 2px;           /* 마지막 카드 그림자가 잘리지 않게 */
+  }
+  .day-cols > .day-col:first-child > * { flex-shrink: 0; }   /* 카드가 눌려 줄어들지 않고 스크롤되게 */
+}
 
 .empty { color: var(--ink-mute); padding: 18px 4px; text-align: center; font-size: 14.5px; }
 .muted { color: var(--ink-mute); }
