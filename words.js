@@ -2,7 +2,7 @@
    words.js — 단어 시험 기록부 (학생 › 단어)
    반별·월별 표. 학생마다 한 줄, 그 학생이 오는 날만 칸으로 나온다 (여러 반에 다니면 반 순서상 앞선 반에 한 번만).
    칸을 누르면 그 날의 단어 시험(범위·결과·점수·메모, 재시험 포함)을 기록한다.
-   단어장은 학생 › 교재에서 분류 '단어'로 진행 중인 교재(sbook)를 그대로 쓴다.
+   단어장 연결은 쓰지 않는다 (기록에 필요 없음). 학생 › 교재에 진행 중인 단어장이 있으면 그 이름만 기록에 조용히 남긴다.
    기록은 meta 테이블에 저장 (서버 SQL 변경 없음):
    wtest: { id 'WT_학생ID_날짜', kind:'wtest', studentId, date, classId(기록한 반), matId, matName(교재 이름 사본),
             tries:[ { kind:'new'|'re', of(다른 날 시험의 재시험이면 그 날짜), from, to, res:'pass'|'fail'|'abs'|''(예정), score, total, memo,
@@ -155,8 +155,7 @@ const WordBook = {
   },
   cellTip(r) {
     if (!r) return '';
-    return (r.tries || []).map((t, i) => `${i + 1}. ${this.kindOf(t, i) === 're' ? '재시험' + (isYmd(t.of) ? '(' + fmtMD(t.of) + ')' : '') : '새 시험'} ${t.res === 'abs' ? '' : this.rangeLabel(t) + ' '}${WT_RES[t.res] || '예정'}${this.scoreLabel(t) ? ' ' + this.scoreLabel(t) : ''}${t.memo ? ' · ' + t.memo : ''}`).join('\n')
-      + (r.matName ? '\n단어장: ' + r.matName : '');
+    return (r.tries || []).map((t, i) => `${i + 1}. ${this.kindOf(t, i) === 're' ? '재시험' + (isYmd(t.of) ? '(' + fmtMD(t.of) + ')' : '') : '새 시험'} ${t.res === 'abs' ? '' : this.rangeLabel(t) + ' '}${WT_RES[t.res] || '예정'}${this.scoreLabel(t) ? ' ' + this.scoreLabel(t) : ''}${t.memo ? ' · ' + t.memo : ''}`).join('\n');
   },
   // 칸 위의 날짜 (여러 반에 다니면 그 날 반의 색 점)
   dateHead(it, multi) {
@@ -170,14 +169,12 @@ const WordBook = {
     let h = `<div class="tbl-wrap"><table class="tbl compact ab wt"><thead><tr><th class="ab-name">이름</th><th colspan="${maxN}" class="wt-dcol">날짜별 단어 시험 <span class="small muted">(학생이 오는 날만)</span></th><th class="num">합격</th><th class="num">불합격</th></tr></thead><tbody>`;
     g.rows.forEach(o => {
       const s = o.s;
-      const bk = this.curBook(s.id);
       const n = this.countOf(s.id, o.list.map(it => it.d));
       const multi = o.cls.size > 1;
       const others = multi ? [...o.cls].filter(id => id !== g.c.id).map(id => Store.get('classes', id)).filter(c => c && c.active !== false) : [];
       h += `<tr data-row="${s.id}"><td class="nowrap ab-name"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span>
         ${others.length ? `<div class="wt-oc">${others.map(c => `${Classes.dot(c)}${esc(c.name)}`).join(' ')}</div>` : ''}
-        <div class="wt-bk">${bk ? `<button type="button" class="wt-bkname" data-bk="${bk.id}" title="단어장 수정">${esc(Books.nameOf(bk))}</button>` : `<button type="button" class="wt-bkadd" data-bkadd="${s.id}">+ 단어장 연결</button>`}
-        <button type="button" class="wt-addd" data-addday="${s.id}" title="이 학생의 재시험 날짜 추가">+ 날짜</button></div></td>`;
+        <div class="wt-bk"><button type="button" class="wt-addd" data-addday="${s.id}" title="이 학생의 재시험 날짜 추가">+ 날짜</button></div></td>`;
       o.list.forEach(it => {
         const r = this.rec(s.id, it.d);
         const reg = it.ents.some(e => e.reg);
@@ -262,10 +259,6 @@ const WordBook = {
       }
       if (e.target.closest('[data-pdf]')) { this.pdfDlg(); return; }
       if (e.target.closest('[data-wcfg]')) { this.cfgDlg(); return; }
-      const bk = e.target.closest('[data-bk]');
-      if (bk) { Books.openRec(bk.dataset.bk, {}, () => App.render()); return; }
-      const ba = e.target.closest('[data-bkadd]');
-      if (ba) { Books.openRec(null, { sid: ba.dataset.bkadd, cat: 'word' }, () => App.render()); return; }
       const cell = e.target.closest('td[data-wcid]');
       if (cell) { this.openCell(cell.dataset.wcid, cell.dataset.sid, cell.dataset.d); return; }
       const ad = e.target.closest('[data-addday]');
@@ -411,16 +404,10 @@ const WordBook = {
     const s = Store.get('students', sid);
     if (!s) return;
     const r = this.rec(sid, d);
+    // 단어장이 없어도 바로 기록 (있으면 이름만 조용히 남김)
     const bk = r ? null : this.bookOn(sid, d);
-    if (!r && !bk) {
-      confirmDlg(`${s.name} 학생에게 진행 중인 단어장이 없습니다.\n단어장을 먼저 연결할까요?`, '단어장 연결').then(ok => {
-        if (ok) Books.openRec(null, { sid, cat: 'word' }, () => { App.render(); if (this.curBook(sid)) this.openCell(cid, sid, d, preset); });
-      });
-      return;
-    }
-    const matId = r ? r.matId : bk.matId;
-    const matName = r ? (NP.mat(r.matId) ? NP.mat(r.matId).name : r.matName) : Books.nameOf(bk);
-    const mat = NP.mat(matId);
+    const matId = r ? (r.matId || '') : (bk ? bk.matId : '');
+    const matName = r ? (r.matName || '') : (bk ? Books.nameOf(bk) : '');
     const st = this.setOf(sid);                  // 이 학생의 만점 · 범위 규칙 (마지막에 쓴 값)
     const st0 = JSON.stringify(st);
     const sv = (v) => (v === null || v === undefined ? '' : String(v));
@@ -575,8 +562,7 @@ const WordBook = {
     };
 
     const body = `<div class="wt-modal">
-      <div class="wt-mhead"><span>단어장 <b>${esc(matName || '(교재 없음)')}</b>${mat ? '' : ' <span class="muted">(삭제된 교재)</span>'}</span>
-        <span class="small soft">${nx ? `다음 수업 ${fmtMD(nx.date)}` : '다음 수업 없음'}</span></div>
+      <div class="wt-mhead"><span class="small soft">${nx ? `다음 수업 <b>${fmtMD(nx.date)}</b>` : '다음 수업 없음'}</span></div>
       <div data-tries></div>
     </div>`;
     const md = Modal.open({
@@ -741,7 +727,6 @@ const WordBook = {
         <tr><th class="nm">이름</th><th colspan="${maxN}">날짜별 단어 시험</th><th class="sm">합격</th><th class="sm">불합격</th></tr>`;
       const rows = g.rows.map(o => {
         const s = o.s;
-        const bk = this.curBook(s.id);
         const n = this.countOf(s.id, o.list.map(it => it.d));
         const cells = o.list.map(it => {
           const r = this.rec(s.id, it.d);
@@ -751,7 +736,7 @@ const WordBook = {
           return `<td>${dh}${(r.tries || []).map((t, i) => `<div class="t ${WT_RES[t.res] ? t.res : 'plan'}">${this.kindOf(t, i) === 're' ? '<span class="k">재</span> ' : ''}${t.res === 'abs' ? '<span class="u">결시</span>' : `<span class="u">${esc(this.rangeLabel(t))}</span> <span class="u">${WT_MARK[t.res] || '예정'}</span>`}${this.scoreLabel(t) ? ' <small class="u">' + esc(this.scoreLabel(t)) + '</small>' : ''}</div>`).join('')}</td>`;
         }).join('');
         let fill = ''; for (let i = o.list.length; i < maxN; i++) fill += '<td class="pad"></td>';
-        return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span>${bk ? `<div class="bk">${esc(Books.nameOf(bk))}</div>` : ''}</td>${cells}${fill}<td>${n.pass}</td><td>${n.fail}</td></tr>`;
+        return `<tr><td class="nm"><b>${esc(s.name)}</b> <span class="tag">${esc(stTag(s))}</span></td>${cells}${fill}<td>${n.pass}</td><td>${n.fail}</td></tr>`;
       }).join('');
       let cg = ''; for (let i = 0; i < maxN; i++) cg += '<col>';
       const cols = `<colgroup><col class="c-nm">${cg}<col class="c-sm"><col class="c-sm"></colgroup>`;
@@ -830,8 +815,8 @@ const WordBook = {
 .tbl.wt td.wt-pad { background: #FBFCFD; cursor: default; }
 .wt-ab { padding-top: 2px; }
 .wt-oc { font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
-.wt-addd { border: 0; background: none; padding: 0 0 0 6px; font: inherit; font-size: 11.5px; color: var(--accent); cursor: pointer; vertical-align: bottom; }
-.wt-addd:hover, .wt-bkadd:hover { text-decoration: underline; }
+.wt-addd { border: 0; background: none; padding: 0; font: inherit; font-size: 11.5px; color: var(--accent); cursor: pointer; vertical-align: bottom; }
+.wt-addd:hover { text-decoration: underline; }
 .tbl.wt td.wt-c { font-weight: 500; padding: 4px 3px; vertical-align: middle; line-height: 1.25; }
 .wt-t { white-space: nowrap; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .wt-t + .wt-t { border-top: 1px dashed var(--line); margin-top: 2px; padding-top: 2px; }
@@ -848,10 +833,6 @@ const WordBook = {
 .tbl.wt td.wt-n.pass { color: var(--ok); }
 .tbl.wt td.wt-n.fail { color: var(--danger); }
 .wt-bk { margin-top: 2px; }
-.wt-bkname, .wt-bkadd { border: 0; background: none; padding: 0; font: inherit; font-size: 11.5px; cursor: pointer; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
-.wt-bkname { color: var(--ink-soft); }
-.wt-bkname:hover { color: var(--accent); text-decoration: underline; }
-.wt-bkadd { color: var(--accent); }
 .wt-mhead { margin-bottom: 10px; }
 .wt-try { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; }
 .wt-try-h { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
