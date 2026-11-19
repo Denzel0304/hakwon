@@ -202,7 +202,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 .m-ev-memo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-ev.past { opacity: .6; }
 
-/* ---------- 할일 (보기 전용) ---------- */
+/* ---------- 할일 ---------- */
 .m-tdcal { padding: 10px 6px 10px; touch-action: pan-y; }
 .m-tdcal .mc-head { padding: 0 6px 2px; }
 .m-tdcal .mc-day { height: 36px; padding-top: 2px; }
@@ -212,7 +212,7 @@ body.m-body .np-sum + .np-sum { margin-top: 0; }
 .m-tdcal .mc-dots { margin-top: 2px; height: 6px; }
 .m-tdcal .mc-legend { padding: 0 6px; margin-top: 6px; }
 .m-tds { padding: 2px 10px 2px 4px; }
-body.m-body #main[data-page="todos"] { padding-bottom: 96px; }
+body.m-body #main[data-page="todos"], body.m-body #main[data-page="events"], body.m-body #main[data-page="makeups"] { padding-bottom: 96px; }
 .m-fab {
   position: fixed; right: 18px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 50;
   width: 58px; height: 58px; border: 0; border-radius: 50%; background: var(--accent); color: #fff;
@@ -258,3 +258,105 @@ body.m-body .mg-modal-body { padding: 14px 16px; }
 body.m-body .mg-modal-foot { padding: 10px 14px; }
 body.m-body .mg-modal-foot .btn { flex: 1; padding: 11px 10px; }
 body.m-body .pop-item { padding: 12px 16px; font-size: 15.5px; }
+
+/* =========================================================
+   PC와 같은 기능으로 넓힌 부분 (할일 · 일정 · 보강 · 수업일지 · 창)
+   ========================================================= */
+/* 입력 중(키보드가 떠 있을 때)에는 + 버튼을 숨겨 입력칸을 가리지 않게 */
+#main:has(input[type=text]:focus, input[type=search]:focus, input:not([type]):focus, textarea:focus) .m-fab { display: none; }
+
+/* ---------- 할일: 검색 버튼 · 수업 · 공휴일 ---------- */
+.m-sbtn {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; margin-left: 6px;
+  border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px;
+  padding: 5px 12px 5px 10px; font-size: 13.5px; font-weight: 700; color: var(--accent-ink);
+}
+.m-sbtn:active { background: var(--accent-soft); }
+.m-sec-t > .small { font-weight: 600; }
+.m-tdcal .mc-day.hol .n { color: var(--danger); }
+.m-tdcal .mc-day.sel.hol .n { color: #fff; }
+.m-cls { padding: 4px 14px; }
+.m-cls .empty { padding: 14px 0; }
+.m-cl { padding: 11px 0; border-bottom: 1px dashed var(--line); cursor: pointer; }
+.m-cl:last-child { border-bottom: 0; }
+.m-cl:active { background: var(--accent-soft); }
+.m-cl-t { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; font-size: 15.5px; }
+.m-cl-time { flex: none; min-width: 98px; font-size: 13.5px; font-weight: 700; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.m-cl-s { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.m-cl-s .btn.sm { padding: 5px 10px; font-size: 13px; }
+.m-cls .hol-note { margin: 10px 0 4px; }
+.m-ev.click { cursor: pointer; }
+.m-ev .m-ev-b b .badge { font-weight: 700; margin-left: 4px; vertical-align: 1px; }
+
+/* ---------- 일정 목록: 올해 / 이전 해 ---------- */
+.m-pyear { flex: none; width: 34%; }
+
+/* ---------- 보강 (PC 결석+보강 화면을 모바일 폭에 맞춤) ---------- */
+body.m-body #main[data-page="makeups"] .toolbar input[type=search] { width: 100% !important; flex: 1; }
+body.m-body .mk-card { padding: 12px; border-radius: 12px; }
+body.m-body .mk-top { gap: 6px; }
+body.m-body .mk-top > span[style*="flex:1"] { flex-basis: 100% !important; height: 0; }   /* 버튼은 다음 줄로 */
+body.m-body .mk-top .btn.sm { flex: 1; }
+body.m-body .mk-copy { font-size: 14px; }
+body.m-body .mk-copy > div { word-break: break-word; }
+body.m-body .mk-ctl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+body.m-body .mk-ctl > .small.soft { grid-column: 1 / -1; margin-bottom: -4px; }
+body.m-body .mk-ctl > .ab-cls { grid-column: 1 / -1; margin-bottom: -4px; }
+body.m-body .mk-ctl > input, body.m-body .mk-ctl > select { width: 100%; min-width: 0; }
+body.m-body .mk-ctl > input[type=date] { grid-column: 1 / -1; }
+body.m-body .mk-ctl > input[type=text] { grid-column: 1 / -1; min-width: 0; }
+body.m-body .mk-ctl > .badge { justify-self: start; }
+body.m-body .ab-card .mk-top .badge.gray { order: 0; }
+body.m-body .ab-td { align-items: flex-start; padding: 6px 0; }
+body.m-body .ab-td input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+body.m-body .ab-td .when { min-width: 76px; flex: none; }
+
+/* ---------- 창: 키보드가 올라오면 보이는 영역 안에 맞춤 (m-app.js가 --vvh · --vvt를 넣음) ---------- */
+body.m-body .mg-modal-wrap { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100dvh); }
+body.m-body .mg-modal { max-height: calc(var(--vvh, 100dvh) - 24px); width: 100%; }
+body.m-body .mg-modal-body { overscroll-behavior: contain; }
+/* 일정 · 공휴일 창 */
+body.m-body .ev-form { grid-template-columns: 52px minmax(0, 1fr); gap: 10px 8px; }
+body.m-body .ev-form .row { flex-wrap: wrap !important; }
+body.m-body .ev-form input[type=date] { width: 100% !important; max-width: 180px; }
+body.m-body .ev-form [data-endwrap] { display: flex; align-items: center; gap: 6px; flex: 1 1 100%; }
+body.m-body .ev-form [data-endwrap] input[type=date] { flex: 1; }
+body.m-body .ev-form [name=school] { width: 100% !important; }
+body.m-body .ev-form .msel { width: 100%; }
+body.m-body .ev-form input[type=time] { flex: 1; min-width: 0; }
+body.m-body .ev-form [data-exrow] .hint { flex-basis: 100%; }
+/* 결석 예정 등록 · 수정 창: 이름표를 위로, 할일 줄은 두 줄로 */
+body.m-body .ab-form { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+body.m-body .ab-form > label { margin-top: 6px; }
+body.m-body .ab-form .todo-row { flex-wrap: wrap; gap: 6px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+body.m-body .ab-form .todo-row input[type=text] { flex: 1 1 100%; }
+body.m-body .ab-form .todo-row input[type=date] { flex: 1; width: auto; min-width: 0; }
+body.m-body .ab-form .todo-det { margin-top: 4px; }
+body.m-body .ab-tplbar > .small { flex-basis: 100%; }
+body.m-body .ab-chip button { font-size: 14px; padding: 6px 4px 6px 12px; }
+body.m-body .ab-chip button.x { padding: 6px 10px 6px 4px; }
+/* 할일 창 메모칸: 높이는 글에 맞춰 util.js가 늘림 */
+body.m-body .tx-r textarea { min-height: 0; }
+
+/* ---------- 수업일지 (PC 수업일지 화면을 그대로 · 할일 탭의 수업에서 들어옴) ---------- */
+body.m-body #main[data-page="lessons"] .page-head.pl-head { display: flex; }
+body.m-body #main[data-page="lessons"] .pl-head > h1, body.m-body #main[data-page="lessons"] .pl-head > .tabs { display: none; }
+body.m-body #main[data-page="lessons"] > .page-narrow > .page-head { top: -12px; margin: -12px -12px 12px; padding: 0 12px 10px; }
+body.m-body #main[data-page="lessons"] .pl-bar { gap: 8px; padding-top: 10px; }
+body.m-body #main[data-page="lessons"] .pl-bar .grow { display: none; }
+body.m-body #main[data-page="lessons"] .pl-bar > .btn { flex: 1; }
+body.m-body #main[data-page="lessons"] .dnav { width: 100%; }
+body.m-body #main[data-page="lessons"] .dnav-ttl { flex: 1; width: auto; font-size: 15px; }
+body.m-body #main[data-page="lessons"] .toolbar > span:first-child { flex: 1 1 100%; }
+body.m-body #main[data-page="lessons"] .toolbar select[data-cls] { min-width: 0 !important; flex: 1; width: 100%; }
+body.m-body #main[data-page="lessons"] .grid-2 { grid-template-columns: minmax(0, 1fr); }
+body.m-body .att-row { flex-wrap: wrap; row-gap: 6px; }
+body.m-body .att-row .nm { flex: 1 1 100%; }
+body.m-body .att-seg { width: 100%; }
+body.m-body .att-seg button { flex: 1; padding: 8px 0; font-size: 14px; }
+body.m-body .att-sum { flex-wrap: wrap; }
+body.m-body #main[data-page="lessons"] .todo-row { flex-wrap: wrap; gap: 6px; padding: 6px 0; }
+body.m-body #main[data-page="lessons"] .todo-row input[type=text] { flex: 1 1 100%; }
+body.m-body #main[data-page="lessons"] .todo-row input[type=date] { flex: 1; width: auto; min-width: 0; }
+body.m-body .hw-row { flex-wrap: wrap; }
+body.m-body .np-mhead { row-gap: 4px; }

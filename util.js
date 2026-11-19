@@ -354,21 +354,56 @@ function extractUrls(text) {
   return out;
 }
 
-// 커서가 있는 줄이 화면에 보이도록 textarea 스크롤을 맞춘다.
+// textarea 글자를 화면과 똑같이 줄바꿈해 보는 숨은 복사본 (칸 폭에서 저절로 넘어간 줄까지 정확히 재기 위함)
+//   text: 잴 글, 끝에 표시점(span)을 붙여 그 위치·높이를 돌려준다 { top, h, full(글 전체 높이: 위아래 여백 포함) }
+function taMeasure(ta, text) {
+  const cs = window.getComputedStyle(ta);
+  const m = document.createElement('div');
+  ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'lineHeight', 'letterSpacing', 'wordSpacing',
+    'textTransform', 'textIndent', 'tabSize', 'wordBreak', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].forEach(p => { m.style[p] = cs[p]; });
+  const w = ta.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  Object.assign(m.style, { position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', boxSizing: 'content-box', border: '0',
+    whiteSpace: 'pre-wrap', overflowWrap: 'break-word', width: Math.max(1, w) + 'px', height: 'auto', overflow: 'hidden' });
+  m.textContent = text;
+  const mk = document.createElement('span');
+  mk.textContent = '​';
+  m.appendChild(mk);
+  document.body.appendChild(m);
+  const r = { top: mk.offsetTop, h: mk.offsetHeight || parseFloat(cs.lineHeight) || 20, full: m.offsetHeight };
+  m.remove();
+  return r;
+}
+
+// 커서가 있는 줄이 화면에 보이도록 맞춘다.
+//  1) textarea 안쪽 스크롤 — 화면에 보이는 줄(저절로 넘어간 줄 포함) 그대로 계산
+//  2) 커서가 바깥(창 본문 등)의 스크롤이나 휴대폰 키보드에 가려 있으면 바깥을 그만큼만 스크롤
 function scrollCursorIntoView(ta) {
-  const style = window.getComputedStyle(ta);
-  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
-  const paddingTop = parseFloat(style.paddingTop) || 0;
-  const pos = ta.selectionStart;
-  const textBefore = ta.value.substring(0, pos);
-  const linesBefore = textBefore.split('\n').length;
-  const cursorY = paddingTop + (linesBefore - 1) * lineHeight;
-  const visibleBottom = ta.scrollTop + ta.clientHeight;
-  if (cursorY + lineHeight > visibleBottom) {
-    ta.scrollTop = cursorY + lineHeight - ta.clientHeight + lineHeight;
-  } else if (cursorY < ta.scrollTop) {
-    ta.scrollTop = cursorY - paddingTop;
+  if (!ta || !ta.isConnected || !ta.offsetParent) return;
+  const cs = window.getComputedStyle(ta);
+  const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
+  const c = taMeasure(ta, ta.value.substring(0, ta.selectionEnd));
+  if (c.top + c.h + pb > ta.scrollTop + ta.clientHeight) ta.scrollTop = c.top + c.h + pb - ta.clientHeight;
+  else if (c.top - pt < ta.scrollTop) ta.scrollTop = Math.max(0, c.top - pt);
+  if (document.activeElement === ta) revealCaret(ta, c);
+}
+function revealCaret(ta, c) {
+  // 바깥에서 스크롤되는 가장 가까운 상자 (모달 본문 · 화면 본문)
+  let sp = ta.parentElement;
+  while (sp && sp !== document.body) {
+    const oy = window.getComputedStyle(sp).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && sp.scrollHeight > sp.clientHeight + 1) break;
+    sp = sp.parentElement;
   }
+  if (!sp || sp === document.body) return;
+  const vv = window.visualViewport;
+  const vTop = vv ? vv.offsetTop : 0, vBot = vv ? vv.offsetTop + vv.height : window.innerHeight;
+  const sr = sp.getBoundingClientRect(), tr = ta.getBoundingClientRect();
+  const y0 = tr.top + ta.clientTop + c.top - ta.scrollTop, y1 = y0 + c.h;
+  const M = 8;                                             // 위아래 여유
+  const top = Math.max(vTop, sr.top) + M, bot = Math.min(vBot, sr.bottom) - M;
+  if (bot - top < c.h) return;                             // 보이는 칸이 한 줄보다 작으면 건드리지 않음
+  if (y1 > bot) sp.scrollTop += Math.ceil(y1 - bot);
+  else if (y0 < top) sp.scrollTop -= Math.ceil(top - y0);
 }
 
 function setupAutoList(ta, onInputExtra) {
@@ -522,6 +557,10 @@ function setupAutoList(ta, onInputExtra) {
   // PC: keydown
   ta.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey) return;          // Ctrl+Enter는 저장용
+    // 한글 조합 중(예: '필요'의 '요'를 쓰는 중)에는 건드리지 않는다.
+    //   윈도우 한글 입력기는 조합 중인 글자를 '선택된 상태'로 두기 때문에, 여기서 줄을 새로 만들면 그 글자가 지워진다.
+    //   조합이 끝난 뒤 들어오는 Enter(beforeinput 또는 다음 keydown)에서 처리된다.
+    if (e.isComposing || e.keyCode === 229) return;
     let handled = false;
     if (e.key === ' ') {
       handled = handleSpace(() => e.preventDefault());
@@ -536,6 +575,7 @@ function setupAutoList(ta, onInputExtra) {
 
   // 모바일: beforeinput
   ta.addEventListener('beforeinput', function (e) {
+    if (e.isComposing) return;                   // 한글 조합 중에는 건드리지 않음 (위 keydown과 같은 이유)
     let handled = false;
     if (e.inputType === 'insertText' && e.data === ' ') {
       handled = handleSpace(() => e.preventDefault());
@@ -573,7 +613,8 @@ function enhanceTextarea(ta, opts = {}) {
     const urls = extractUrls(stripZws(ta.value));
     box.innerHTML = urls.map(u => `<a class="ta-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${LINK_SVG}<span>${esc(u)}</span></a>`).join('');
   };
-  setupAutoList(ta, updateLinks);
+  const grow = opts.autoGrow ? taAutoGrow(ta) : null;
+  setupAutoList(ta, () => { updateLinks(); if (grow) grow(); });
   updateLinks();
   // Ctrl/Cmd + Enter → 저장
   ta.addEventListener('keydown', (e) => {
@@ -585,6 +626,45 @@ function enhanceTextarea(ta, opts = {}) {
       if (btn) btn.click();
     }
   });
+}
+/* 글이 길어지면 칸 높이를 같이 늘린다 (enhanceTextarea(ta, { autoGrow: true }))
+   · 최소: 원래 줄 수(rows) / 최대: PC 12줄 · 창 높이의 45%, 모바일 8줄 · 보이는 화면(키보드 뺀 높이)의 30%
+     → 그 이상은 칸 안에서 스크롤 (키보드·다른 입력칸을 밀어내 화면 밖으로 나가지 않게)
+   · 높이는 숨은 복사본으로 재서 바꾸므로 바깥 스크롤이 튀지 않는다 */
+function taAutoGrow(ta) {
+  ta.style.resize = 'none';
+  let lastW = 0;
+  const grow = () => {
+    if (!ta.isConnected || !ta.offsetParent) return;
+    const cs = window.getComputedStyle(ta);
+    const lh = parseFloat(cs.lineHeight) || 24;
+    const edge = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    const mob = document.body.classList.contains('m-body');
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const minH = Math.ceil((+ta.rows || 2) * lh + edge);
+    const maxH = Math.max(minH, Math.floor(Math.min((mob ? 8 : 12) * lh + edge, vh * (mob ? 0.3 : 0.45))));
+    const need = Math.ceil(taMeasure(ta, ta.value).full + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0));
+    const h = Math.min(maxH, Math.max(minH, need));
+    const ov = need > maxH ? 'auto' : 'hidden';
+    if (ta.style.height !== h + 'px') ta.style.height = h + 'px';
+    if (ta.style.overflowY !== ov) ta.style.overflowY = ov;
+    lastW = ta.clientWidth;
+  };
+  ta.addEventListener('focus', () => { grow(); setTimeout(() => scrollCursorIntoView(ta), 0); });
+  ta.addEventListener('mg-vv', grow);
+  // 처음 보일 때 · 폭이 바뀔 때(가로 전환, 접힌 상세 펼치기) 다시 맞춤
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (ta.clientWidth !== lastW) grow(); }).observe(ta);
+  setTimeout(grow, 0);
+  return grow;
+}
+// 휴대폰 키보드가 열리고 닫혀 보이는 높이가 바뀌면: 입력 중인 칸의 높이·커서 위치를 다시 맞춘다
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', debounce(() => {
+    const a = document.activeElement;
+    if (!a || a.tagName !== 'TEXTAREA' || !a._mgEnhanced) return;
+    a.dispatchEvent(new Event('mg-vv'));
+    scrollCursorIntoView(a);
+  }, 80));
 }
 function enhanceAll(root, opts) { $$('textarea', root).forEach(ta => enhanceTextarea(ta, opts)); }
 

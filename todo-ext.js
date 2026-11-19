@@ -460,7 +460,7 @@ const TodoX = {
           const k = r.dataset.sk, d = r.dataset.sd;
           md.close();
           if (isYmd(d)) App.pickDate(d);
-          setTimeout(() => this.open(k), 0);
+          setTimeout(() => this.open(k, typeof MTodos !== 'undefined' ? MTodos.OPT : {}), 0);   // 모바일 할일 탭에서 열면 모바일 창으로
         });
       },
     });
@@ -581,7 +581,7 @@ const TodoX = {
       body,
       onMount: (b) => {
         const title = $('[data-f=text]', b);
-        enhanceTextarea($('[data-f=memo]', b));      // 자동 번호(1. ) · 글머리(* ) · 링크 표시 — util.js의 기존 기능 그대로
+        enhanceTextarea($('[data-f=memo]', b), { autoGrow: true });      // 자동 번호(1. ) · 글머리(* ) · 링크 표시 — util.js의 기존 기능 그대로
         const clList = $('[data-cllist]', b);
         const drawCl = () => { clList.innerHTML = clHtml(); };
         drawCl();
@@ -795,7 +795,7 @@ const TodoX = {
       Modal.open({
         title: '할일 상세', size: 'md', autofocus: false, body,
         onMount: (b) => {
-          enhanceTextarea($('[data-f=memo]', b));
+          enhanceTextarea($('[data-f=memo]', b), { autoGrow: true });
           const clList = $('[data-cllist]', b);
           const drawCl = () => { clList.innerHTML = clHtml(); };
           drawCl();

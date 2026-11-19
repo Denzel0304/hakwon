@@ -2,9 +2,12 @@
    m-app.js — 모바일 전용 (index-mobile.html)
    - 데이터·로그인·동기화는 PC와 같은 파일(config/util/store/…)을 그대로 쓴다
    - 화면: 할일 · 시간표 · 일정 · SMS · 진도 · 보강
-   - 문자는 PC 문자 화면(SmsPage)을 그대로 사용 (기능 동일)
-   - 할일은 일정관리 앱처럼 추가·수정 가능 (todo-ext.js, 수업일지 할일은 완료 체크만)
-   - 나머지는 보기 전용 (데이터를 바꾸지 않음)
+   - 할일 · 일정 · SMS · 보강은 PC와 같은 기능 (같은 창·같은 저장 로직을 그대로 사용)
+     · 할일: PC 날짜 화면처럼 할일 + 밀린 할일 + 그날 수업(일지 쓰기·건너뛰기) + 일정 · 할일 검색
+       수업을 누르면 PC 수업일지 화면(Lessons)을 그대로 연다 (아래 탭은 '할일'에 머묾)
+     · 일정: 추가·수정·삭제 · 공휴일 추가·수정·삭제 · 목록은 올해 / 이전 해
+     · 보강: PC 결석+보강 화면(Makeups)을 그대로 씀 (결석 예정 탭 포함) — 검색칸만 한글 입력이 끊기지 않게 목록만 다시 그림
+   - 시간표 · 진도는 보기 전용
    - PC 전용 자동 처리(빈 수업일지 정리 · 반 색 배정 · 진급 확인)는 하지 않음
      → PC로 접속하면 처리됨. 예약된 휴원·퇴원·복귀 적용만 여기서도 실행
    ========================================================= */
@@ -267,99 +270,60 @@ const MProgress = {
 };
 
 /* =========================================================
-   보강 — 보기 전용 (출석부 결석 + 지난 결석 예정이 자동으로 모임) + 진도·숙제 복사
-   보강 안 함은 목록에서 삭제된 것이라 보이지 않고, 내일 이후 결석 예정은 PC의 결석+보강에서만 본다
+   보강 — PC 결석+보강 화면(Makeups.render)을 그대로 쓴다
+   (결석 예정 · 처리 필요 · 완료 · 전체 / 결석 예정 등록·수정·취소 / 보강일·시간·상태·메모 / 배부 자료 전달 / 보강 안 함 — 모두 PC와 같음)
+   모바일에서만 바꾼 것
+   · '+ 결석 예정 등록' → 오른쪽 아래 + 버튼 (PC 제목줄은 모바일에서 숨김)
+   · 검색칸: PC는 화면 전체를 다시 그리지만, 모바일은 검색칸 아래만 다시 그림 (한글 조합이 끊기지 않게)
+   · '진도 보기' → 모바일 진도 탭의 그 날짜로
    ========================================================= */
 const MMakeups = {
-  tab: 'open', q: '',
-  ST_BADGE: { none: 'gray', plan: '', info: 'gray', done: 'green', skip: 'gray' },
-
   render(main) {
-    const all = Makeups.collect().filter(o => !o.fut);
-    const cnt = { open: 0, done: 0, all: all.length };
-    all.forEach(o => { if (mkDone(o.status)) cnt.done++; else cnt.open++; });
-    if (!(this.tab in cnt)) this.tab = 'open';
-    main.innerHTML = `<div class="tabs m-tabs4">${[['open', '처리 필요'], ['done', '완료'], ['all', '전체']].map(([k, t]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
-      <div class="m-bar">${mSearchHtml(this.q, '학생 이름, 반 이름 검색')}</div>
-      <div id="m-list">${this.listHtml(all)}</div>`;
-    this.bind(main);
+    Makeups.render(main);
+    this.wire(main, main);
+    this.fab(main);
   },
-
-  filtered(all) {
-    const q = this.q.trim();
-    const list = all.filter(o => this.tab === 'all' || (this.tab === 'open' ? ['none', 'plan'].includes(o.status) : mkDone(o.status)))   // 완료: 안내 완료 + 보강 완료
-      .filter(o => !q || o.s.name.includes(q) || (o.c && o.c.name.includes(q)));
-    if (this.tab === 'open') list.sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
-    else list.sort((a, b) => ko(b.l.date, a.l.date));
-    return list;
-  },
-
-  listHtml(all) {
-    all = all || Makeups.collect().filter(o => !o.fut);
-    const list = this.filtered(all);
-    this._byKey = {};
-    if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '해당하는 보강이 없습니다.' : '결석 기록이 없습니다.'}</div></div>`;
-    const q = this.q.trim();
-    return list.map(o => {
-      const mk = o.mk || {};
-      const key = Makeups.id(o.l.id, o.s.id);
-      this._byKey[key] = o;
-      const my = Makeups.mine(o);                // 학교가 섞인 반: 이 학생 학교 것만
-      const got = mk.distGot || [];
-      const when = mk.date ? fmtDate(mk.date) + (mk.time ? ' ' + mk.time : '') : '';
-      let f = `<span class="k">보강일</span><div>${when ? esc(when) : '<span class="muted">미정</span>'}</div>`;
-      if (mk.memo) f += `<span class="k">메모</span><div class="pre">${esc(mk.memo)}</div>`;
-      f += `<span class="k">진도</span><div class="pre">${esc(stripZws(o.l.progress)) || '<span class="muted">입력 전</span>'}</div>`;
-      if (my.np) f += `<span class="k">내신</span><div>${esc(my.np)}</div>`;
-      if ((o.l.gp || []).length) f += `<span class="k">비내신</span><div>${esc(NP.genText(o.l))}</div>`;
-      f += `<span class="k">숙제</span><div class="pre">${esc(my.hw) || '<span class="muted">입력 전</span>'}</div>`;
-      if (my.memo) f += `<span class="k">수업 메모</span><div class="pre">${esc(my.memo)}</div>`;
-      if (my.dist.length) f += `<span class="k">배부</span><div>${my.dist.map(([d, i]) => `<div class="small mk-dist ${got.includes(i) ? 'got' : ''}">${got.includes(i) ? '☑' : '☐'} ${esc(NP.distText(d))}</div>`).join('')}</div>`;
-      return `<div class="m-card ${mkDone(o.status) ? 'm-dim' : ''}">
-        <div class="m-card-hd"><b class="m-who">${highlight(o.s.name, q)}</b><span class="tag">${esc(stTag(o.s))}</span>
-          ${o.s.status !== 'active' ? Students.statusBadge(o.s) : ''}
-          <span class="m-grow"></span><span class="badge ${this.ST_BADGE[o.status] || 'gray'}">${MK_STATUS[o.status] || '미지정'}</span></div>
-        <div class="m-card-sub"><span class="badge red">결석 ${fmtMD(o.l.date)}</span><span class="soft small">${o.c ? highlight(o.c.name, q) : '(삭제된 반)'}</span>
-          ${my.left ? `<span class="badge orange">미전달 자료 ${my.left}</span>` : ''}</div>
-        <div class="m-f">${f}</div>
-        <div class="m-card-act"><button type="button" class="btn sm" data-copy="${esc(key)}">진도·숙제 복사</button>
-          <button type="button" class="btn sm ghost" data-golesson="${esc(o.l.id)}">진도 보기</button></div></div>`;
-    }).join('');
-  },
-
-  bind(main) {
-    main.onclick = async (e) => {
-      const tb = e.target.closest('[data-tab]'); if (tb) { this.tab = tb.dataset.tab; App.render(true); return; }
-      const cp = e.target.closest('[data-copy]');
-      if (cp) {
-        const o = this._byKey && this._byKey[cp.dataset.copy]; if (!o) return;
-        const txt = Makeups.copyText(o);
-        try { await navigator.clipboard.writeText(txt); toast('진도와 숙제를 복사했습니다'); }
-        catch (_) { alertDlg('복사할 내용', txt); }
-        return;
-      }
+  fab(main) { main.insertAdjacentHTML('beforeend', '<button type="button" class="m-fab" data-absadd aria-label="결석 예정 등록" title="결석 예정 등록">+</button>'); },
+  // src: PC 화면이 손잡이(onclick·onchange)를 달아 둔 곳 (검색으로 새로 그린 임시 상자일 수 있음)
+  wire(main, src) {
+    const pcClick = src.onclick, pcChange = src.onchange;
+    main.onclick = (e) => {
       const gl = e.target.closest('[data-golesson]');
       if (gl) {
         const l = Store.get('lessons', gl.dataset.golesson);
         if (l) { MProgress.classId = l.classId; MProgress.q = ''; MProgress.jump = l.date; App.go('progress', { classId: l.classId, date: l.date }); }
+        return;
       }
+      if (pcClick) return pcClick(e);
     };
+    main.onchange = pcChange;
     main.oninput = debounce((e) => {
       if (!e.target.matches('[data-q]')) return;
-      this.q = e.target.value;
-      const box = $('#m-list', main); if (box) box.innerHTML = this.listHtml();
+      Makeups.q = e.target.value;
+      const tmp = document.createElement('div');
+      Makeups.render(tmp);
+      const bar = $('.toolbar', main), bar2 = $('.toolbar', tmp);
+      if (!bar || !bar2 || bar.parentNode !== main) { App.render(); return; }
+      while (bar.nextSibling) bar.nextSibling.remove();
+      while (bar2.nextSibling) main.appendChild(bar2.nextSibling);
+      this.wire(main, tmp);
+      this.fab(main);
     }, 250);
   },
 };
-
 /* =========================================================
-   일정 — 보기 전용 (달력 / 목록 전환)
+   일정 — 달력 / 목록 전환 · 추가·수정·삭제는 PC와 같은 창(EventModal · HolidayModal)
    달력: PC 큰 달력처럼 기간 일정은 화살표 띠, 하루 일정은 글자로 표시 · 좌우 스와이프로 달 이동
+   · 오른쪽 아래 + → 일정 추가 / 공휴일 추가 (달력: 고른 날짜, 목록: 오늘)
+   · 달력 아래·목록의 일정을 누르면 수정 창 (삭제 포함, 공휴일은 공휴일 창)
+   · 목록: PC 일정 탭처럼 올해 / 이전 해
    ========================================================= */
 const MEvents = {
   mode: 'cal',            // 'cal' | 'list'
   type: '',               // 종류 필터 ('' = 전체) — 처음에는 전체
   q: '', hidePast: true,
+  view: 'cur',            // 목록: 'cur' 올해(+내년 이후) / 'past' 이전 해 (PC 일정 탭과 같음)
+  pastYear: '',
   month: '',              // 'YYYY-MM'
   sel: '',                // 달력에서 고른 날짜
   _dir: 0,                // 넘긴 방향 (넘김 효과용)
@@ -375,6 +339,7 @@ const MEvents = {
         <button type="button" data-mode="list" class="${this.mode === 'list' ? 'on' : ''}">목록</button></div>
       <select data-type class="m-typesel" aria-label="일정 종류"><option value="" ${this.type ? '' : 'selected'}>전체</option>${this.ORDER.map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select></div>`;
     h += this.mode === 'cal' ? this.calHtml(today) : this.listShellHtml(today);
+    h += '<button type="button" class="m-fab" data-evadd aria-label="일정 추가" title="일정 · 공휴일 추가">+</button>';
     main.innerHTML = h;
     this.bind(main);
     const cal = $('.m-cal', main);
@@ -411,8 +376,8 @@ const MEvents = {
 
   evRow(ev, showDate) {
     const t = eventTime(ev);
-    // 보기 전용 줄 (상세 창 없음) — 메모는 줄바꿈까지 전부 보여 준다
-    return `<div class="m-ev ${evEnd(ev) < todayStr() ? 'past' : ''}">
+    // 누르면 수정 창 — 메모는 줄바꿈까지 전부 보여 준다
+    return `<div class="m-ev click ${evEnd(ev) < todayStr() ? 'past' : ''}" data-evo="${ev.id}">
       <span class="badge ${this.TCLS[evType(ev)]}">${this.tagLabel(ev)}</span>
       <span class="m-ev-b"><b>${esc(this.rowText(ev))}</b>
         <span class="small soft">${[showDate || isRange(ev) ? eventRangeLabel(ev) : '', t].filter(Boolean).map(esc).join(' ')}</span>
@@ -476,26 +441,37 @@ const MEvents = {
     return h;
   },
 
+  // 목록: 올해 / 이전 해 (일정은 시작일의 연도에 속함 — PC 일정 탭과 같은 규칙)
+  years(today) {
+    const thisY = today.slice(0, 4);
+    const every = Store.all('events').filter(ev => isYmd(ev.date));
+    const pastYears = [...new Set(every.map(ev => ev.date.slice(0, 4)).filter(y => y < thisY))].sort().reverse();
+    if (!pastYears.includes(this.pastYear)) this.pastYear = pastYears[0] || '';
+    const cur = every.filter(ev => ev.date.slice(0, 4) >= thisY);
+    return { thisY, every, pastYears, cur, all: this.view === 'past' ? every.filter(ev => ev.date.slice(0, 4) === this.pastYear) : cur };
+  },
   listShellHtml(today) {
-    const pastCnt = Store.all('events').filter(ev => isYmd(ev.date) && this.okType(ev) && evEnd(ev) < today).length;
-    return `<div class="m-bar">${mSearchHtml(this.q, '학교, 제목, 메모 검색')}</div>
-      <div class="m-bar"><label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label></div>
+    const y = this.years(today);
+    const pastCnt = this.view === 'past' ? 0 : y.all.filter(ev => evEnd(ev) < today).length;
+    return `<div class="tabs"><button type="button" data-view="cur" class="${this.view === 'cur' ? 'active' : ''}">${y.thisY}년<span class="cnt">${y.cur.length}</span></button><button type="button" data-view="past" class="${this.view === 'past' ? 'active' : ''}">이전 해<span class="cnt">${y.every.length - y.cur.length}</span></button></div>
+      <div class="m-bar">${this.view === 'past' && y.pastYears.length ? `<select data-pyear class="m-pyear" aria-label="연도">${y.pastYears.map(v => `<option value="${v}" ${v === this.pastYear ? 'selected' : ''}>${v}년</option>`).join('')}</select>` : ''}${mSearchHtml(this.q, '학교, 제목, 메모 검색')}</div>
+      ${this.view === 'past' ? '' : `<div class="m-bar"><label class="chk small"><input type="checkbox" data-past ${this.hidePast ? 'checked' : ''}>지난 일정 숨기기 (${pastCnt})</label></div>`}
       <div id="m-list">${this.listHtml(today)}</div>`;
   },
 
   listHtml(today) {
     today = today || todayStr();
     const q = this.q.trim();
-    const all = Store.all('events').filter(ev => isYmd(ev.date));
+    const all = this.years(today).all;
     const list = all.filter(ev => this.okType(ev))
-      .filter(ev => !this.hidePast || evEnd(ev) >= today)
+      .filter(ev => this.view === 'past' || !this.hidePast || evEnd(ev) >= today)
       .filter(ev => !q || [ev.school, eventShort(ev), ev.title, ev.memo].some(v => String(v || '').includes(q)))
       .sort((a, b) => {
         const pa = evEnd(a) < today, pb = evEnd(b) < today;
         if (pa !== pb) return pa ? 1 : -1;                 // 다가오는 일정 먼저
         return pa ? ko(b.date, a.date) : ko(a.date, b.date) || ko(a.start, b.start);
       });
-    if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 일정이 없습니다.' : '등록된 일정이 없습니다.'}</div></div>`;
+    if (!list.length) return `<div class="panel"><div class="empty">${all.length ? '조건에 맞는 일정이 없습니다.' : this.view === 'past' ? '이전 해 일정이 없습니다.' : '등록된 일정이 없습니다. 오른쪽 아래 + 로 추가하세요.'}</div></div>`;
     return `<div class="m-cnt">${list.length}건</div><div class="m-evs">${list.map(ev => this.evRow(ev, true)).join('')}</div>`;
   },
 
@@ -520,6 +496,17 @@ const MEvents = {
   bind(main) {
     main.onclick = (e) => {
       const md = e.target.closest('[data-mode]'); if (md) { this.mode = md.dataset.mode; App.render(true); return; }
+      const vb = e.target.closest('[data-view]'); if (vb) { this.view = vb.dataset.view; App.render(true); return; }
+      const ad = e.target.closest('[data-evadd]');
+      if (ad) {
+        const d = this.mode === 'cal' ? this.sel : todayStr();
+        popMenu(ad, [
+          { text: '일정 추가', onClick: () => EventModal.open(null, { date: d }) },
+          { text: '공휴일 추가', onClick: () => HolidayModal.open(null, { date: d }) },
+        ]);
+        return;
+      }
+      const eo = e.target.closest('[data-evo]'); if (eo) { EventModal.open(eo.dataset.evo); return; }
       if (e.target.closest('[data-ympick]')) { this.pickYm(); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
@@ -550,7 +537,8 @@ const MEvents = {
     };
     main.onchange = (e) => {
       if (e.target.matches('[data-type]')) { this.type = e.target.value; e.target.blur(); App.render(); return; }
-      if (e.target.matches('[data-past]')) { this.hidePast = e.target.checked; App.render(); }
+      if (e.target.matches('[data-past]')) { this.hidePast = e.target.checked; App.render(); return; }
+      if (e.target.matches('[data-pyear]')) { this.pastYear = e.target.value; e.target.blur(); App.render(); }
     };
     main.oninput = debounce((e) => {
       if (!e.target.matches('[data-q]')) return;
@@ -559,12 +547,12 @@ const MEvents = {
     }, 250);
   },
 };
-
 /* =========================================================
-   할일 — 일정관리 앱처럼 (추가 · 수정 · 완료 · 날짜 이동 · 삭제 · 순서)
-   위: 작은 달력 (할일 · 밀린 할일 점, 좌우 스와이프로 달 이동) / 아래: 고른 날짜의 할일 + (오늘이면) 밀린 할일
-   목록·추가 창·반복 계산은 PC와 같은 todo-ext.js(TodoX)를 쓴다
-   · 수업일지에 딸린 할일은 모바일에서 완료 체크만 (수정·메뉴는 PC에서)
+   할일 — PC 날짜 화면(DayPage)과 같은 내용 · 같은 기능
+   위: 작은 달력 (할일 · 밀린 할일 · 일지 미작성 점, 공휴일은 빨간 날짜, 좌우 스와이프로 달 이동)
+   아래: 고른 날짜의 할일(+ 할일 검색) → (오늘이면) 밀린 할일 → 수업(일지 쓰기·건너뛰기) → 시험 일정 · 일정 · 다가오는 일정(2주)
+   목록·추가 창·반복 계산은 PC와 같은 todo-ext.js(TodoX), 수업일지는 PC 수업일지 화면(Lessons), 일정은 PC 일정 창(EventModal)
+   · PC의 '학교 입력이 필요한 학생'(진급 처리)은 PC 전용 자동 처리라 모바일에는 없음
    ========================================================= */
 const MTodos = {
   month: '',              // 'YYYY-MM'
@@ -581,6 +569,9 @@ const MTodos = {
     const start = addDays(first, -first.getDay());
     const weeks = Math.ceil((first.getDay() + new Date(Y, M, 0).getDate()) / 7);
     const idx = TodoX.dotIndex(ymd(start), weeks * 7, today);
+    const hol = Holidays.map();                                    // 공휴일은 날짜를 빨간색으로 (PC 작은 달력과 같음)
+    const actCls = Store.all('classes').filter(c => c.active !== false);
+    const noLog = (k) => k <= today && actCls.some(c => Lessons.needsLog(c, k));   // 일지 미작성 수업이 있는 날
 
     let h = `<div class="panel m-cal m-tdcal"><div class="mc-head"><button type="button" class="mc-title ym-btn" data-ympick>${Y}년 ${M}월 ▾</button>
         <button type="button" class="mc-nav" data-mon="-1" aria-label="이전 달">‹</button>
@@ -595,18 +586,23 @@ const MTodos = {
       if (d.getDay() === 6) cls.push('sat');
       if (k === today) cls.push('today');
       if (k === this.sel) cls.push('sel');
-      const dots = o ? (o.late ? '<i class="dot-late"></i>' : '') + (o.todo ? '<i class="dot-todo"></i>' : '') : '';
+      if (hol[k]) cls.push('hol');
+      let dots = o ? (o.late ? '<i class="dot-late"></i>' : '') + (o.todo ? '<i class="dot-todo"></i>' : '') : '';
+      if (noLog(k)) dots += '<i class="dot-nolog"></i>';
       h += `<button type="button" class="${cls.join(' ')}" data-d="${k}"><span class="n">${d.getDate()}</span><span class="mc-dots">${dots}</span></button>`;
     }
-    h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span></div></div>`;
+    h += `</div><div class="mc-legend"><span><i class="dot-todo"></i>할일</span><span><i class="dot-late"></i>밀린 할일</span><span><i class="dot-nolog"></i>일지 미작성</span></div></div>`;
 
     const list = TodoX.listHtml(this.sel, this.OPT);
-    h += `<div class="m-sec-t">${esc(fmtDate(this.sel))}${this.sel === today ? ' <span class="badge">오늘</span>' : ''}<span class="m-grow"></span><span class="small soft">${list.left ? list.left + '개 남음' : ''}</span></div>`;
+    const date = this.sel, isToday = date === today;
+    h += `<div class="m-sec-t">${esc(fmtDate(date))}${isToday ? ' <span class="badge">오늘</span>' : ''}<span class="m-grow"></span><span class="small soft">${list.left ? list.left + '개 남음' : ''}</span>
+      <button type="button" class="m-sbtn" data-tdsearch aria-label="할일 검색" title="지난 할일·앞으로 할 일 모두 검색"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>검색</button></div>`;
     h += list.left || list.html.includes('tx-list') ? `<div class="panel m-tds">${list.html}</div>` : `<div class="panel">${list.html}</div>`;
-    if (this.sel === today) {
+    if (isToday) {
       const late = TodoX.lateHtml(today, this.OPT);
       if (late.n) h += `<div class="m-sec-t m-late-t">밀린 할일<span class="m-grow"></span><span class="small">${late.n}개</span></div><div class="panel m-tds m-late">${late.html}</div>`;
     }
+    h += this.dayHtml(date, today);
     h += '<button type="button" class="m-fab" data-addtodo aria-label="할일 추가">+</button>';
     main.innerHTML = h;
 
@@ -616,6 +612,56 @@ const MTodos = {
     this._dir = 0;
     TodoX.mount(main, this.OPT);
     this.bind(main);
+  },
+
+  // PC 날짜 화면(DayPage)의 수업 · 시험 일정 · 일정 · 다가오는 일정 (같은 계산, 모바일 배치)
+  dayHtml(date, today) {
+    const isToday = date === today;
+    const idx = CalIndex.build();
+    const o = idx[date] || { exam: [], pre: [], weekend: [], etc: [], holiday: [] };
+    const evs = [...o.holiday, ...o.pre, ...o.weekend, ...o.etc].sort((a, b) => ko(a.start, b.start));
+    const classes = Lessons.classesOn(date);
+    const end14 = addDaysStr(date, 14);
+    const upcoming = Store.all('events').filter(ev => isYmd(ev.date) && ev.date > date && ev.date <= end14)
+      .sort((a, b) => ko(a.date, b.date) || ko(a.start, b.start));
+    // 일정 첫날까지 남은 날: N일 전 / 오늘(다른 날짜면 당일) / 진행 중
+    const dLeft = (ev) => {
+      const n = Math.round((parseYmd(ev.date) - parseYmd(date)) / 864e5);
+      if (n > 0) return ` <span class="badge gray">${n}일 전</span>`;
+      if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
+      return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
+    };
+    const evRow = (ev, when, dl) => `<div class="m-ev click ${evEnd(ev) < today ? 'past' : ''}" data-evo="${ev.id}">
+      <span class="badge ${MEvents.TCLS[evType(ev)]}">${MEvents.tagLabel(ev)}</span>
+      <span class="m-ev-b"><b>${esc(MEvents.rowText(ev))}${dl ? dLeft(ev) : ''}</b>
+        <span class="small soft">${esc(when)}</span>
+        ${ev.memo ? `<span class="small muted pre">${esc(ev.memo)}</span>` : ''}</span></div>`;
+    const whenOf = (ev) => isRange(ev) ? eventRangeLabel(ev) + (ev.start ? ' ' + eventTime(ev) : '') : (eventTime(ev) || '시간 없음');
+
+    // 수업 (PC와 같은 상태 표시 · 일지 건너뛰기 / 취소 · 남은 일지 모두 건너뛰기)
+    const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
+    const hol = Holidays.name(date);
+    let h = `<div class="m-sec-t">수업<span class="small soft">${DOW[dowOf(date)]}요일</span><span class="m-grow"></span>${!hol && unwritten.length > 1 ? '<button type="button" class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
+    h += '<div class="panel m-cls">';
+    if (hol && classes.length) h += `<div class="hol-note">공휴일(${esc(hol)})입니다. 수업이 없어 일지를 쓰지 않아도 됩니다.</div>`;
+    h += classes.length ? `<div class="${hol ? 'hol-dim' : ''}">` + classes.map(c => {
+      const les = Lessons.isSaved(c.id, date) ? Store.get('lessons', Lessons.lessonId(c.id, date)) : null;
+      const sk = !les && Lessons.isSkipped(c.id, date);
+      const roster = Classes.rosterOn(c.id, date);
+      const checked = les ? roster.filter(s => les.att && les.att[s.id]).length : 0;
+      const came = les ? roster.filter(s => les.att && ['P', 'L', 'E', 'M'].includes(les.att[s.id])).length : 0;
+      const absent = les ? roster.filter(s => les.att && les.att[s.id] === 'A').length : 0;
+      return `<div class="m-cl" data-class="${c.id}">
+        <div class="m-cl-t"><span class="m-cl-time">${esc(Classes.dayTimeLabel(c, dowOf(date)))}</span>${Classes.dot(c)}<b>${esc(c.name)}</b> <span class="muted small">${roster.length}명</span></div>
+        <div class="m-cl-s">${les ? (checked >= roster.length ? '<span class="badge green">작성 완료</span>' : '<span class="badge orange">작성 중</span>') : sk ? Lessons.skipBadge(c.id, date) : hol ? '<span class="badge gray">공휴일</span>' : '<span class="badge gray">일지 작성 전</span>'}
+          ${les && checked ? `<span class="badge">출석 ${came}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}
+          <span class="m-grow"></span>${les || (hol && !sk) ? '' : sk ? `<button type="button" class="btn sm ghost" data-unskip="${c.id}">건너뛰기 취소</button>` : `<button type="button" class="btn sm ghost" data-skip="${c.id}">일지 건너뛰기</button>`}</div></div>`;
+    }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
+    h += '</div>';
+    if (o.exam.length) h += `<div class="m-sec-t">시험 일정</div><div class="m-evs">${o.exam.map(ev => evRow(ev, whenOf(ev), true)).join('')}</div>`;
+    if (evs.length) h += `<div class="m-sec-t">일정</div><div class="m-evs">${evs.map(ev => evRow(ev, whenOf(ev), false)).join('')}</div>`;
+    if (upcoming.length) h += `<div class="m-sec-t">다가오는 일정<span class="small soft">2주</span></div><div class="m-evs">${upcoming.map(ev => evRow(ev, isRange(ev) ? eventRangeLabel(ev) + (ev.start ? ' ' + eventTime(ev) : '') : `${fmtMD(ev.date)} ${ev.start || ''}`.trim(), true)).join('')}</div>`;
+    return h;
   },
 
   moveMonth(n) {
@@ -640,6 +686,16 @@ const MTodos = {
   bind(main) {
     main.onclick = (e) => {
       if (e.target.closest('[data-addtodo]')) { TodoX.add(this.sel, this.OPT); return; }
+      if (e.target.closest('[data-tdsearch]')) { TodoX.search(); return; }
+      if (e.target.closest('[data-skipall]')) {
+        const d = this.sel;
+        Lessons.askSkip(Lessons.classesOn(d).filter(c => !Lessons.isSaved(c.id, d) && !Lessons.isSkipped(c.id, d)).map(c => c.id), d);
+        return;
+      }
+      const sk = e.target.closest('[data-skip]'); if (sk) { Lessons.askSkip([sk.dataset.skip], this.sel); return; }
+      const us = e.target.closest('[data-unskip]'); if (us) { Lessons.unskip(us.dataset.unskip, this.sel); return; }
+      const eo = e.target.closest('[data-evo]'); if (eo) { EventModal.open(eo.dataset.evo); return; }
+      const cl = e.target.closest('[data-class]'); if (cl) { Lessons.open(this.sel, cl.dataset.class); return; }
       if (e.target.closest('[data-ympick]')) { this.pickYm(); return; }
       const mo = e.target.closest('[data-mon]');
       if (mo) {
@@ -658,16 +714,34 @@ const MTodos = {
     };
   },
 };
-
 /* =========================================================
    App — 화면 전환 / 로그인 / 동기화 표시 (store.js·sms.js 등이 부르는 이름 그대로)
    ========================================================= */
+/* =========================================================
+   수업일지 — 할일 탭의 '수업'을 누르면 PC 수업일지 화면(Lessons)을 그대로 연다 (새 탭은 만들지 않음)
+   · 저장·취소·삭제 뒤에는 PC처럼 들어온 날짜의 할일 화면으로 돌아감 (App.pickDate)
+   · 휴대폰 뒤로가기 / 아래 '할일' 탭 → 할일 화면으로
+   ========================================================= */
+const MLessons = {
+  _back: null,
+  render(main, p) {
+    if (!this._back) this._back = BackGuard.add(() => { this._back = null; App.go('todos', {}); });
+    Lessons.render(main, p);
+  },
+  onLeave() {
+    Lessons.onLeave();
+    if (this._back) { const f = this._back; this._back = null; BackGuard.remove(f); }
+  },
+};
+
 const App = {
   page: 'todos',
   params: {},
   selDate: todayStr(),
   _needRender: false,
-  pages: { todos: MTodos, timetable: MTimetable, sms: MSms, progress: MProgress, events: MEvents, makeups: MMakeups },
+  pages: { todos: MTodos, timetable: MTimetable, sms: MSms, progress: MProgress, events: MEvents, makeups: MMakeups, lessons: MLessons },
+  TITLES: { lessons: '수업일지' },          // 아래 탭에 없는 화면의 제목
+  TAB_OF: { lessons: 'todos' },             // 아래 탭에 없는 화면은 들어온 탭을 켜 둠
 
   go(page, params = {}) {
     if (!this.pages[page]) page = 'todos';
@@ -677,6 +751,15 @@ const App = {
     this.page = page;
     this.params = params;
     this.render(!same);
+  },
+
+  // 날짜로 이동 (PC와 같은 이름: 할일 검색 결과 · 수업일지 저장 뒤 돌아가기) → 할일 탭의 그 날짜
+  pickDate(date) {
+    if (!isYmd(date)) return;
+    this.selDate = date;
+    MTodos.sel = date;
+    MTodos.month = date.slice(0, 7);
+    this.go('todos', {});
   },
 
   render(toTop = false) {
@@ -692,9 +775,11 @@ const App = {
     }
     main.scrollTop = toTop ? 0 : st;
     const tab = M_TABS.find(t => t[0] === this.page);
-    $('#m-title').textContent = tab ? tab[1] : '';
+    $('#m-title').textContent = tab ? tab[1] : (this.TITLES[this.page] || '');
+    const tabKey = this.TAB_OF[this.page] || this.page;
+    this.refreshSchools();
     $$('#m-tabs [data-page]').forEach(b => {
-      const on = b.dataset.page === this.page;
+      const on = b.dataset.page === tabKey;
       b.classList.toggle('active', on);
       if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
@@ -717,7 +802,16 @@ const App = {
     return !!(a && $('#main').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
   },
   flushRender() { if (this._needRender && !this.isEditingMain()) this.render(); },
-  refreshSchools() {},
+  // 학교 이름 자동완성 목록 (일정 창의 학교 칸 등 — PC와 같음)
+  refreshSchools() {
+    const set = new Set();
+    Store.all('students').forEach(s => { if (s.school) set.add(s.school.trim()); });
+    Store.all('exams').forEach(s => { if (s.school) set.add(s.school.trim()); });
+    Store.all('events').forEach(s => { if (s.school) set.add(s.school.trim()); });
+    const html = [...set].sort(ko).map(s => `<option value="${esc(s)}"></option>`).join('');
+    const dl = $('#dl-schools');
+    if (dl && dl.innerHTML !== html) dl.innerHTML = html;
+  },
 
   /* ---------- 동기화 표시 ---------- */
   setSync(text) { const el = $('#sync-bar'); if (el) el.textContent = text; },
@@ -823,6 +917,15 @@ const App = {
 
   // 입력이 끝나면 미뤄 둔 화면 갱신
   $('#main').addEventListener('focusout', () => setTimeout(() => App.flushRender(), 0));
+
+  // 키보드가 올라오면 실제로 보이는 영역(키보드 뺀 높이)을 CSS에 알려 준다 → 창(모달)을 그 안에 맞춰 키보드 뒤로 숨지 않게
+  if (window.visualViewport) {
+    const vv = window.visualViewport, rs = document.documentElement.style;
+    const setVV = () => { rs.setProperty('--vvh', Math.round(vv.height) + 'px'); rs.setProperty('--vvt', Math.round(vv.offsetTop) + 'px'); };
+    vv.addEventListener('resize', setVV);
+    vv.addEventListener('scroll', setVV);
+    setVV();
+  }
 
   // PIN: 6자리 자동 로그인 / Enter
   const pinEl = $('#pin-input');
