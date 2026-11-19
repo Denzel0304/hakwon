@@ -91,7 +91,8 @@ const WordBook = {
       groups[gi].had = studs.length;
       studs.forEach(s => {
         let o = per.get(s.id);
-        if (!o) { o = { s, gi, items: new Map(), cls: new Set() }; per.set(s.id, o); }
+        if (!o) { o = { s, gi, gis: new Set(), items: new Map(), cls: new Set() }; per.set(s.id, o); }
+        o.gis.add(gi);
         dates.forEach(d => {
           const src = AttBook.cellSrc(c, srcs, s.id, d);
           const sc = Store.get('classes', src) || c;
@@ -113,6 +114,14 @@ const WordBook = {
         const [sid, d] = k.split('|');
         if (sid === o.s.id && String(d).startsWith(pre) && !o.items.has(d)) o.items.set(d, { d, ents: [] });
       });
+    });
+    // 표시할 반: 기준일(이번 달은 오늘, 지난 달은 말일, 앞으로 올 달은 1일)에 수강 중인 반 중 앞선 반 (없으면 처음 나온 반)
+    //   같은 달에 잠깐 다녔던 다른 반이 앞 순서라서 지금 다니는 반에서 빠지는 일을 막는다
+    const today = todayStr(), lastD = pre + pad(new Date(Y, M, 0).getDate());
+    const base = today < pre + '01' ? pre + '01' : today > lastD ? lastD : today;
+    per.forEach(o => {
+      const cur = [...o.gis].sort((a, b) => a - b).find(gi => Store.where('enrollments', e => e.studentId === o.s.id && e.classId === groups[gi].c.id && Classes.enrollValid(e, base)).length);
+      if (cur != null) o.gi = cur;
     });
     per.forEach(o => {
       o.list = [...o.items.values()].sort((a, b) => ko(a.d, b.d));
