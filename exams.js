@@ -120,7 +120,10 @@ const Exams = {
     const list = all.filter(e => !!e.done === done)
       .filter(e => (!this.year || +e.year === +this.year) && (!this.sem || +e.semester === +this.sem))
       .filter(e => !q || [e.school, examTitle(e), e.range, NP.rangeText(e), e.memo].some(v => String(v || '').includes(q)))
-      .sort((a, b) => b.year - a.year || b.semester - a.semester || (a.kind === b.kind ? 0 : a.kind === 'final' ? -1 : 1) || ko(a.school, b.school) || a.grade - b.grade);
+      .sort(done
+        ? (a, b) => b.year - a.year || b.semester - a.semester || (a.kind === b.kind ? 0 : a.kind === 'final' ? -1 : 1) || ko(a.school, b.school) || a.grade - b.grade
+        // 진행중인 시험: 낮은 학년부터 → 같은 학년이면 학교 이름 순 (같은 학교·학년끼리는 최근 시험 먼저)
+        : (a, b) => a.grade - b.grade || ko(schoolShort(a.school), schoolShort(b.school)) || b.year - a.year || b.semester - a.semester || (a.kind === b.kind ? 0 : a.kind === 'final' ? -1 : 1));
     const ids = list.map(e => e.id);
     [...this.sel].forEach(id => { if (!ids.includes(id)) this.sel.delete(id); });     // 보이지 않는 항목은 선택에서 뺀다
     const cols = done ? 6 : 7;
