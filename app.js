@@ -171,7 +171,10 @@ const App = {
     if (cat) cat.classList.add('nav-hold');
     const p = b.dataset.page;
     if (p === 'lessons') App.go('lessons', { date: App.selDate });
-    else App.go(p, {});
+    else {
+      if (p === 'progress') { ProgressBook.classId = ''; ProgressSum.classId = ''; }   // 메뉴로 열면 진도는 '선택 안 함'에서 시작 (진도 요약은 '전체')
+      App.go(p, {});
+    }
   });
   $$('#nav .nav-cat').forEach(c => c.addEventListener('mouseleave', () => c.classList.remove('nav-hold')));
   // 시간표 아이콘 → 시간표만 팝업으로

@@ -780,15 +780,20 @@ const PL = {
   head(cur, bar) {
     const tab = (k, t) => `<button type="button" data-pltab="${k}" class="${cur === k ? 'active' : ''}">${t}</button>`;
     return `<div class="page-head pl-head${bar ? '' : ' no-bar'}"><h1>진도+일지</h1>
-      <div class="tabs">${tab('progress', '진도')}${tab('psum', '진도 요약')}${tab('lessons', '수업일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
+      <div class="tabs">${tab('progress', '진도')}${tab('psum', '진도 요약')}${tab('lessons', '수업 일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
   },
   click(e) {
     const b = e.target.closest('[data-pltab]');
     if (!b) return false;
     const t = b.dataset.pltab;
     if (t !== App.page) {
-      if (t === 'lessons') App.go('lessons', { date: App.selDate });
-      else App.go(t, {});            // 'progress' 진도 / 'psum' 진도 요약
+      if (t === 'lessons') { App.go('lessons', { date: App.selDate }); return true; }
+      // 진도 / 진도 요약: 지금 탭에서 보던 반을 이어서 보여 준다 ('' = 진도는 '선택 안 함', 진도 요약은 '전체')
+      //   수업일지 탭: 고른 반 / 진도 탭: 고른 반 / 진도 요약 탭: 고른 반
+      const cid = App.page === 'lessons' ? ((Lessons.form && Lessons.form.classId) || '')
+        : App.page === 'progress' ? ProgressBook.classId : App.page === 'psum' ? ProgressSum.classId : '';
+      if (t === 'progress') { ProgressBook.classId = cid; App.go('progress', cid ? { classId: cid } : {}); }
+      else { ProgressSum.classId = cid; App.go('psum', {}); }
     }
     return true;
   },
@@ -1635,16 +1640,17 @@ const ProgressBook = {
     if (p.classId) this.classId = p.classId;
     const linked = p.classId && Store.get('classes', p.classId);
     if (linked && linked.active === false && this.classId === linked.id) act.push(linked);
-    if (!this.classId || !act.some(c => c.id === this.classId)) this.classId = act[0] ? act[0].id : '';
+    if (this.classId && !act.some(c => c.id === this.classId)) this.classId = '';    // 목록에 없는 반 → 선택 안 함
     const cur = act.find(c => c.id === this.classId);
     let h = `<div class="page-narrow">${PL.head('progress')}`;
     // 반 선택 드롭다운 (검색칸 왼쪽, 선택된 반의 색 점 표시)
-    const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-pcls style="min-width:180px">${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
-    if (!this.classId) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
+    const clsSel = act.length ? `<span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-pcls style="min-width:180px"><option value="" ${this.classId ? '' : 'selected'}>선택 안 함</option>${act.map(c => `<option value="${c.id}" ${c.id === this.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>` : '';
+    if (!act.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다.</div></div></div>'; this.bind(main); return; }
     const q = this.q.trim();
     const todosOf = (lid) => Store.where('todos', t => t.lessonId === lid).sort((a, b) => ko(a.date, b.date) || ko(a.createdAt, b.createdAt));
     // 검색어가 있으면 진행 중인 모든 반에서 찾는다 (종료된 반 제외) · 없으면 선택한 반만
     const allCls = !!q;
+    const none = !this.classId && !allCls;     // 반 '선택 안 함' + 검색어 없음 → 아무 기록도 보이지 않음
     const actIds = act.filter(c => c.active !== false).map(c => c.id);
     const clsOrd = (cid) => { const i = actIds.indexOf(cid); return i < 0 ? 999 : i; };
     const list = Store.where('lessons', l => (allCls ? actIds.includes(l.classId) : l.classId === this.classId) && !Lessons.isEmpty(l))
@@ -1653,12 +1659,12 @@ const ProgressBook = {
       .sort((a, b) => ko(b.date, a.date) || clsOrd(a.classId) - clsOrd(b.classId));
     h += `<div class="toolbar">${clsSel}<input type="search" data-q value="${esc(this.q)}" placeholder="전체 반에서 진도·숙제·메모·할일 검색" style="width:260px">
       <input type="date" data-from value="${esc(this.from)}"> ~ <input type="date" data-to value="${esc(this.to)}">
-      ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}<span class="muted small">${allCls ? '전체 반 ' : ''}${list.length}회</span>
+      ${this.q || this.from || this.to ? '<button class="btn sm ghost" data-clear>조건 지우기</button>' : ''}${none ? '' : `<span class="muted small">${allCls ? '전체 반 ' : ''}${list.length}회</span>`}
       <span class="grow" style="flex:1"></span><label class="chk"><input type="checkbox" data-npsum ${this.npOn ? 'checked' : ''}>내신 요약</label><label class="chk"><input type="checkbox" data-gpsum ${this.gpOn ? 'checked' : ''}>비내신 요약</label></div>`;
     // 내신 요약: 시험 범위 · 진도 · 수업 준비 · 배부 자료
     if (allCls && (this.npOn || this.gpOn)) h += '<p class="small muted" style="margin:0 0 10px">전체 반 검색 중에는 내신·비내신 요약을 숨깁니다 (검색어를 지우면 다시 보입니다).</p>';
-    if (!allCls && (this.npOn || this.gpOn)) h += `<div class="np-guide"><b>색 안내</b>${NP.legendHtml(this.npOn, false)}<span class="small muted">실선 = 수업일지로 기록 · 점선 = 수업 없이 직접 처리</span></div>`;
-    if (this.npOn && !allCls) {
+    if (!allCls && this.classId && (this.npOn || this.gpOn)) h += `<div class="np-guide"><b>색 안내</b>${NP.legendHtml(this.npOn, false)}<span class="small muted">실선 = 수업일지로 기록 · 점선 = 수업 없이 직접 처리</span></div>`;
+    if (this.npOn && !allCls && this.classId) {
       const today = todayStr();
       const sel = NP.liveIds(this.npSel[this.classId] || NP.autoExams(this.classId, today).map(e => e.id));   // 진행중인 시험만
       const cands = NP.candExams(this.classId, today, sel);
@@ -1667,7 +1673,7 @@ const ProgressBook = {
       h += NP.summaryHtml(this.classId, sel);
       h += '<p class="small muted" style="margin:6px 0 14px">진도 칸을 누르면 수업 없이 직접 처리합니다 — 번호는 완료 ↔ 빈칸, 과는 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 기록된 칸은 그 날 일지에서 고칩니다). 수업 준비는 교재 기준이라 모든 반에 같이 표시됩니다.</p>';
     }
-    if (this.gpOn && !allCls) h += NP.genSummaryHtml(this.classId) + '<p class="small muted" style="margin:6px 0 14px">과·강 칸을 누르면 수업 없이 직접 처리합니다 — 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 완결된 칸은 그 날 일지에서 고칩니다).</p>';
+    if (this.gpOn && !allCls && this.classId) h += NP.genSummaryHtml(this.classId) + '<p class="small muted" style="margin:6px 0 14px">과·강 칸을 누르면 수업 없이 직접 처리합니다 — 빈칸 → 진행 중 → 완료 → 빈칸 (수업일지로 완결된 칸은 그 날 일지에서 고칩니다).</p>';
     h += list.length ? `<div class="tbl-wrap"><table class="tbl compact" style="table-layout:fixed;min-width:${allCls ? 880 : 760}px"><colgroup><col style="width:100px">${allCls ? '<col style="width:120px">' : ''}<col style="width:120px"><col><col><col><col></colgroup><thead><tr><th>날짜</th>${allCls ? '<th>반</th>' : ''}<th>출석</th><th>진도</th><th>숙제</th><th>메모</th><th>할일</th></tr></thead><tbody>${list.map(l => {
       const v = Object.values(l.att || {});
       const n = (k) => v.filter(x => x === k).length;
@@ -1677,7 +1683,7 @@ const ProgressBook = {
       return `<tr class="click ${p.date === l.date && l.classId === this.classId ? 'hl' : ''}" data-id="${l.id}"><td class="nowrap"><b>${fmtMD(l.date)}</b></td>${allCls ? `<td class="nowrap small">${lc ? Classes.dot(lc) + esc(lc.name) : '<span class="muted">-</span>'}</td>` : ''}<td class="nowrap small">${att}</td>
         <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(l.homework || '', q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
         <td class="small">${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted">${fmtMD(t.date)}</span></div>`).join('')}</td></tr>`;
-    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${allCls || Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
+    }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${none ? '반을 선택하세요.' : allCls || Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
     h += '</div>';
     main.innerHTML = h;
     this.bind(main);
@@ -1701,7 +1707,7 @@ const ProgressBook = {
     main.onchange = (e) => {
       if (e.target.matches('[data-npsum]')) { this.npOn = e.target.checked; App.render(); return; }
       if (e.target.matches('[data-gpsum]')) { this.gpOn = e.target.checked; App.render(); return; }
-      if (e.target.matches('[data-pcls]') && e.target.value) { this.classId = e.target.value; App.go('progress', {}); return; }
+      if (e.target.matches('[data-pcls]')) { this.classId = e.target.value; App.go('progress', {}); return; }      // '' = 선택 안 함
       if (e.target.matches('[data-from]')) { this.from = e.target.value; App.render(); }
       if (e.target.matches('[data-to]')) { this.to = e.target.value; App.render(); }
     };
