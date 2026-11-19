@@ -9,7 +9,7 @@ const App = {
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
     lessons: Lessons, attendance: AttBook, report: Reports, words: WordBook, vocas: Vocas, books: Books, progress: ProgressBook, psum: ProgressSum, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
-    counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings, lessonplan: LessonPlan,
+    counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings, lessonplan: LessonPlan, software: SoftwarePage,
   },
 
   go(page, params = {}) {
