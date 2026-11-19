@@ -1106,7 +1106,7 @@ const Lessons = {
     const inCard = (d) => split && d.grp && (placed.has(d.grp) || hwRest.includes(d.grp));
     h += `</div><div class="panel">
       <h2>수업 내용</h2>
-      ${isEdit ? `<div class="lesson-field ls-move"><label>수업 날짜</label><div class="row"><input type="date" data-movedate value="${esc(f.moveTo || date)}" style="width:170px"><span class="hint">다른 날짜로 옮기려면 바꾸고 저장 (할일·보강 기록도 함께 옮겨짐)</span></div></div>` : ''}
+      ${isEdit ? `<div class="lesson-field ls-move"><label>수업 날짜</label><div class="row"><input type="date" data-movedate value="${esc(f.moveTo || date)}" style="width:170px"></div></div>` : ''}
       <div class="lesson-field"><label>교재 진도</label><div data-npbox>${npHtml}</div>${hwRest.length ? `<div class="hw-split" style="margin:0 0 8px">
         <div class="small soft">시험이 등록되지 않은 학교</div>
         ${hwRest.map(lb => `<div class="hw-row"><span class="hw-lb">${esc(lb)} 개별 숙제</span><textarea data-hw="${esc(lb)}" rows="2" placeholder="${esc(lb)} 숙제 (선택)">${esc(f.hw.by[lb] || '')}</textarea></div>${todoBlock(lb)}`).join('')}</div>` : ''}</div>
