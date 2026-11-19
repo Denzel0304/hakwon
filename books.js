@@ -276,7 +276,7 @@ const Books = {
           <td class="small">${esc(cls) || '<span class="muted">-</span>'}</td>`;
         BOOK_CATS.forEach(cat => {
           const ing = this.ingOf(s.id, cat);
-          h += `<td class="bk-cell${ing.length ? ' has' : ''}">${ing.map(r => `<div class="bk-item${this.over(r) ? ' over' : ''}" data-r="${r.id}" title="${esc(this.nameOf(r))}${r.memo ? '\n' + esc(firstLine(r.memo)) : ''}">
+          h += `<td class="bk-cell${ing.length ? ' has' : ''}">${ing.map(r => `<div class="bk-item ${cat}${this.over(r) ? ' over' : ''}" data-r="${r.id}" title="${esc(this.nameOf(r))}${r.memo ? '\n' + esc(firstLine(r.memo)) : ''}">
               <b>${highlight(this.nameOf(r), this.bq)}</b><span class="d">${this.sd(r.start)}~${r.plan ? (this.over(r) ? ' <em>' + this.sd(r.plan) + ' 예정</em>' : ' ' + this.sd(r.plan) + ' 예정') : ''}${r.memo ? ' · 메모' : ''}</span></div>`).join('')}
             <button type="button" class="bk-add" data-add="${s.id}|${cat}" title="${BOOK_CAT[cat]} 교재 등록">+</button></td>`;
         });
@@ -363,7 +363,7 @@ const Books = {
         <span style="flex:1"></span><button type="button" class="btn sm" data-add="${sid}|${cat}">+ 등록</button></div>`;
       if (!ing.length && !done.length) h += '<div class="small muted bk-none">등록된 교재가 없습니다.</div>';
       ing.forEach(r => {
-        h += `<div class="bk-card${this.over(r) ? ' over' : ''}" data-r="${r.id}"><div class="bk-card-m"><b>${esc(this.nameOf(r))}</b> ${this.stBadge(r)}
+        h += `<div class="bk-card ${cat}${this.over(r) ? ' over' : ''}" data-r="${r.id}"><div class="bk-card-m"><b>${esc(this.nameOf(r))}</b> ${this.stBadge(r)}
             <div class="small soft">${fmtDate(r.start, false)} 시작${r.plan ? ' · ' + fmtDate(r.plan, false) + ' 끝낼 예정' : ''} · ${this.daysBetween(r.start, todayStr()) || 0}일째</div>
             ${r.memo ? `<div class="small pre bk-memo">${esc(r.memo)}</div>` : ''}</div>
           <div class="bk-card-b"><button type="button" class="btn sm primary" data-fin="${r.id}|done">완료</button><button type="button" class="btn sm" data-fin="${r.id}|stop">중단</button></div></div>`;
@@ -707,16 +707,21 @@ const Books = {
 .bk-cat.read { background: #E3F0FB; color: #1D5E93; }
 .bk-cat.gram { background: #EDE7FA; color: #5B3FA6; }
 .bk-cat.listen { background: #E2F4EC; color: #1F7A52; }
-.bk-cat.word { background: #FCEFDC; color: #A9650B; }
+.bk-cat.word { background: #FBE6EF; color: #A3346A; }      /* 단어: 분홍 (주황은 '예정일 지난 교재' 표시와 겹쳐서 피함) */
 .bk-cat.none { background: #EEF2F5; color: var(--ink-soft); }
+/* 영역별 교재 색 (위 머리줄 표시와 같은 색) — 표의 교재 칸 · 학생 교재 창의 카드 */
+.bk-item.read, .bk-card.read { --bkb: #E3F0FB; --bkc: #1D5E93; }
+.bk-item.gram, .bk-card.gram { --bkb: #EDE7FA; --bkc: #5B3FA6; }
+.bk-item.listen, .bk-card.listen { --bkb: #E2F4EC; --bkc: #1F7A52; }
+.bk-item.word, .bk-card.word { --bkb: #FBE6EF; --bkc: #A3346A; }
 .bk-tbl td { vertical-align: top; }
 .bk-tbl .bk-name { cursor: pointer; }
 .bk-tbl .bk-name:hover b { color: var(--accent-ink); text-decoration: underline; }
 .bk-tbl tr:hover td { background: var(--tint-2); }
 .bk-tbl tr.bk-grp td, .bk-tbl tr.bk-grp:hover td { background: var(--tint-strong); padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
 .bk-cell { min-width: 120px; max-width: 190px; }
-.bk-item { display: block; padding: 3px 7px; margin-bottom: 3px; border-radius: 6px; background: var(--accent-soft); border: 1px solid transparent; cursor: pointer; line-height: 1.35; }
-.bk-item:hover { border-color: var(--accent); }
+.bk-item { display: block; padding: 3px 7px; margin-bottom: 3px; border-radius: 6px; background: var(--bkb, var(--accent-soft)); border: 1px solid transparent; cursor: pointer; line-height: 1.35; }
+.bk-item:hover { border-color: var(--bkc, var(--accent)); }
 .bk-item b { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bk-item .d { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
 .bk-item.over { background: var(--warn-soft); }
@@ -731,8 +736,8 @@ const Books = {
 .bk-sec:last-child { margin-bottom: 0; }
 .bk-sec-h { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
 .bk-none { padding: 2px 2px 4px; }
-.bk-card { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; margin-bottom: 6px; border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); border-radius: 8px; cursor: pointer; }
-.bk-card:hover { background: var(--accent-soft); }
+.bk-card { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; margin-bottom: 6px; border: 1px solid var(--line-strong); border-left: 3px solid var(--bkc, var(--accent)); border-radius: 8px; cursor: pointer; }
+.bk-card:hover { background: var(--bkb, var(--accent-soft)); }
 .bk-card.over { border-left-color: var(--warn); }
 .bk-card-m { flex: 1; min-width: 0; }
 .bk-card-b { display: flex; gap: 4px; flex: none; }
