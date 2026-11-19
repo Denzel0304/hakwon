@@ -1058,7 +1058,7 @@ const EventsPage = {
         if (pa !== pb) return pa ? 1 : -1;                 // 다가오는 일정 먼저
         return pa ? ko(b.date, a.date) : ko(a.date, b.date) || ko(a.start, b.start);
       });
-    let h = `<div class="page-head"><h1>일정+공휴일</h1><button class="btn primary" data-a="add">+ 일정 추가</button><button class="btn" data-a="addhol">+ 공휴일 추가</button><span class="sub">시험 일정 · 직전 보강 · 영어 시험 · 기타 · 공휴일</span></div>
+    let h = `<div class="page-head"><h1>일정+공휴일</h1><button class="btn primary" data-a="add">+ 일정 추가</button><button class="btn" data-a="addhol">+ 공휴일 추가</button></div>
       <div class="tabs"><button data-view="cur" class="${this.view === 'cur' ? 'active' : ''}">${thisY}년<span class="cnt">${curAll.length}</span></button><button data-view="past" class="${this.view === 'past' ? 'active' : ''}">이전 해<span class="cnt">${every.length - curAll.length}</span></button></div>
       <div class="toolbar">${this.view === 'past' ? (pastYears.length ? `<select data-pyear>${pastYears.map(y => `<option value="${y}" ${y === this.pastYear ? 'selected' : ''}>${y}년</option>`).join('')}</select>` : '') : ''}<select data-type><option value="">전체 종류</option>${Object.keys(EVENT_TYPES).map(k => `<option value="${k}" ${this.type === k ? 'selected' : ''}>${EVENT_TYPES[k].label}</option>`).join('')}</select>
       <input type="search" data-q value="${esc(this.q)}" placeholder="학교, 제목, 메모 검색" style="width:240px">

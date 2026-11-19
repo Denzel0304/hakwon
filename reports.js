@@ -172,8 +172,7 @@ const Reports = {
     let h = `<div class="rp-page"><div class="page-head"><h1>Report</h1>
       ${NavBar.month(this.month)}
       <button class="btn sm rp-sumbtn${isSum ? ' on' : ''}" data-rp="sum" title="이 달 반별 리포트 작성(발송) 현황">월별 요약</button>
-      <button class="btn sm rp-pdfbtn" data-rp="pdf" title="이 달 반별 리포트 현황을 A4로 인쇄 · PDF 저장">PDF 저장</button>
-      <span class="grow"></span>
+      <button class="btn sm pdf" data-rp="pdf" title="이 달 반별 리포트 현황을 A4로 인쇄 · PDF 저장">PDF 저장</button>
       <button class="btn sm" data-rp="cfg">⚙ 설정</button></div>`;
     if (!cfg.academy.trim()) h += `<div class="toolbar small soft"><span class="muted">⚙ 설정에서 학원 이름·로고·제목 문구를 넣으면 리포트 이미지 맨 위에 표시됩니다.</span></div>`;
 
@@ -398,7 +397,7 @@ const Reports = {
           <label class="btn sm">이미지 선택<input type="file" accept="image/*" data-logo-file hidden></label>
           <button type="button" class="btn sm danger" data-logo-del>로고 삭제</button></div>
         <label>학생 표시</label><input type="text" name="sub" value="${esc(c.sub)}" placeholder="${esc(RP_DEF.sub)}">
-        <label class="top">리포트 대상 반</label><div class="rp-cls">${this.cfgClasses(c.excl).map(o => `<label class="chk"><input type="checkbox" data-xc="${o.k}" ${c.excl.includes(o.k) ? '' : 'checked'}>${o.c ? Classes.dot(o.c) + esc(o.c.name) : '반 없음'}</label>`).join('')}</div>
+        <label class="top">리포트 대상 반</label><div class="pick-list wt-cfg">${this.cfgClasses(c.excl).map(o => `<label><input type="checkbox" data-xc="${o.k}" ${c.excl.includes(o.k) ? '' : 'checked'}>${o.c ? Classes.dot(o.c) + '<b>' + esc(o.c.name) + '</b>' : '<b>반 없음</b>'}</label>`).join('')}</div>
         <div class="full hint" style="margin-top:-4px">체크를 끈 반은 월간 리포트·주간 테스트 모두에서 빠집니다 (학생 목록·월별 요약·통계·PDF). 여러 반에 다니는 학생은 앞 순서의 반으로 봅니다.</div>
         <div class="full rp-cfg-h">월간 리포트</div>
         <label>제목 문구</label><input type="text" name="title" value="${esc(c.title)}" placeholder="${esc(RP_DEF.title)}">
@@ -849,8 +848,6 @@ const Reports = {
 .rp-cfg input[type=text] { width: 100%; }
 .rp-cfg-h { font-weight: 800; font-size: 14px; color: var(--accent-ink); padding: 10px 0 4px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
 .rp-cfg-h:first-child { padding-top: 0; }
-.rp-cls { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.rp-cls .chk { display: inline-flex; align-items: center; }
 .rp-pv { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 18px; }
 .rp-pv-item img { display: block; width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 2px 8px rgba(30, 70, 105, .10); }
 .rp-pv-bar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
@@ -860,7 +857,6 @@ const Reports = {
 .rp-sumbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .rp-reset { background: var(--danger-soft); border-color: #F0C6C8; color: var(--danger); }
 .rp-reset:hover { background: #F9DADB; border-color: var(--danger); color: var(--danger); }
-.rp-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 /* 탭 · 주차 */
 .rp-tabs { margin-bottom: 12px; }
 .rp-weeks { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 14px; }

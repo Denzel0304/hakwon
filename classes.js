@@ -293,8 +293,7 @@ const Classes = {
         <td class="num">${r.length}${byDay}${up.length ? `<div class="small muted">+${up.length} 예정</div>` : ''}</td><td class="small">${names.join(', ') || '<span class="muted">-</span>'}</td></tr>`;
     };
     let h = `<div class="page-narrow"><div class="page-head"><h1>반</h1><button class="btn primary" data-a="add">+ 반 만들기</button>
-      <span class="sub">진행 중 ${act.length}개</span><span class="grow"></span>
-      <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm cls-pdfbtn" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원·반이동을 A4로 인쇄 · PDF 저장">PDF 저장</button></span>
+      <span class="cls-pdfbox"><input type="month" data-pdfmonth value="${esc(this.pdfMonth || today.slice(0, 7))}" max="${today.slice(0, 7)}" title="PDF로 저장할 달"><button class="btn sm pdf" data-a="pdf" title="고른 달의 반 현황·요약·신규 등록·퇴원·반이동을 A4로 인쇄 · PDF 저장">PDF 저장</button></span><span class="grow"></span>
       <label class="chk small"><input type="checkbox" data-ended ${this.showEnded ? 'checked' : ''}>종료된 반 보기 (${ended.length})</label></div>`;
     // 종료된 반: '종료된 반 보기'를 켰을 때만, 진행 중인 반 아래 구분선 + '종료된 반' 글씨 + 회색 음영으로
     const endRows = this.showEnded && ended.length ? `<tr class="cls-endsep"><td colspan="4">종료된 반 <span>${ended.length}개</span></td></tr>${ended.map(row).join('')}` : '';
@@ -892,7 +891,7 @@ const Timetable = {
     const today = todayStr();
     const g = this.gridHtml(today);
     const span = g.span;
-    let h = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>` + g.html;
+    let h = `<div class="page-head"><h1>시간표</h1></div>` + g.html;
     h += `<div class="bc2-resize tt2-resize" title="끌어서 시간표 높이 조절"><span></span></div>`;
     main.innerHTML = h;
 
@@ -1014,7 +1013,7 @@ const Timetable = {
     const probe = document.createElement('div');
     probe.className = 'tt-probe';
     probe.style.cssText = `position:fixed;left:-20000px;top:0;width:${W}px;visibility:hidden;pointer-events:none`;
-    probe.innerHTML = `<div class="page-head"><h1>시간표</h1><span class="sub">블록을 누르면 반 정보를 수정합니다</span></div>${g.html}<div class="bc2-resize tt2-resize"><span></span></div>`;
+    probe.innerHTML = `<div class="page-head"><h1>시간표</h1></div>${g.html}<div class="bc2-resize tt2-resize"><span></span></div>`;
     $('.tt2', probe).style.setProperty('--ppm', '0px');
     document.body.appendChild(probe);
     const ph = $('.page-head', probe);
@@ -1290,7 +1289,6 @@ document.addEventListener('change', (e) => {
   st.textContent = `
 .cls-pdfbox { display: inline-flex; align-items: center; gap: 6px; }
 .cls-pdfbox input[type=month] { height: 30px; padding: 0 8px; font-size: 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); }
-.cls-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 .cls-sum { margin-top: 22px; }
 .cls-sum-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .cls-sum-head h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }

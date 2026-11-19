@@ -691,8 +691,7 @@ const Prints = (() => {
       loadCv(); loadPn();
       const cover = isCvTab(this.tab);
       if (cover) useKind(this.tab);
-      main.innerHTML = `<div class="page-head"><h1>표지+양식</h1>
-          <span class="sub">${cover ? '디자인을 고르고, 필요한 글자만 입력하세요. 비워 둔 항목은 표지에 나오지 않아요.' : '양식을 고르고 간격을 맞춘 뒤 출력하세요.'}</span></div>
+      main.innerHTML = `<div class="page-head"><h1>표지+양식</h1></div>
         <div class="tabs">${[['cover', '내신 표지'], ['general', '일반 표지'], ['note', '시험지·노트']].map(([k, nm]) =>
           `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${nm}</button>`).join('')}</div>
         <div class="pr-wrap">
@@ -981,7 +980,7 @@ const Prints = (() => {
           <p class="pr-hint" data-cv-duplex-hint>${this.cvDuplexHint()}</p>
           <div class="pr-print" style="margin-top:10px">
             <input type="number" data-cv-copies min="1" max="300" value="${cv.copies || 1}" aria-label="인쇄 매수"${pkOn() ? ' disabled' : ''}>
-            <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>${pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${Math.min(300, Math.max(1, +cv.copies || 1))}장)`}</button>
+            <button type="button" class="btn primary" data-act="cv-print" data-cv-print-btn>${pkOn() ? `인쇄 / PDF (${pkStudents().length}명)` : `인쇄 / PDF (${Math.min(300, Math.max(1, +cv.copies || 1))}장)`}</button>
           </div>
           <p class="pr-hint">앞표지를 모두 인쇄한 뒤, 뒷표지(디자인 + 학원명)가 같은 수만큼 이어서 나와요.</p>
           <div class="pr-note">인쇄 창에서 <b>용지 A4</b>, <b>배율 100%(실제 크기)</b>로 맞춰 주세요. 양면 프린터를 사용할 땐 인쇄 창의 <b>양면 인쇄</b>도 켜져 있어야 해요.
@@ -994,7 +993,7 @@ const Prints = (() => {
     cvLogoPrevHtml() { return logo ? `<img src="${logo}" alt="학원 로고">` : '로고 없음'; },
     cvPrintLabel(main) {
       const b = $('[data-cv-print-btn]', main);
-      if (b) b.textContent = pkOn() ? `인쇄하기 (${pkStudents().length}명)` : `인쇄하기 (${cvCopies(main)}장)`;
+      if (b) b.textContent = pkOn() ? `인쇄 / PDF (${pkStudents().length}명)` : `인쇄 / PDF (${cvCopies(main)}장)`;
       const inp = $('[data-cv-copies]', main);
       if (inp) inp.disabled = pkOn();
     },
@@ -1164,7 +1163,7 @@ const Prints = (() => {
           </div>
           <div class="pr-print">
             <input type="number" data-pn-copies min="1" max="500" step="1" value="${esc(pn.copies)}" placeholder="부수" aria-label="출력 부수"${pkOn() ? ' disabled' : ''}>
-            <button type="button" class="btn primary" data-act="pn-print" data-pn-print-btn>${pkOn() ? `출력 (${pkStudents().length}명)` : '출력'}</button>
+            <button type="button" class="btn primary" data-act="pn-print" data-pn-print-btn>${pkOn() ? `인쇄 / PDF (${pkStudents().length}명)` : '인쇄 / PDF'}</button>
           </div>
           <div class="pr-note">인쇄창에서 배율은 <b>기본값(100%)</b>으로 두세요. 양면 프린터를 사용할 땐 인쇄창의 <b>양면 인쇄</b>도 켜져 있어야 해요.</div>
         </div>`;
@@ -1202,7 +1201,7 @@ const Prints = (() => {
     },
     pnPrintLabel(main) {
       const b = $('[data-pn-print-btn]', main);
-      if (b) b.textContent = pkOn() ? `출력 (${pkStudents().length}명)` : '출력';
+      if (b) b.textContent = pkOn() ? `인쇄 / PDF (${pkStudents().length}명)` : '인쇄 / PDF';
       const inp = $('[data-pn-copies]', main);
       if (inp) inp.disabled = pkOn();
     },

@@ -823,8 +823,8 @@ const SoftwarePage = {
 
     const busy = t => (t === 'print' ? SwPrint.busy : SwUnlock.running) ? '<span class="cnt">· 처리 중</span>' : '';
     const tab = (k, t) => `<button type="button" data-swtab="${k}" class="${this.tab === k ? 'active' : ''}">${t}${busy(k)}</button>`;
-    main.innerHTML = `<div class="page-narrow"><div class="page-head pl-head no-bar"><h1>Software</h1>
-      <div class="tabs">${tab('print', 'PDF 일괄 인쇄')}${tab('unlock', 'PDF 제한 해제')}</div></div>
+    main.innerHTML = `<div class="page-narrow"><div class="page-head"><h1>Software</h1></div>
+      <div class="tabs">${tab('print', 'PDF 일괄 인쇄')}${tab('unlock', 'PDF 제한 해제')}</div>
       <div id="sw-body" class="sw-body"></div></div>`;
     this.paint();
 

@@ -251,6 +251,8 @@ body.app-on #mg-app { display: flex; }
 .btn.sm { padding: 4px 11px; font-size: 13.5px; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: var(--accent-soft); }
+/* PDF 저장 버튼 (모든 화면 공통) */
+.btn.pdf { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .icon-btn { border: 0; background: transparent; color: var(--ink-mute); padding: 2px 6px; border-radius: 5px; font-size: 13px; }
 .icon-btn:hover { background: var(--danger-soft); color: var(--danger); }
@@ -1332,21 +1334,15 @@ body.theme-gray {
 }
 
 /* =========================================================
-   진도+일지 (lessons.js 의 PL) — 제목 → 탭(진도 | 수업일지) → 수업일지의 날짜·저장 줄
-   셋 다 위에 고정되는 제목줄 안에 있어, 긴 일지를 내려도 탭과 저장 버튼이 보임
+   진도+일지 (lessons.js 의 PL) — 제목줄(제목 + 수업일지의 날짜·저장 줄) → 아래 탭(진도 | 진도 요약 | 수업일지)
+   날짜·저장 줄은 위에 고정되는 제목줄 안에 있어, 긴 일지를 내려도 저장 버튼이 보임
    ========================================================= */
-#main .page-narrow > .page-head.pl-head { flex-direction: column; align-items: stretch; gap: 0; }
-.pl-head > h1 { margin: 0 0 10px; }
-.pl-head > .tabs { margin-bottom: 0; }
-#main .page-narrow > .page-head.pl-head.no-bar { padding-bottom: 0; border-bottom: 0; }
-.pl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 12px; }
-.pl-bar .sub { color: var(--ink-soft); font-size: 14.5px; }
+.pl-head .pl-bar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pl-bar .grow { flex: 1; }
 
 /* =========================================================
    성적 (exams.js Scores) — 반별 추이표
    ========================================================= */
-.page-head .sc-tabs { margin: 0 0 0 8px; border-bottom: 0; }
 .sc-start { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
 .sc-start select { font-weight: 700; color: var(--accent-ink); }
 .sc-sec { padding: 14px 16px 10px; }

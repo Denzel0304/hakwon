@@ -1250,13 +1250,6 @@ const Vocas = (() => {
      화면
      ========================================================= */
   const TABS = [['test', '단어 시험'], ['stu', '학생별 출제'], ['memo', '암기장'], ['book', '시험지 책'], ['lib', '단어장']];
-  const SUBS = {
-    lib: '엑셀 단어장을 등록한 뒤 위 탭에서 시험지와 암기장을 출제하세요.',
-    memo: 'Day별 6회차 암기장을 만듭니다. 빈 면 없이 이어서 인쇄됩니다.',
-    test: '범위를 정해 50문항 시험지를 출제합니다.',
-    stu: '학생마다 단어장과 범위를 저장해 한꺼번에 출제합니다.',
-    book: '누적 범위(최대 7과)로 전체 시험지와 답지를 책으로 만듭니다.',
-  };
   const EMPTY = {
     memo: '단어장과 Day를 고르고 <b>출제</b>를 누르세요.',
     test: '단어장과 범위를 정하고 <b>출제</b>를 누르세요.',
@@ -1512,7 +1505,7 @@ const Vocas = (() => {
         body = `<div class="pr-wrap vc-wrap"><aside class="panel pr-side">${side}</aside>
           <section class="vc-right">${slotsPanel}<div class="vc-view"><div class="vc-stage" data-vc-stage></div></div></section></div>`;
       }
-      main.innerHTML = `<div class="page-head"><h1>단어 출제</h1><span class="sub">${SUBS[tab]}</span></div>${tabs}${body}`;
+      main.innerHTML = `<div class="page-head"><h1>단어 출제</h1></div>${tabs}${body}`;
       main.onclick = (e) => this.onClick(e, main);
       main.oninput = (e) => this.onInput(e, main);
       main.onchange = (e) => this.onChange(e, main);

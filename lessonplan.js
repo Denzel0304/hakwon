@@ -66,12 +66,12 @@ const LessonPlan = {
     const list = this.classes();
     if (!list.some(c => c.id === this.cid)) this.cid = list.length ? list[0].id : '';
     const c = Store.get('classes', this.cid);
-    let h = `<div class="page-head"><h1>Lesson Plan</h1><span class="sub">반별 영역 학습 방법 · 숙제 · 평가</span>
-      <button class="btn sm lp-pdfbtn" data-lpa="pdf" ${list.length ? '' : 'disabled'} title="Lesson Plan을 A4로 인쇄 · PDF 저장">PDF 저장</button><span class="grow" style="flex:1"></span>
-      <button type="button" class="btn sm ghost" data-lpa="cfg" title="Lesson Plan을 쓰지 않는 반은 목록·PDF에서 뺍니다">⚙ Lesson Plan 반</button></div>`;
+    let h = `<div class="page-head"><h1>Lesson Plan</h1>
+      <button class="btn sm pdf" data-lpa="pdf" ${list.length ? '' : 'disabled'} title="Lesson Plan을 A4로 인쇄 · PDF 저장">PDF 저장</button>
+      <button type="button" class="btn sm" data-lpa="cfg" title="Lesson Plan을 쓰지 않는 반은 목록·PDF에서 뺍니다">⚙ 설정</button></div>`;
     h += `<div class="tabs lp-tabs">${[['area', '영역별'], ['sess', '회차별']].map(([k, t]) => `<button type="button" data-lptab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!list.length) {
-      main.innerHTML = h + `<div class="panel"><div class="empty">${this.activeAll().length ? 'Lesson Plan을 쓰는 반이 없습니다. “⚙ Lesson Plan 반”에서 고르세요.' : '진행 중인 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.'}</div></div>`;
+      main.innerHTML = h + `<div class="panel"><div class="empty">${this.activeAll().length ? 'Lesson Plan을 쓰는 반이 없습니다. ⚙ 설정에서 고르세요.' : '진행 중인 반이 없습니다. 반 메뉴에서 먼저 반을 만드세요.'}</div></div>`;
       this.bind(main);
       return;
     }
@@ -174,12 +174,12 @@ const LessonPlan = {
     });
   },
 
-  // Lesson Plan 반 설정 (체크 = Lesson Plan을 씀)
+  // Lesson Plan 설정: 쓰는 반 (체크 = Lesson Plan을 씀)
   cfgDlg() {
     const all = this.activeAll();
     const off = new Set((this.cfg() || {}).off || []);
     Modal.open({
-      title: 'Lesson Plan 반', size: 'md', autofocus: false,
+      title: 'Lesson Plan 설정', size: 'md', autofocus: false,
       body: `<p class="small muted" style="margin-top:0">Lesson Plan을 쓰는 반만 체크하세요. 체크를 끈 반은 반 목록 · PDF에서 빠집니다. 이미 적은 내용은 지워지지 않습니다.</p>
         <div class="pick-list wt-cfg">${all.map(c => `<label><input type="checkbox" name="lpo" value="${c.id}" ${off.has(c.id) ? '' : 'checked'}>${Classes.dot(c)}<b>${esc(c.name)}</b></label>`).join('') || '<div class="empty small">진행 중인 반이 없습니다.</div>'}</div>`,
       buttons: [
@@ -189,7 +189,7 @@ const LessonPlan = {
           const keep = [...off].filter(id => !all.some(c => c.id === id));            // 종료된 반의 설정은 그대로
           const now = new Date().toISOString();
           Store.put('meta', Object.assign({}, this.cfg() || { id: 'LPCFG', kind: 'lpcfg', createdAt: now }, { off: keep.concat(all.filter(c => !on.has(c.id)).map(c => c.id)), updatedAt: now }));
-          toast('Lesson Plan 반을 저장했습니다');
+          toast('설정을 저장했습니다');
           App.render();
         } },
       ],
@@ -366,7 +366,6 @@ const LessonPlan = {
 .lp-f textarea { min-height: 58px; font-size: 14px; }
 .lp-memo textarea { font-size: 14px; }
 .lp-pick { max-height: 280px; }
-.lp-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 .lp-sess { display: flex; flex-direction: column; gap: 12px; }
 .lp-sess > .panel { margin: 0; }
 .lp-sf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }

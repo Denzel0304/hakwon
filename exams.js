@@ -56,8 +56,7 @@ const Exams = {
 
   /* ---------- 공통 머리 · 탭 · 일괄 처리 줄 ---------- */
   headHtml() {
-    return `<div class="page-head"><h1>시험+교재</h1><button class="btn primary" data-a="add">+ 시험 등록</button><button class="btn primary" data-a="addmat">+ 교재 등록</button>
-      <span class="sub">학교별 시험 기간·범위·형식 · 시험 교재 · 일반 교재</span></div>`;
+    return `<div class="page-head"><h1>시험+교재</h1><button class="btn primary" data-a="add">+ 시험 등록</button><button class="btn" data-a="addmat">+ 교재 등록</button></div>`;
   },
   tabsHtml() {
     const ex = Store.all('exams'), dn = ex.filter(e => e.done).length;
@@ -669,8 +668,8 @@ const Exams = {
     const all = this.luBooks(), fg = this.luGrade;
     let h = this.headHtml() + this.tabsHtml();
     h += `<div class="toolbar"><select data-lugr><option value="">전체 학년</option>${this.LU_GRADES.map(g => `<option value="${g}" ${fg === g ? 'selected' : ''}>${gradeLabel(g)}</option>`).join('')}</select>
-      <span class="muted small">${all.length}권${fg ? ` · ${gradeLabel(fg)} 대상 ${all.filter(b => this.luHas(b, fg)).length}권` : ''} · 학원 전체 교재 라인업 (선생님 안내·상담용 보기 전용)</span><span style="flex:1"></span>
-      <button class="btn sm lu-pdfbtn" data-lupdf ${all.length ? '' : 'disabled'} title="${fg ? gradeLabel(fg) + ' 대상 교재만' : '전체 교재 로드맵을'} A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      <button class="btn sm pdf" data-lupdf ${all.length ? '' : 'disabled'} title="${fg ? gradeLabel(fg) + ' 대상 교재만' : '전체 교재 로드맵을'} A4 가로로 인쇄 · PDF 저장">PDF 저장</button>
+      <span class="muted small">${all.length}권${fg ? ` · ${gradeLabel(fg)} 대상 ${all.filter(b => this.luHas(b, fg)).length}권` : ''} · 학원 전체 교재 라인업 (선생님 안내·상담용 보기 전용)</span></div>`;
     h += `<div class="tbl-wrap"><table class="lu-tbl">${this.luHeadHtml()}<tbody>${this.luRowsHtml(all, false)}</tbody></table></div>`;
     main.innerHTML = h;
     main.onclick = (e) => {
@@ -1108,7 +1107,6 @@ const Exams = {
 .x7-lk button:hover { color: var(--danger); }
 .x7-sug { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 8px; background: var(--accent-soft); border-radius: 6px; }
 /* 교재 목록 (로드맵 표) */
-.lu-pdfbtn { background: var(--accent-soft); border-color: var(--accent-line-2); color: var(--accent-ink); font-weight: 700; }
 .lu-tbl { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; background: var(--surface); }
 .lu-tbl col.c-area { width: 96px; } .lu-tbl col.c-ser { width: 140px; }
 .lu-tbl th, .lu-tbl td { border: 1px solid var(--line); padding: 5px; vertical-align: middle; }
@@ -1266,9 +1264,8 @@ const Scores = {
   },
 
   render(main) {
-    let h = `<div class="page-head"><h1>성적</h1>
-      <div class="tabs sc-tabs"><button data-tab="school" class="${this.tab === 'school' ? 'active' : ''}">내신</button><button data-tab="mock" class="${this.tab === 'mock' ? 'active' : ''}">모의고사</button></div>
-      <span class="grow"></span>${this.tab === 'school' ? this.startSelect() : ''}</div><div data-body></div>`;
+    let h = `<div class="page-head"><h1>성적</h1>${this.tab === 'school' ? this.startSelect() : ''}</div>
+      <div class="tabs"><button data-tab="school" class="${this.tab === 'school' ? 'active' : ''}">내신</button><button data-tab="mock" class="${this.tab === 'mock' ? 'active' : ''}">모의고사</button></div><div data-body></div>`;
     main.innerHTML = h;
     const body = $('[data-body]', main);
     main.onclick = (e) => {

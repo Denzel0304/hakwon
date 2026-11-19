@@ -221,8 +221,7 @@ const Books = {
   },
 
   headHtml() {
-    return `<div class="page-head"><h1>교재</h1><button class="btn primary" data-a="add">+ 교재 등록</button>
-      <span class="sub">학생별 독해·문법·듣기·단어 교재 · 시작일과 끝난 날 기록</span></div>
+    return `<div class="page-head"><h1>교재</h1><button class="btn primary" data-a="add">+ 교재 등록</button></div>
       <div class="tabs"><button data-view="student" class="${this.view === 'student' ? 'active' : ''}">학생별</button><button data-view="book" class="${this.view === 'book' ? 'active' : ''}">교재별<span class="cnt">${NP.genMats().length}</span></button></div>`;
   },
 

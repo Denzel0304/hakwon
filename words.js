@@ -221,7 +221,7 @@ const WordBook = {
     if (!this.month) this.month = App.selDate.slice(0, 7);
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>단어 기록</h1>
-      ${NavBar.month(this.month)}<button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장 (반 고르기)">PDF 저장</button></div>`;
+      ${NavBar.month(this.month)}<button class="btn sm pdf" data-pdf title="이 달 단어 시험 기록을 A4 가로로 인쇄 · PDF 저장 (반 고르기)">PDF 저장</button><button type="button" class="btn sm" data-wcfg title="단어 시험을 보지 않는 반은 목록·PDF에서 뺍니다">⚙ 설정</button></div>`;
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
     const groups = this.build(Y, M);
@@ -231,9 +231,8 @@ const WordBook = {
     const cur = this.cls ? Store.get('classes', this.cls) : null;
     h += `<div class="toolbar wt-bar"><span style="display:inline-flex;align-items:center">${Classes.selDot(cur)}<select data-wcls style="min-width:220px">
         <option value="" ${cur ? '' : 'selected'}>선택 안 함</option>${list.map(g => `<option value="${g.c.id}" ${g.c.id === this.cls ? 'selected' : ''}>${esc(g.c.name)}</option>`).join('')}</select></span>
-      <button type="button" class="btn sm ghost" data-wcfg title="단어 시험을 보지 않는 반은 목록·PDF에서 뺍니다">⚙ 단어 시험 반</button>
       <span class="small soft wt-help">칸을 누르면 기록합니다. 결과를 고르면 다음 시험(당일 · 다음 수업 · 다른 날)을 바로 잡을 수 있고, 결과가 없는 시험은 ‘예정’입니다. 수업 없는 날은 이름 아래 “+ 날짜”.</span></div>`;
-    if (!cur) h += `<div class="panel"><div class="empty">${list.length ? '반을 선택하세요.<div class="small muted" style="margin-top:6px">수업 시간에 열면 그 시간 반이 자동으로 선택됩니다.</div>' : '단어 시험을 보는 반이 없습니다. “⚙ 단어 시험 반”에서 고르세요.'}</div></div>`;
+    if (!cur) h += `<div class="panel"><div class="empty">${list.length ? '반을 선택하세요.<div class="small muted" style="margin-top:6px">수업 시간에 열면 그 시간 반이 자동으로 선택됩니다.</div>' : '단어 시험을 보는 반이 없습니다. ⚙ 설정에서 고르세요.'}</div></div>`;
     else {
       const g = this.pick(groups, [cur.id])[0];
       const c = g.c;
@@ -284,7 +283,7 @@ const WordBook = {
     const all = Classes.sorted(Store.all('classes')).filter(c => c.active !== false);
     const off = new Set((this.cfg() || {}).off || []);
     Modal.open({
-      title: '단어 시험 반', size: 'md', autofocus: false,
+      title: '단어 기록 설정', size: 'md', autofocus: false,
       body: `<p class="small muted" style="margin-top:0">단어 시험을 보는 반만 체크하세요. 체크를 끈 반은 반 목록 · PDF · ‘다음 수업’ 날짜 계산에서 빠집니다. 이미 적은 기록은 지워지지 않습니다.</p>
         <div class="pick-list wt-cfg">${all.map(c => `<label><input type="checkbox" name="wc" value="${c.id}" ${off.has(c.id) ? '' : 'checked'}>${Classes.dot(c)}<b>${esc(c.name)}</b></label>`).join('') || '<div class="empty small">진행 중인 반이 없습니다.</div>'}</div>`,
       buttons: [
@@ -294,7 +293,7 @@ const WordBook = {
           const keep = [...off].filter(id => !all.some(c => c.id === id));            // 종료된 반의 설정은 그대로
           const now = new Date().toISOString();
           Store.put('meta', Object.assign({}, this.cfg() || { id: 'WCFG', kind: 'wcfg', createdAt: now }, { off: keep.concat(all.filter(c => !on.has(c.id)).map(c => c.id)), updatedAt: now }));
-          toast('단어 시험 반을 저장했습니다');
+          toast('설정을 저장했습니다');
           App.render();
         } },
       ],
@@ -579,7 +578,7 @@ const WordBook = {
         const fl = document.createElement('div');
         fl.className = 'wt-foot-l';
         fl.innerHTML = `<button type="button" class="btn sm wt-add-new" data-tadd="new">+ 새 시험</button><button type="button" class="btn sm wt-add-re" data-tadd="re">+ 재시험</button>
-          ${r ? '<span class="wt-foot-sep"></span><button type="button" class="btn sm ghost wt-delrec" data-tdelrec>기록 삭제</button>' : ''}`;
+          ${r ? '<span class="wt-foot-sep"></span><button type="button" class="btn sm danger wt-delrec" data-tdelrec>기록 삭제</button>' : ''}`;
         m.foot.prepend(fl);
         fl.addEventListener('click', async (e) => {
           const ad = e.target.closest('[data-tadd]');
@@ -911,7 +910,6 @@ const WordBook = {
 .wt-foot-l .wt-add-new:hover { background: #D6EAF8; }
 .wt-foot-l .wt-add-re:hover { background: #FCE8CC; }
 .wt-foot-sep { width: 1px; height: 18px; background: var(--line); }
-.wt-foot-l .wt-delrec { color: var(--danger); }
 `;
   document.head.appendChild(st);
 })();

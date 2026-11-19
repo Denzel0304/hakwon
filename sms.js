@@ -66,7 +66,7 @@ const SmsPage = {
 
   /* ---------- 화면 ---------- */
   render(main) {
-    let h = `<div class="page-head"><h1>SMS</h1><span class="sub">내 폰으로 발송 (SMS Gateway)</span></div>
+    let h = `<div class="page-head"><h1>SMS</h1></div>
       <div class="tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
     if (this.tab === 'new') NewStu.sync();          // 신규생: 등록일·수강반이 바뀐 것을 할일에 먼저 반영

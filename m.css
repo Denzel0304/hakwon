@@ -340,7 +340,7 @@ body.m-body .tx-r textarea { min-height: 0; }
 
 /* ---------- 수업일지 (PC 수업일지 화면을 그대로 · 할일 탭의 수업에서 들어옴) ---------- */
 body.m-body #main[data-page="lessons"] .page-head.pl-head { display: flex; }
-body.m-body #main[data-page="lessons"] .pl-head > h1, body.m-body #main[data-page="lessons"] .pl-head > .tabs { display: none; }
+body.m-body #main[data-page="lessons"] .pl-head > h1, body.m-body #main[data-page="lessons"] .pl-tabs { display: none; }
 body.m-body #main[data-page="lessons"] > .page-narrow > .page-head { top: -12px; margin: -12px -12px 12px; padding: 0 12px 10px; }
 body.m-body #main[data-page="lessons"] .pl-bar { gap: 8px; padding-top: 10px; }
 body.m-body #main[data-page="lessons"] .pl-bar .grow { display: none; }

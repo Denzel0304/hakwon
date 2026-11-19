@@ -779,8 +779,8 @@ const NP = {
 const PL = {
   head(cur, bar) {
     const tab = (k, t) => `<button type="button" data-pltab="${k}" class="${cur === k ? 'active' : ''}">${t}</button>`;
-    return `<div class="page-head pl-head${bar ? '' : ' no-bar'}"><h1>진도+일지</h1>
-      <div class="tabs">${tab('progress', '진도')}${tab('psum', '진도 요약')}${tab('lessons', '수업 일지')}</div>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>`;
+    return `<div class="page-head pl-head"><h1>진도+일지</h1>${bar ? `<div class="pl-bar">${bar}</div>` : ''}</div>
+      <div class="tabs pl-tabs">${tab('progress', '진도')}${tab('psum', '진도 요약')}${tab('lessons', '수업 일지')}</div>`;
   },
   click(e) {
     const b = e.target.closest('[data-pltab]');
@@ -1551,7 +1551,7 @@ const AttBook = {
     if (!this.month) this.month = App.selDate.slice(0, 7);
     const [Y, M] = this.month.split('-').map(Number);
     let h = `<div class="page-narrow"><div class="page-head"><h1>출석부</h1>
-      ${NavBar.month(this.month)}<button class="btn sm" data-pdf style="margin-left:4px;background:var(--accent-soft);border-color:var(--accent-line-2);color:var(--accent-ink);font-weight:700" title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
+      ${NavBar.month(this.month)}<button class="btn sm pdf" data-pdf title="이 달 전체 반 출석부를 A4 가로로 인쇄 · PDF 저장">PDF 저장</button></div>`;
     this._mv = {};
     const all = Classes.sorted(Store.all('classes'));
     if (!all.length) { main.innerHTML = h + '<div class="panel"><div class="empty">반이 없습니다. 반 메뉴에서 반을 만드세요.</div></div></div>'; this.bind(main); return; }
@@ -1831,8 +1831,7 @@ const ProgressSum = {
         <span class="ps-seg"><button type="button" data-psmode="month" class="${this.mode === 'month' ? 'on' : ''}">월</button><button type="button" data-psmode="week" class="${this.mode === 'week' ? 'on' : ''}">주</button></span>
         ${this.navHtml(r, isNow)}
         <span style="display:inline-flex;align-items:center">${Classes.selDot(this.classId ? Store.get('classes', this.classId) : null)}<select data-pscls style="min-width:160px"><option value="">전체 반 (${all.length})</option>${all.map(o => `<option value="${o.c.id}" ${o.c.id === this.classId ? 'selected' : ''}>${esc(o.c.name)}${o.c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></span>
-        <span class="grow" style="flex:1"></span>
-        <button type="button" class="btn sm cls-pdfbtn" data-pspdf title="화면에 보이는 기간·반의 진도 요약을 A4 가로로 인쇄 · PDF 저장" ${list.length ? '' : 'disabled'}>PDF 저장</button>
+        <button type="button" class="btn sm pdf" data-pspdf title="화면에 보이는 기간·반의 진도 요약을 A4 가로로 인쇄 · PDF 저장" ${list.length ? '' : 'disabled'}>PDF 저장</button>
       </div>
       <p class="small muted" style="margin:0 0 12px">수업일지에 적은 진도를 반별·회차별로 모았습니다. 내신 진도는 학교·학년별로 나누고, 비내신은 독해·문법 교재만 넣습니다. 카드를 누르면 그 날 수업일지를 고칩니다.</p>`;
     if (!act.length) h += '<div class="panel"><div class="empty">반이 없습니다.</div></div>';
@@ -2542,7 +2541,7 @@ const Makeups = {
     const cnt = { pre: groups.length, open: 0, done: 0, all: past.length };
     past.forEach(o => { if (mkDone(o.status)) cnt.done++; else cnt.open++; });
     const q = this.q.trim();
-    let h = `<div class="page-head"><h1>결석+보강</h1><button class="btn primary" data-absadd>+ 결석 예정 등록</button><span class="sub">출석부에서 결석 처리한 학생과 지난 결석 예정이 처리 필요로 모입니다</span></div>
+    let h = `<div class="page-head"><h1>결석+보강</h1><button class="btn primary" data-absadd>+ 결석 예정 등록</button></div>
       <div class="tabs">${[['pre', '결석 예정'], ['open', '처리 필요'], ['done', '완료'], ['all', '전체']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}<span class="cnt">${cnt[k]}</span></button>`).join('')}</div>
       <div class="toolbar"><input type="search" data-q placeholder="학생 이름, 반 이름 검색" value="${esc(this.q)}" style="width:260px"></div>`;
     let list = [];
