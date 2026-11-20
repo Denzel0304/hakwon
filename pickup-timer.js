@@ -131,7 +131,7 @@ const PickupTimer = {
           <input type="text" data-lt-name placeholder="학생 이름" maxlength="20" autocomplete="off">
           <span class="att-seg lt-seg" data-lt-dur title="수업시간 (고른 값을 기억합니다)">${[80, 90].map(v => `<button type="button" data-lt-d="${v}">${v}분</button>`).join('')}</span>
           <button type="button" class="btn sm primary" data-lt-now title="지금 시각을 도착 시각으로 추가합니다">지금 시작</button>
-          <span class="lt-at" title="늦게 입력할 때: 실제로 도착한 시각을 넣고 추가"><input type="time" data-lt-time step="60" aria-label="도착 시각"><button type="button" class="btn sm" data-lt-at>추가</button></span>
+          <span class="lt-at" title="늦게 입력할 때: 실제로 도착한 시각을 넣고 추가"><input type="time" data-lt-time step="60" placeholder="도착" aria-label="도착 시각"><button type="button" class="btn sm" data-lt-at>추가</button></span>
         </div>
         <div class="lt-list" data-lt-list></div>
       </div>
@@ -344,14 +344,15 @@ const PickupTimer = {
 #lt-win .lt-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 8px 8px; }
 #lt-win input, #lt-win select { cursor: auto; }
 #lt-win button { cursor: pointer; }
-/* 추가 줄: 이름 · 80/90 · 지금 시작 · (도착 시각 + 추가) — 좁으면 다음 줄로 */
-#lt-win .lt-add { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px; border-radius: 9px; background: var(--ok-soft); margin-bottom: 4px; }
-#lt-win .lt-add [data-lt-name] { flex: 0 1 70px; width: 70px; min-width: 56px; padding: 4px 7px; }   /* 이름은 4글자 정도 */
-#lt-win .lt-add .btn.sm { padding: 4px 9px; }
+/* 추가 줄: 이름 · 80분/90분 · 지금 시작 · (도착 시각 + 추가) — 늘 한 줄. 폭이 모자라면 이름 칸 · 도착 칸이 먼저 줄어듦 */
+#lt-win .lt-add { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; padding: 6px; border-radius: 9px; background: var(--ok-soft); margin-bottom: 4px; }
+#lt-win .lt-add [data-lt-name] { flex: 0 1 70px; width: 70px; min-width: 46px; padding: 4px 7px; }   /* 이름은 4글자 정도 */
+#lt-win .lt-add .btn.sm { flex: none; padding: 4px 9px; white-space: nowrap; }
+#lt-win .lt-add .lt-seg { flex: none; }
 #lt-win .lt-seg button { font: inherit; font-size: 13px; padding: 4px 7px; white-space: nowrap; }
 #lt-win .lt-seg button.on { background: var(--ok); color: #fff; font-weight: 700; }   /* 고른 수업시간 */
-#lt-win .lt-at { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }   /* 남는 폭은 '지금 시작'과 도착 칸 사이로 */
-#lt-win .lt-at input.fp-in { width: 86px; min-width: 0; padding-left: 6px; padding-right: 24px; background-position: right 6px center; background-size: 13px 13px; padding-top: 4px; padding-bottom: 4px; }
+#lt-win .lt-at { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; flex: 0 1 auto; min-width: 0; }   /* 남는 폭은 '지금 시작'과 도착 칸 사이로 */
+#lt-win .lt-at input.fp-in { flex: 0 1 76px; width: 76px; min-width: 50px; padding-left: 6px; padding-right: 24px; background-position: right 6px center; background-size: 13px 13px; padding-top: 4px; padding-bottom: 4px; }
 /* 학생 줄: 이름 | 도착 | 수업 | → 하원 | 남은 시간 | 하원 버튼 */
 #lt-win .lt-item { display: grid; grid-template-columns: minmax(40px, 66px) 50px 46px 62px minmax(0, 1fr) auto;   /* 이름 4글자 · 남는 폭은 남은 시간 칸으로 */ align-items: center; column-gap: 5px;
   padding: 4px 4px 4px 6px; border-radius: 8px; }
