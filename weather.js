@@ -101,15 +101,29 @@ const Weather = {
   },
 
   // 지역 검색 (설정 화면) — 결과 배열 / 실패하면 null
+  // '청주'처럼 시·군·구를 빼고 입력해도 찾도록, 입력한 이름 + '시'·'군'·'구'를 붙인 이름을 함께 검색해서 합친다
+  // (이미 시·군·구·동·읍·면·리로 끝나면 입력한 이름만 검색)
   async search(q) {
     try {
-      q = String(q || '').trim();
+      q = String(q || '').trim().replace(/\s+/g, ' ');
       if (q.length < 2) return [];
-      const j = await this._json('https://geocoding-api.open-meteo.com/v1/search?count=10&language=ko&format=json&countryCode=KR&name=' + encodeURIComponent(q));
-      return ((j && j.results) || []).filter(r => r && r.name && isFinite(r.latitude) && isFinite(r.longitude)).map(r => ({
-        name: r.name, lat: +r.latitude, lon: +r.longitude,
-        sub: [r.admin1, r.admin2, r.admin3].filter((x, i, a) => x && x !== r.name && a.indexOf(x) === i).join(' '),
+      const names = /[시군구동읍면리]$/.test(q) ? [q] : [q, q + '시', q + '군', q + '구'];
+      const one = (n) => this._json('https://geocoding-api.open-meteo.com/v1/search?count=10&language=ko&format=json&countryCode=KR&name=' + encodeURIComponent(n))
+        .then(j => (j && Array.isArray(j.results)) ? j.results : [], () => null);
+      const lists = await Promise.all(names.map(one));
+      if (lists.every(x => x === null)) return null;        // 모두 실패 = 인터넷 문제
+      const out = [], seen = new Set();
+      lists.forEach(list => (list || []).forEach(r => {
+        if (!r || !r.name || !isFinite(r.latitude) || !isFinite(r.longitude)) return;
+        const k = r.id || (r.name + '|' + (+r.latitude).toFixed(2) + ',' + (+r.longitude).toFixed(2));
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push({
+          name: r.name, lat: +r.latitude, lon: +r.longitude,
+          sub: [r.admin1, r.admin2, r.admin3].filter((x, i, a) => x && x !== r.name && a.indexOf(x) === i).join(' '),
+        });
       }));
+      return out.slice(0, 12);
     } catch (e) { return null; }
   },
 
