@@ -731,6 +731,10 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none; }
 .ev-form { grid-template-columns: 64px 1fr; }
 [data-endwrap].off { opacity: .4; }
+/* 일정·공휴일 창 날짜 줄: '기간'은 줄어들지 않고 가로 한 줄로, 창이 좁으면 '~ 끝날'만 통째로 다음 줄로 */
+.ev-form .row:has(> [data-endwrap]) { flex-wrap: wrap !important; row-gap: 8px; }
+.ev-form label.chk { flex: none; white-space: nowrap; }
+.ev-form [data-endwrap] { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
 .tbl tr.past td { color: var(--ink-mute); }
 
 .bc { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }

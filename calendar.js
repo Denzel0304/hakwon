@@ -906,7 +906,7 @@ const EventModal = {
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>
     </div>`;
     Modal.open({
-      title: ev ? '일정 수정' : '일정 추가', body,
+      title: ev ? '일정 수정' : '일정 추가', size: 'md', body,     // 날짜 ~ 끝날이 '기간'과 함께 한 줄에 들어가게 (공휴일 창과 같은 폭)
       onMount: (b, m) => {
         enhanceAll(b);
         bindCombo($('[name=school]', b), schoolOptions);
