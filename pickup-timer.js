@@ -18,10 +18,8 @@
 const PickupTimer = {
   LS: 'mg77_ltimer',
   MIN_W: 320,
-  MIN_H: 170,
-  DEF_W: 600,               // 처음 너비: 학생 한 줄(이름 · 도착 · 수업 · 하원 · 남은 시간 · 하원 버튼)이 한 줄에 들어가는 폭
-  DEF_H: 380,
-  BOX_V: 2,
+  MIN_H: 120,
+  BOX_V: 4,
   el: null,
   st: null,
   _tick: null,
@@ -55,9 +53,9 @@ const PickupTimer = {
   isDue(x) { return Date.now() >= this.endOf(x); },
   leftText(x) {
     const ms = this.endOf(x) - Date.now();
-    if (ms <= 0) return '하원 시간';
+    if (ms <= 0) return '하원!';
     const m = Math.ceil(ms / 60000);
-    return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분 남음` : `${m}분 남음`;
+    return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} 남음` : `${m}분 남음`;
   },
   sorted() { return this.st.list.slice().sort((a, b) => this.endOf(a) - this.endOf(b) || a.start - b.start); },
 
@@ -127,18 +125,16 @@ const PickupTimer = {
     const el = document.createElement('div');
     el.id = 'lt-win';
     el.style.display = 'none';
-    el.innerHTML = `<div class="lt-head"><b>🕒 하원 타이머<span class="lt-cnt" data-lt-cnt></span></b><button type="button" class="lt-x" data-lt-close title="닫기" aria-label="닫기">✕</button></div>
+    el.innerHTML = `<div class="lt-head"><b>🕒 하원 타이머<span class="lt-cnt" data-lt-cnt></span></b><button type="button" class="lt-x" data-lt-close title="닫기 (진행 중인 학생이 있으면 확인 후 목록을 지웁니다)" aria-label="닫기">✕</button></div>
       <div class="lt-body">
         <div class="lt-add">
-          <div class="lt-row"><input type="text" data-lt-name placeholder="학생 이름" maxlength="20" autocomplete="off">
-            <span class="att-seg lt-seg" data-lt-dur>${[80, 90].map(v => `<button type="button" data-lt-d="${v}">${v}분</button>`).join('')}</span></div>
-          <div class="lt-row"><button type="button" class="btn sm primary" data-lt-now title="지금 시각을 도착 시각으로 추가합니다">지금 시작</button>
-            <span class="lt-or small soft">또는 도착</span><input type="time" data-lt-time step="60" title="실제로 도착한 시각 (늦게 입력할 때)">
-            <button type="button" class="btn sm" data-lt-at title="입력한 도착 시각으로 추가합니다">추가</button></div>
+          <input type="text" data-lt-name placeholder="학생 이름" maxlength="20" autocomplete="off">
+          <span class="att-seg lt-seg" data-lt-dur title="수업시간 (고른 값을 기억합니다)">${[80, 90].map(v => `<button type="button" data-lt-d="${v}">${v}</button>`).join('')}</span>
+          <button type="button" class="btn sm primary" data-lt-now title="지금 시각을 도착 시각으로 추가합니다">지금 시작</button>
+          <span class="lt-at" title="늦게 입력할 때: 실제로 도착한 시각을 넣고 추가"><input type="time" data-lt-time step="60" aria-label="도착 시각"><button type="button" class="btn sm" data-lt-at>추가</button></span>
         </div>
         <div class="lt-list" data-lt-list></div>
       </div>
-      <div class="lt-foot"><button type="button" class="btn sm" data-lt-close>닫기</button></div>
       ${['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(d => `<div class="lt-rz ${d}" data-lt-rz="${d}"></div>`).join('')}`;
     document.body.appendChild(el);
     this.el = el;
@@ -150,6 +146,8 @@ const PickupTimer = {
       if (t.closest('[data-lt-at]')) { this.add(false); return; }
       const d = t.closest('[data-lt-d]');
       if (d) { this.st.dur = +d.dataset.ltD === 90 ? 90 : 80; this.save(); this.paintDur(); return; }
+      const tg = t.closest('[data-lt-tg]');
+      if (tg) { const x = this.st.list.find(v => v.id === tg.dataset.ltTg); if (x) this.upd(x.id, { dur: x.dur === 90 ? 80 : 90 }); return; }   // 줄의 수업시간 80 ↔ 90
       const ok = t.closest('[data-lt-done]');
       if (ok) { this.done(ok.dataset.ltDone); return; }
     });
@@ -161,7 +159,6 @@ const PickupTimer = {
         this.upd(t.dataset.ltSt, { start: v });
         return;
       }
-      if (t.matches('[data-lt-rd]')) { this.upd(t.dataset.ltRd, { dur: +t.value === 90 ? 90 : 80 }); return; }   // 줄의 수업시간 고치기
     });
     $('[data-lt-name]', el).addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || e.isComposing) return;
@@ -181,11 +178,11 @@ const PickupTimer = {
     $('[data-lt-cnt]', this.el).textContent = list.length ? ` ${list.length}명` : '';
     $('[data-lt-list]', this.el).innerHTML = list.length ? list.map(x => `<div class="lt-item${this.isDue(x) ? ' due' : ''}" data-lt-id="${esc(x.id)}">
         <b class="lt-nm" title="${esc(x.name)}">${esc(x.name)}</b>
-        <span class="lt-in"><input type="time" step="60" data-lt-st="${esc(x.id)}" value="${this.hm(x.start)}" title="도착 시각"></span>
-        <select data-lt-rd="${esc(x.id)}" title="수업시간">${[80, 90].map(v => `<option value="${v}" ${x.dur === v ? 'selected' : ''}>${v}분</option>`).join('')}</select>
-        <span class="lt-out" title="하원 시각">→ <b>${this.hm(this.endOf(x))}</b></span>
-        <span class="lt-left small" data-lt-left>${this.leftText(x)}</span>
-        <button type="button" class="btn sm" data-lt-done="${esc(x.id)}" title="하원 처리 (목록에서 뺍니다)">하원</button></div>`).join('')
+        <input type="time" step="60" class="lt-st" data-lt-st="${esc(x.id)}" value="${this.hm(x.start)}" title="도착 시각 (눌러서 고치기)">
+        <button type="button" class="lt-dur" data-lt-tg="${esc(x.id)}" title="수업시간 (누르면 80 ↔ 90)">${x.dur}분</button>
+        <span class="lt-out" title="하원 시각"><i>→</i><b>${this.hm(this.endOf(x))}</b></span>
+        <span class="lt-left" data-lt-left>${this.leftText(x)}</span>
+        <button type="button" class="btn sm lt-done" data-lt-done="${esc(x.id)}" title="하원 처리 (목록에서 뺍니다)">하원</button></div>`).join('')
       : '<div class="lt-empty small muted">진행 중인 학생이 없습니다.</div>';
   },
   // 1초마다: 남은 시간 · 깜빡임만 바꿈 (입력 중인 칸을 다시 그리지 않도록)
@@ -209,30 +206,66 @@ const PickupTimer = {
   },
 
   /* ---------- 위치 · 크기 (시간표 팝업과 같은 방식: 아무 곳이나 잡고 끌기 · 가장자리로 크기) ---------- */
-  place() {
-    const box = this.el, b = this.st.box;
-    if (b) Object.assign(box.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px' });
-    else {
-      const w = this.DEF_W, h = this.DEF_H;
-      Object.assign(box.style, { width: w + 'px', height: h + 'px', left: Math.max(10, window.innerWidth - w - 30) + 'px', top: '80px' });
+  /* 처음 자리 (사용자가 옮기거나 크기를 바꾸기 전까지 · 창 크기가 바뀌면 다시 계산)
+     - 본문(최대 1080px) 오른쪽 빈 공간에 좌우 여백(GAP)을 두고 그 폭에 맞춤. 넓은 모니터에서는 MAX_W까지만 쓰고 빈 공간 가운데에
+     - 빈 공간이 좁으면(노트북) FALL_W 폭으로 화면 오른쪽 끝에 (본문 위에 겹침 → 끌어서 옮길 수 있음)
+     - 위치: 위 = 본문 제목줄 높이 / 높이 = 내용만큼 (학생이 늘면 아래로 길어짐), 아래 한계 = 왼쪽 근무 게이지 아래 실선(#sync-bar 위 선)
+       → 넘치면 창 안에서 스크롤 */
+  GAP: 16,
+  MAX_W: 440,
+  FALL_W: 400,
+  CONTENT_W: 1080,          // style.css: #main > * { max-width: 1080px }
+  defBox() {
+    const main = $('#main'), vw = document.documentElement.clientWidth;
+    let x, y = 26, w;
+    if (main) {
+      const r = main.getBoundingClientRect(), cs = getComputedStyle(main);
+      const padL = parseFloat(cs.paddingLeft) || 0, padT = parseFloat(cs.paddingTop) || 0;
+      const inner = main.clientWidth - padL - (parseFloat(cs.paddingRight) || 0);   // 스크롤바 뺀 본문 폭
+      const contentR = r.left + padL + Math.min(this.CONTENT_W, inner);
+      const right = r.left + main.clientWidth;                                     // 스크롤바 왼쪽
+      const avail = right - contentR - this.GAP * 2;
+      y = r.top + padT;
+      if (avail >= this.MIN_W) { w = Math.min(this.MAX_W, avail); x = contentR + this.GAP + (avail - w) / 2; }
     }
+    if (w == null) { w = Math.min(this.FALL_W, vw - this.GAP * 2); x = vw - w - this.GAP; }
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: null };
+  },
+  // 아래 한계: 왼쪽 근무 게이지 아래 실선 (#sync-bar 위 테두리). 없으면 화면 아래
+  bottomLine() {
+    const sb = $('#sync-bar');
+    const r = sb && sb.offsetParent ? sb.getBoundingClientRect() : null;
+    return r && r.top > 100 ? r.top : window.innerHeight - 10;
+  },
+  place() {
+    const b = this.st.box || this.defBox();
+    Object.assign(this.el.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h ? b.h + 'px' : '' });
     this.clampIn();
   },
-  // 창이 화면 밖으로 완전히 사라지지 않게 (창 크기를 줄였을 때 등)
+  // 창이 화면 밖으로 완전히 사라지지 않게 + 높이 한계 맞추기
   clampIn() {
     const box = this.el;
     if (!box || box.style.display === 'none') return;
-    const w = Math.min(parseFloat(box.style.width) || this.DEF_W, window.innerWidth - 20);
-    const h = Math.min(parseFloat(box.style.height) || this.DEF_H, window.innerHeight - 20);
-    box.style.width = Math.max(this.MIN_W, w) + 'px';
-    box.style.height = Math.max(this.MIN_H, h) + 'px';
+    const vw = document.documentElement.clientWidth;
+    const w = Math.max(this.MIN_W, Math.min(parseFloat(box.style.width) || this.FALL_W, vw - 20));
+    box.style.width = w + 'px';
     const l = parseFloat(box.style.left) || 0, t = parseFloat(box.style.top) || 0;
-    box.style.left = Math.max(60 - w, Math.min(window.innerWidth - 60, l)) + 'px';
+    box.style.left = Math.max(60 - w, Math.min(vw - 60, l)) + 'px';
     box.style.top = Math.max(0, Math.min(window.innerHeight - 40, t)) + 'px';
+    this.fitH();
+  },
+  // 높이: 직접 정하지 않았으면 내용만큼 (아래 실선까지) / 직접 정했으면 그 높이 (화면 안까지)
+  fitH() {
+    const box = this.el, top = parseFloat(box.style.top) || 0;
+    if (box.style.height) {
+      const h = Math.max(this.MIN_H, Math.min(parseFloat(box.style.height), window.innerHeight - top - 10));
+      box.style.height = h + 'px';
+      box.style.maxHeight = '';
+    } else box.style.maxHeight = Math.max(this.MIN_H, this.bottomLine() - top) + 'px';
   },
   saveBox() {
     const s = this.el.style;
-    this.st.box = { v: this.BOX_V, x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: parseFloat(s.height) };
+    this.st.box = { v: this.BOX_V, x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: s.height ? parseFloat(s.height) : null };
     this.save();
   },
   bindMove() {
@@ -252,8 +285,8 @@ const PickupTimer = {
       const d = rz ? rz.dataset.ltRz : '';
       const x0 = e.clientX, y0 = e.clientY;
       const l0 = parseFloat(box.style.left), t0 = parseFloat(box.style.top);
-      const w0 = parseFloat(box.style.width), h0 = parseFloat(box.style.height);
-      const maxW = window.innerWidth - 20, maxH = window.innerHeight - 20;
+      const w0 = parseFloat(box.style.width), h0 = box.getBoundingClientRect().height;   // 높이를 정하지 않은 상태(내용만큼)에서도 지금 높이부터
+      const maxW = document.documentElement.clientWidth - 20, maxH = window.innerHeight - 20;
       document.body.style.setProperty('--ttp-cur', getComputedStyle(e.target).cursor);
       document.body.classList.add('ttp-drag');           // 끄는 동안 커서 유지 · 글자 선택 막기 (시간표 팝업과 같은 클래스)
       const mv = (ev) => {
@@ -261,10 +294,12 @@ const PickupTimer = {
         if (!d) {
           box.style.left = clamp(l0 + dx, 60 - w0, window.innerWidth - 60) + 'px';
           box.style.top = clamp(t0 + dy, 0, window.innerHeight - 40) + 'px';
+          this.fitH();                                 // 내용만큼 높이일 때: 아래 한계를 새 위치에 맞춤
           return;
         }
         if (d.includes('e')) box.style.width = clamp(w0 + dx, this.MIN_W, maxW) + 'px';
         if (d.includes('w')) { const w = clamp(w0 - dx, this.MIN_W, maxW); box.style.width = w + 'px'; box.style.left = (l0 + w0 - w) + 'px'; }
+        if (/[ns]/.test(d)) box.style.maxHeight = '';   // 세로로 직접 크기를 정하면 그 높이로 고정
         if (d.includes('s')) box.style.height = clamp(h0 + dy, this.MIN_H, maxH) + 'px';
         if (d.includes('n')) { const h = clamp(h0 - dy, this.MIN_H, maxH); box.style.height = h + 'px'; box.style.top = Math.max(0, t0 + h0 - h) + 'px'; }
       };
@@ -300,40 +335,53 @@ const PickupTimer = {
     st.textContent = `
 .btn.lt-btn { padding-left: 9px; padding-right: 9px; display: inline-flex; align-items: center; justify-content: center; }
 #lt-win { position: fixed; z-index: 480; display: flex; flex-direction: column; box-sizing: border-box;
-  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-left: 4px solid var(--ok);
-  border-radius: 12px; box-shadow: 0 12px 34px rgba(22, 48, 70, .25); font-size: 14px; cursor: move; }
-#lt-win .lt-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px; flex: none; }
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-top: 3px solid var(--ok);
+  border-radius: 12px; box-shadow: 0 10px 28px rgba(22, 48, 70, .22); font-size: 14px; cursor: move; }
+#lt-win .lt-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 8px 5px 12px; flex: none; font-size: 13.5px; }
 #lt-win .lt-cnt { color: var(--ok); margin-left: 4px; }
-#lt-win .lt-x { border: 0; background: none; color: var(--ink-mute); cursor: pointer; font-size: 15px; padding: 2px 4px; }
-#lt-win .lt-x:hover { color: var(--ink); }
-#lt-win .lt-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 12px; }
-#lt-win .lt-add { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--tint, transparent); margin-bottom: 8px; }
-#lt-win .lt-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-#lt-win .lt-row + .lt-row { margin-top: 6px; }
-#lt-win [data-lt-name] { flex: 1; min-width: 120px; }
-#lt-win .lt-seg button { cursor: pointer; font: inherit; font-size: 13.5px; }
-#lt-win .lt-seg button.on { background: var(--ok); color: #fff; font-weight: 700; }   /* 고른 수업시간 */
-#lt-win input, #lt-win select, #lt-win button { cursor: auto; }
+#lt-win .lt-x { border: 0; background: none; color: var(--ink-mute); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+#lt-win .lt-x:hover { color: var(--ink); background: var(--line); }
+#lt-win .lt-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 8px 8px; }
+#lt-win input, #lt-win select { cursor: auto; }
 #lt-win button { cursor: pointer; }
-#lt-win .lt-item { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 6px 8px; border-bottom: 1px dashed var(--line); border-radius: 8px; }
-#lt-win .lt-item > * { flex: none; }
-#lt-win .lt-item:last-child { border-bottom: 0; }
-#lt-win .lt-nm { flex: 1 1 60px; min-width: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#lt-win .lt-in input { width: 104px; }
+/* 추가 줄: 이름 · 80/90 · 지금 시작 · (도착 시각 + 추가) — 좁으면 다음 줄로 */
+#lt-win .lt-add { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 6px; border-radius: 9px; background: var(--ok-soft); margin-bottom: 4px; }
+#lt-win .lt-add [data-lt-name] { flex: 1 1 80px; min-width: 70px; padding-top: 4px; padding-bottom: 4px; }
+#lt-win .lt-seg button { font: inherit; font-size: 13px; padding: 4px 8px; }
+#lt-win .lt-seg button.on { background: var(--ok); color: #fff; font-weight: 700; }   /* 고른 수업시간 */
+#lt-win .lt-at { display: inline-flex; align-items: center; gap: 3px; }
+#lt-win .lt-at input.fp-in { width: 100px; min-width: 0; padding-top: 4px; padding-bottom: 4px; }
+/* 학생 줄: 이름 | 도착 | 수업 | → 하원 | 남은 시간 | 하원 버튼 */
+#lt-win .lt-item { display: grid; grid-template-columns: minmax(36px, 1fr) 50px 44px 60px minmax(0, 62px) auto; align-items: center; column-gap: 5px;
+  padding: 4px 4px 4px 6px; border-radius: 8px; }
+#lt-win .lt-item + .lt-item { box-shadow: 0 -1px 0 var(--line); }
+#lt-win .lt-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 도착 시각: 글자처럼 보이다가 마우스를 올리거나 고칠 때만 칸 표시 · 줄 색을 그대로 따름 (깜빡일 때도 보임) */
+#lt-win .lt-st { width: 50px; padding: 2px 3px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit;
+  font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; opacity: .8; }
+#lt-win .lt-st:hover, #lt-win .lt-st:focus { border-color: var(--line-strong); opacity: 1; outline: none; }
+/* 프로그램 공용 시간 선택판(calendar.js FieldPick)이 시간 칸을 '시간 선택' 칸(fp-in: 최소 폭 92px · 시계 그림)으로 바꾸므로 여기서만 작게 */
+#lt-win input.lt-st.fp-in { width: 50px; min-width: 0; padding: 2px 3px; background-image: none; background-color: transparent; color: inherit; border-color: transparent; }
+#lt-win input.lt-st.fp-in:hover, #lt-win input.lt-st.fp-in.fp-open { border-color: var(--line-strong); box-shadow: none; }
+#lt-win .lt-dur { padding: 1px 0; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 12px; opacity: .75; }
+#lt-win .lt-dur:hover { opacity: 1; }
 #lt-win .lt-out { white-space: nowrap; font-variant-numeric: tabular-nums; }
+#lt-win .lt-out i { font-style: normal; opacity: .6; margin-right: 3px; }
 #lt-win .lt-out b { color: var(--ok); font-size: 15px; }
-#lt-win .lt-left { flex: 0 1 98px; color: var(--ink-mute); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 창을 줄이면 남은 시간 글자부터 줄어듦 */
-#lt-win .lt-empty { padding: 10px 2px; }
-#lt-win .lt-foot { flex: none; display: flex; justify-content: flex-end; padding: 8px 12px 10px; border-top: 1px solid var(--line); margin-top: 6px; }
-/* 하원 시각이 된 줄: 할일 알림창과 같은 깜빡임 (흰색 ↔ 녹색) · 마우스를 올리면 멈춤 */
-#lt-win .lt-item.due { animation: lt-blink 1.2s steps(1, end) infinite; border-bottom-color: transparent; }
-#lt-win .lt-item.due:hover { animation: none; background: var(--ok-soft); }
-#lt-win .lt-item.due .lt-left { font-weight: 800; }
+#lt-win .lt-left { font-size: 12px; color: var(--ink-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+#lt-win .lt-done { padding: 3px 9px; }
+#lt-win .lt-empty { padding: 10px 4px; }
+/* 하원 시각이 된 줄: 할일 알림창과 같은 깜빡임 (흰색 ↔ 녹색) · 마우스를 올리면 멈춤
+   줄 안의 글자 · 도착 칸 · 수업 칩은 모두 줄 색을 따라 함께 바뀐다 */
+#lt-win .lt-item.due { animation: lt-blink 1.2s steps(1, end) infinite; box-shadow: none; }
+#lt-win .lt-item.due + .lt-item { box-shadow: none; }
+#lt-win .lt-item.due:hover { animation: none; background: var(--ok-soft); color: var(--ink); }
+#lt-win .lt-item.due .lt-left { font-weight: 800; font-size: 13px; }
+#lt-win .lt-item.due .lt-left, #lt-win .lt-item.due .lt-out b { color: inherit; }
 @keyframes lt-blink {
   0%   { background: var(--surface); color: var(--ink); }
   50%  { background: var(--ok); color: #fff; }
 }
-#lt-win .lt-item.due .lt-left, #lt-win .lt-item.due .lt-out b { color: inherit; }
 .lt-rz { position: absolute; z-index: 2; }
 .lt-rz.n { top: -4px; left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
 .lt-rz.s { bottom: -4px; left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
@@ -351,7 +399,8 @@ const PickupTimer = {
     if (main && window.MutationObserver) new MutationObserver(() => { try { this.mountBtn(); } catch (e) { /* 무시 */ } }).observe(main, { childList: true });
     document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#main [data-ltimer]')) this.open(); });
     // 창 크기가 바뀌면 화면 안으로
-    window.addEventListener('resize', debounce(() => { if (this.el && this.el.style.display !== 'none') { this.clampIn(); this.saveBox(); } }, 200));
+    // 창 크기가 바뀌면: 처음 자리 그대로인 창은 새 화면에 맞춰 다시 계산, 옮긴 창은 화면 안으로만
+    window.addEventListener('resize', debounce(() => { if (this.el && this.el.style.display !== 'none') { if (this.st.box) { this.clampIn(); this.saveBox(); } else this.place(); } }, 200));
     // 같은 PC의 다른 탭에서 바뀌면 맞춤
     window.addEventListener('storage', (e) => {
       if (e.key !== this.LS) return;
