@@ -89,20 +89,23 @@ const LessonPlan = {
     const chips = (arr) => arr.length ? arr.map(n => `<span class="lp-bk">${esc(n)}</span>`).join('') : '<span class="muted small">연결된 교재 없음</span>';
     let h = `<div class="panel lp-info"><div class="lp-ttl">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
         <span class="soft">${esc(Classes.timeLabel(c))}</span><span style="flex:1"></span>
-        <button type="button" class="btn sm ghost" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용을 이 반으로 가져옵니다">다른 반 내용 복사</button></div>
+        <button type="button" class="btn sm ghost" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 이 반으로 가져옵니다">다른 반 내용 복사</button>
+        <button type="button" class="btn sm danger" data-lpa="reset" title="이 반의 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 모두 지웁니다">초기화</button></div>
       <div class="lp-books"><div><span class="bk-cat read">독해</span>${chips(bk.read)}</div><div><span class="bk-cat gram">문법</span>${chips(bk.gram)}</div></div>
       <div class="small muted">교재는 시험+교재 › 일반 교재에서 이 반에 연결한 독해·문법 교재가 자동으로 나옵니다.</div></div>`;
     if (this.tab === 'sess') {
       const days = this.sessDays(c);
       if (!days.length) h += '<div class="panel"><div class="empty">이 반에 수업 요일이 없습니다. 반 메뉴에서 요일을 정하면 그 수만큼 회차가 나옵니다.</div></div>';
       else {
-        h += '<div class="lp-sess">';
-        days.forEach((d, n) => {
-          const i = String(n + 1);
-          h += `<div class="panel lp-area lp-ses" style="--lpc:${LP_SCOLOR}"><div class="lp-ah"><b>${i}회차</b><span class="soft small">${DOW[d]}요일</span>${this.sessHas(p, i) ? '' : '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>'}</div>
-            <div class="lp-sf">${LP_SFIELDS.map(([f, fl, ph]) => `<label class="lp-f"><span>${fl}</span><textarea rows="2" data-lpf="s:${i}|${f}" placeholder="${esc(ph)}">${esc(((p && p.sess && p.sess[i]) || {})[f] || '')}</textarea></label>`).join('')}</div></div>`;
+        // 회차를 가로(열)로 — 수업 · 숙제 · 시험은 행. 비어 있는 회차도 그대로 보여 주간 흐름이 보이게
+        h += `<div class="panel lp-sess" style="--lpc:${LP_SCOLOR}"><div class="lp-ah"><b>회차별 수업 계획</b><span class="soft small">주 ${days.length}회</span></div>
+          <div class="lp-sx"><div class="lp-sg" style="grid-template-columns:56px repeat(${days.length}, minmax(190px, 1fr))"><div class="lp-sgc"></div>`;
+        days.forEach((d, n) => { h += `<div class="lp-sgh"><span class="dy">${DOW[d]}</span><b>${n + 1}회차</b></div>`; });
+        LP_SFIELDS.forEach(([f, fl, ph]) => {
+          h += `<div class="lp-sgl">${fl}</div>`;
+          days.forEach((d, n) => { const i = String(n + 1); h += `<textarea rows="3" data-lpf="s:${i}|${f}" placeholder="${n ? '' : esc(ph)}">${esc(((p && p.sess && p.sess[i]) || {})[f] || '')}</textarea>`; });
         });
-        h += '</div>';
+        h += '</div></div></div>';
       }
     } else {
       h += '<div class="lp-areas">';
@@ -126,6 +129,7 @@ const LessonPlan = {
       if (!a) return;
       if (a.dataset.lpa === 'pdf') this.pdfDlg();
       else if (a.dataset.lpa === 'copy') this.copyDlg();
+      else if (a.dataset.lpa === 'reset') this.resetDlg();
       else if (a.dataset.lpa === 'cfg') this.cfgDlg();
     };
     main.onchange = (e) => {
@@ -138,7 +142,7 @@ const LessonPlan = {
       const p = this.plan(this.cid);
       const btn = $(`[data-lpc="${this.cid}"]`, main);
       if (btn) { const has = this.hasAny(p, Store.get('classes', this.cid)), dot = $('.lp-has', btn); if (has && !dot) btn.insertAdjacentHTML('beforeend', '<i class="lp-has" title="작성함"></i>'); if (!has && dot) dot.remove(); }
-      if (a !== 'memo') {
+      if (a !== 'memo' && !a.startsWith('s:')) {
         const card = t.closest('.lp-area'), hint = $('.lp-ah .muted', card), has = a.startsWith('s:') ? this.sessHas(p, a.slice(2)) : this.areaHas(p, a);
         if (has && hint) hint.remove();
         if (!has && !hint) $('.lp-ah', card).insertAdjacentHTML('beforeend', '<span class="small muted">비어 있으면 PDF에 나오지 않습니다</span>');
@@ -146,16 +150,17 @@ const LessonPlan = {
     };
   },
 
-  // 다른 반 내용을 지금 반으로 — 지금 탭(영역별 / 회차별) 내용만 (지금 반에 적은 내용이 있으면 확인 후 덮어씀 · 메모는 가져오지 않음)
+  // 다른 반 내용을 지금 반으로 — 지금 탭(영역별 / 회차별)의 모든 필드 + 반 전체 메모 (지금 반에 적은 내용이 있으면 확인 후 덮어씀)
   copyDlg() {
     const cid = this.cid, ss = this.tab === 'sess';
     const tn = ss ? '회차별' : '영역별', key = ss ? 'sess' : 'areas';
-    const has = (p) => ss ? this.sessAny(p) : this.areasAny(p);
+    const memoOf = (p) => stripZws((p && p.memo) || '').trim();
+    const has = (p) => (ss ? this.sessAny(p) : this.areasAny(p)) || !!memoOf(p);
     const src = this.classes(true).filter(c => c.id !== cid && has(this.plan(c.id)));
-    if (!src.length) { toast(`${tn} 내용을 적어 둔 다른 반이 없습니다`); return; }
+    if (!src.length) { toast(`${tn} 내용이나 메모를 적어 둔 다른 반이 없습니다`); return; }
     Modal.open({
       title: `다른 반 내용 복사 (${tn})`, size: 'sm', autofocus: false,
-      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}을 이 반으로 가져옵니다. ${ss ? '영역별' : '회차별'} 내용과 반 전체 메모는 그대로 둡니다.</p>
+      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}과 반 전체 메모를 이 반으로 가져옵니다. ${ss ? '영역별' : '회차별'} 내용은 그대로 둡니다.</p>
         <div class="pick-list lp-pick">${src.map((c, i) => `<label><input type="radio" name="lpsrc" value="${c.id}" ${i ? '' : 'checked'}>${Classes.dot(c)}${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('')}</div>`,
       buttons: [
         { text: '취소' },
@@ -163,15 +168,28 @@ const LessonPlan = {
           const sid = ($('[name=lpsrc]:checked', m.body) || {}).value, sp = sid && this.plan(sid);
           if (!sp) return false;
           const cur = this.plan(cid);
-          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용을 고른 반 내용으로 바꿀까요?\n(${ss ? '영역별' : '회차별'} 내용 · 반 전체 메모는 그대로)`, '바꾸기')) return false;
+          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용과 반 전체 메모를 고른 반 내용으로 바꿀까요?\n(${ss ? '영역별' : '회차별'} 내용은 그대로)`, '바꾸기')) return false;
           const rec = Object.assign({}, cur || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, sess: {}, memo: '', createdAt: new Date().toISOString() },
-            { [key]: JSON.parse(JSON.stringify(sp[key] || {})), updatedAt: new Date().toISOString() });
+            { [key]: JSON.parse(JSON.stringify(sp[key] || {})), memo: sp.memo || '', updatedAt: new Date().toISOString() });
           Store.put('meta', rec);
           toast('내용을 가져왔습니다');
           App.render();
         } },
       ],
     });
+  },
+
+  // 초기화 — 지금 반의 지금 탭(영역별 / 회차별) 내용 + 반 전체 메모를 모두 지움 (다른 탭 내용은 그대로)
+  async resetDlg() {
+    const cid = this.cid, ss = this.tab === 'sess';
+    const tn = ss ? '회차별' : '영역별', key = ss ? 'sess' : 'areas';
+    const cur = this.plan(cid);
+    const has = !!cur && ((ss ? this.sessAny(cur) : this.areasAny(cur)) || !!stripZws(cur.memo || '').trim());
+    if (!has) { toast(`지울 ${tn} 내용이나 메모가 없습니다`); return; }
+    if (!await confirmDlg(`이 반의 ${tn} 내용과 반 전체 메모를 모두 지울까요?\n(${ss ? '영역별' : '회차별'} 내용은 그대로 · 되돌릴 수 없습니다)`, '초기화', true)) return;
+    Store.put('meta', Object.assign({}, cur, { [key]: {}, memo: '', updatedAt: new Date().toISOString() }));
+    toast('초기화했습니다');
+    App.render();
   },
 
   // Lesson Plan 설정: 쓰는 반 (체크 = Lesson Plan을 씀)
@@ -234,6 +252,13 @@ const LessonPlan = {
     const cfg = typeof Reports !== 'undefined' && Reports.cfg ? Reports.cfg() : { academy: '', logo: '' };
     const academy = String(cfg.academy || '').trim(), logo = cfg.logo || '';
     const br = (s) => esc(s).replace(/\n/g, '<br>');
+    // 줄마다 나눠, 번호·기호(1. 1) (1) ① a. 가. - • 등)로 시작하는 줄은 내어쓰기 — 길어서 줄이 바뀌어도 번호 뒤 글자와 세로선이 맞게
+    const LI_RE = /^\s*((?:\d{1,2}[.)]|\(\d{1,2}\)|[A-Za-z][.)]|[가나다라마바사아자차카타파하][.)]|[-•·*▪◦※])\s+|[①-⑳]\s*)(.*)$/;
+    const fmt = (s) => String(s).split('\n').map(l => {
+      if (!l.trim()) return '<div class="li gap"></div>';
+      const m = l.match(LI_RE);
+      return m ? `<div class="li"><span class="mk">${esc(m[1].trim())}</span><span class="tx">${esc(m[2])}</span></div>` : `<div class="li"><span class="tx">${esc(l.trim())}</span></div>`;
+    }).join('');
     const brand = academy || logo ? `<div class="brand">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${academy ? `<span>${esc(academy)}</span>` : ''}</div>` : '<div class="brand"></div>';
     const bookChips = (c) => {
       const bk = this.books(c.id);
@@ -254,10 +279,12 @@ const LessonPlan = {
     } else {
       body = cls.map(c => {
         const p = this.plan(c.id);
-        const secs = LP_AREAS.filter(([a]) => this.areaHas(p, a)).map(([a, lb]) => `<section style="--ac:${LP_COLORS[a]}"><h3><span>${lb}</span></h3><div class="rows">${LP_FIELDS.filter(([f]) => this.val(p, a, f)).map(([f, fl]) => `<div class="row"><div class="k">${fl}</div><div class="v">${br(this.val(p, a, f))}</div></div>`).join('')}</div></section>`).join('');
-        const sd = this.sessDays(c).map((d, n) => [String(n + 1), d]).filter(([i]) => this.sessHas(p, i));
-        const ses = sd.length ? `<section class="ses" style="--ac:${LP_SCOLOR}"><h3><span>회차별 수업 계획</span><small>주 ${this.sessDays(c).length}회</small></h3>
-          <table><thead><tr><th class="sn">회차</th>${LP_SFIELDS.map(([, fl]) => `<th>${fl}</th>`).join('')}</tr></thead><tbody>${sd.map(([i, d]) => `<tr><td class="sn"><b>${i}회차</b><small>${DOW[d]}</small></td>${LP_SFIELDS.map(([f]) => `<td>${this.sval(p, i, f) ? br(this.sval(p, i, f)) : '<span class="none">-</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : '';
+        const secs = LP_AREAS.filter(([a]) => this.areaHas(p, a)).map(([a, lb]) => `<section style="--ac:${LP_COLORS[a]}"><h3><span>${lb}</span></h3><div class="rows">${LP_FIELDS.filter(([f]) => this.val(p, a, f)).map(([f, fl]) => `<div class="row"><div class="k">${fl}</div><div class="v">${fmt(this.val(p, a, f))}</div></div>`).join('')}</div></section>`).join('');
+        // 회차는 가로(열) — 수업 요일 전부, 비어 있는 회차·칸도 그대로 보여 주간 흐름이 보이게
+        const sd = this.sessDays(c).map((d, n) => [String(n + 1), d]);
+        const ses = this.sessAny(p, sd.length) ? `<section class="ses" style="--ac:${LP_SCOLOR}"><h3><span>회차별 수업 계획</span><small>주 ${sd.length}회</small></h3>
+          <table class="sg"><thead><tr><th class="rl"></th>${sd.map(([i, d]) => `<th class="dh"><span class="dy">${DOW[d]}</span><span class="no">${i}회차</span></th>`).join('')}</tr></thead>
+          <tbody>${LP_SFIELDS.map(([f, fl]) => `<tr><th class="rl"><span>${fl}</span></th>${sd.map(([i]) => `<td>${this.sval(p, i, f) ? fmt(this.sval(p, i, f)) : '<span class="none">–</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : '';
         const bks = bookChips(c);
         return `<div class="pg"><header>${brand}<div class="tag">LESSON PLAN</div></header>
           <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>
@@ -281,8 +308,8 @@ const LessonPlan = {
       .pg .tag { font-size: 9pt; font-weight: 800; letter-spacing: 2.5pt; color: #1D3557; }
       .hero { margin: 7mm 0 6mm; padding: 6mm 7mm; border-radius: 3mm; background: linear-gradient(135deg, #EEF5FC, #F7FAFD); border: 0.6pt solid #D6E4F1; }
       .hero .cn { font-size: 20pt; font-weight: 800; color: #12304D; line-height: 1.2; }
-      .hero .tm { margin-top: 1.5mm; font-size: 10.5pt; color: #4A6075; font-weight: 600; }
-      .hero .bks { margin-top: 3mm; } .hero .bk { background: #fff; border: 0.5pt solid #D6E4F1; font-size: 8.5pt; }
+      .hero .tm { margin-top: 1.5mm; font-size: 10.5pt; color: #4A6075; font-weight: 600; padding-left: 13pt; }
+      .hero .bks { margin-top: 3mm; padding-left: 13pt; } .hero .bk { background: #fff; border: 0.5pt solid #D6E4F1; font-size: 8.5pt; }
       .secs { display: flex; flex-direction: column; gap: 4.5mm; }
       section { break-inside: avoid; page-break-inside: avoid; border: 0.6pt solid #DCE3EA; border-radius: 2.5mm; overflow: hidden; }
       section h3 { margin: 0; padding: 2.2mm 4mm; font-size: 11pt; color: #fff; background: var(--ac); }
@@ -292,12 +319,26 @@ const LessonPlan = {
       section .k { flex: none; width: 19mm; font-weight: 700; color: var(--ac); font-size: 9pt; padding-top: 0.3mm; }
       section .v { flex: 1; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
       section.ses h3 small { font-size: 8.5pt; font-weight: 600; opacity: .85; margin-left: 6pt; }
-      section.ses table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
-      section.ses th { background: #F1F5F9; color: var(--ac); font-size: 9pt; text-align: left; padding: 1.8mm 3mm; border-bottom: 0.6pt solid #DCE3EA; }
-      section.ses td { padding: 2mm 3mm; vertical-align: top; border-top: 0.5pt dashed #E2E8F0; word-break: keep-all; overflow-wrap: anywhere; }
-      section.ses tr { break-inside: avoid; page-break-inside: avoid; }
-      section.ses .sn { width: 17mm; } section.ses td.sn b { display: block; color: var(--ac); } section.ses td.sn small { color: #64748B; }
-      section.ses .none { color: #CBD5E1; }
+      /* 회차 가로 표: 열 = 회차(요일), 행 = 수업 · 숙제 · 시험 */
+      section.ses table.sg { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
+      .sg th, .sg td { border: 0; padding: 0; text-align: left; vertical-align: top; background: none; }
+      section.ses table.sg th.rl { width: 15mm; }
+      section.ses table.sg th.dh { padding: 3mm 2mm 2.5mm; text-align: center; vertical-align: middle; background: #F4F7FB; border-bottom: 0.8pt solid #DCE3EA; }
+      section.ses table.sg th.dh + th.dh { border-left: 0.5pt solid #E2E8F0; }
+      section.ses .dh .dy { display: inline-flex; align-items: center; justify-content: center; width: 8mm; height: 8mm; border-radius: 50%; background: var(--ac); color: #fff; font-size: 10.5pt; font-weight: 800; vertical-align: middle; }
+      section.ses .dh .no { display: inline-block; margin-left: 2mm; font-size: 9pt; font-weight: 700; color: #475569; vertical-align: middle; letter-spacing: .3pt; }
+      section.ses table.sg tbody th.rl { padding: 3mm 0 3mm 3mm; vertical-align: top; }
+      section.ses tbody th.rl span { display: inline-block; margin-top: 0.3mm; font-size: 8.5pt; font-weight: 800; color: var(--ac); padding-left: 2mm; border-left: 2pt solid var(--ac); line-height: 1.3; }
+      section.ses table.sg tbody td { padding: 2.8mm 3mm; border-left: 0.5pt solid #E2E8F0; word-break: keep-all; overflow-wrap: anywhere; }
+      section.ses table.sg tbody tr + tr th, section.ses table.sg tbody tr + tr td { border-top: 0.5pt dashed #DCE3EA; }
+      section.ses tbody tr { break-inside: avoid; page-break-inside: avoid; }
+      section.ses .none { display: block; text-align: center; color: #CBD5E1; }
+      /* 번호·기호 줄 내어쓰기 */
+      .li { display: flex; align-items: baseline; }
+      .li + .li { margin-top: 0.6mm; }
+      .li.gap { height: 1.6mm; }
+      .li .mk { flex: none; min-width: 1.3em; padding-right: 0.35em; white-space: nowrap; color: #475569; font-weight: 600; }
+      .li .tx { flex: 1; min-width: 0; }
       .pg footer { position: absolute; left: 15mm; right: 15mm; bottom: 8mm; text-align: right; font-size: 7.5pt; color: #94A3B8; }
       /* 요약표 */
       .thead { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3mm; margin-bottom: 4mm; border-bottom: 1.2pt solid #1D3557; }
@@ -366,11 +407,15 @@ const LessonPlan = {
 .lp-f textarea { min-height: 58px; font-size: 14px; }
 .lp-memo textarea { font-size: 14px; }
 .lp-pick { max-height: 280px; }
-.lp-sess { display: flex; flex-direction: column; gap: 12px; }
-.lp-sess > .panel { margin: 0; }
-.lp-sf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.lp-sf .lp-f { margin-bottom: 0; }
-@media (max-width: 1100px) { .lp-areas { grid-template-columns: 1fr; } .lp-area:last-child:nth-child(odd) { grid-column: auto; } .lp-sf { grid-template-columns: 1fr; } }
+.lp-sess { border-top: 3px solid var(--lpc); padding: 14px 16px; }
+.lp-sx { overflow-x: auto; }
+.lp-sg { display: grid; gap: 8px; align-items: stretch; }
+.lp-sgh { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 6px; border-radius: 8px; background: var(--tint-strong); border: 1px solid var(--line); }
+.lp-sgh .dy { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lpc); color: #fff; font-weight: 800; font-size: 14px; }
+.lp-sgh b { font-size: 14px; color: var(--ink); }
+.lp-sgl { display: flex; align-items: flex-start; justify-content: center; padding-top: 10px; font-size: 13px; font-weight: 800; color: var(--lpc); }
+.lp-sg textarea { min-height: 84px; font-size: 14px; resize: vertical; }
+@media (max-width: 1100px) { .lp-areas { grid-template-columns: 1fr; } .lp-area:last-child:nth-child(odd) { grid-column: auto; } }
 `;
   document.head.appendChild(st);
 })();
