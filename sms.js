@@ -960,6 +960,7 @@ const NewStu = {
       if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]} 예정일을 ${fmtDate(day)}로 정할까요?\n(할일 목록에도 등록합니다)`, '예정 등록')) return;
       todo.forEach(id => this.setPlan(id, k, day));
       toast(`${todo.length}명 ${this.LABEL[k]} 예정 등록`);
+      this.sel.clear();   // 처리 후 체크 해제
       App.render();
       return;
     }
@@ -968,6 +969,7 @@ const NewStu = {
       if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 필요없음으로 처리할까요?\n(아직 안 한 할일은 할일 목록에서 지웁니다)`, '필요없음 처리')) return;
       todo.forEach(id => this.setNeed(id, k));
       toast(`${todo.length}명 ${this.LABEL[k]} 필요없음`);
+      this.sel.clear();
       App.render();
       return;
     }
@@ -975,6 +977,7 @@ const NewStu = {
     if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 ${fmtDate(day)} 완료로 체크할까요?`, '완료 처리')) return;
     todo.forEach(id => this.setDone(id, k, true, day));
     toast(`${todo.length}명 ${this.LABEL[k]} 완료`);
+    this.sel.clear();
     App.render();
   },
 
