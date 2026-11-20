@@ -185,7 +185,7 @@ const TvEng = (function () {
   function initShootingStars() {
     for (let i = 0; i < cnt(130); i++) particles.push({
       x: Math.random() * W, y: Math.random() * H * 0.88,
-      r: (0.3 + Math.random() * 1.3) * ks, a: 0.25 + Math.random() * 0.75,
+      r: (0.5 + Math.random() * 1.3) * ks, a: 0.55 + Math.random() * 0.45,
       twk: Math.random() * PI2, twkS: 0.005 + Math.random() * 0.015,
     });
     spawnShooter();
@@ -201,7 +201,7 @@ const TvEng = (function () {
   }
   function drawNightBG() {
     const skyG = ctx.createLinearGradient(0, 0, 0, H);
-    skyG.addColorStop(0, '#080620'); skyG.addColorStop(0.45, '#100e38'); skyG.addColorStop(1, '#181658');
+    skyG.addColorStop(0, '#0c0a2e'); skyG.addColorStop(0.45, '#17144d'); skyG.addColorStop(1, '#221f72');
     ctx.fillStyle = skyG; ctx.fillRect(0, 0, W, H);
 
     ctx.save(); ctx.globalAlpha = 0.06;
@@ -232,7 +232,7 @@ const TvEng = (function () {
   function loopShootingStars() {
     particles.forEach(p => {
       p.twk += p.twkS;
-      const alpha = p.a * (0.5 + 0.5 * Math.sin(p.twk));
+      const alpha = p.a * (0.65 + 0.35 * Math.sin(p.twk));
       ctx.fillStyle = `rgba(255,253,220,${alpha})`;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, PI2); ctx.fill();
     });
@@ -247,9 +247,9 @@ const TvEng = (function () {
       ctx.save();
       for (let i = 1; i < s.trail.length; i++) {
         const ta = i / s.trail.length;
-        ctx.globalAlpha = baseA * ta * 0.82;
+        ctx.globalAlpha = baseA * ta;
         ctx.strokeStyle = 'rgba(255,250,195,1)';
-        ctx.lineWidth = 1.6 * ta * ks; ctx.lineCap = 'round';
+        ctx.lineWidth = 2.2 * ta * ks; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(s.trail[i - 1].x, s.trail[i - 1].y); ctx.lineTo(s.trail[i].x, s.trail[i].y); ctx.stroke();
       }
       ctx.restore();
@@ -263,7 +263,7 @@ const TvEng = (function () {
       if (s.x < -80 || s.x > W + 80 || s.y > H + 80 || s.y < -80) return false;
       return s.life < s.maxLife;
     });
-    if (Math.random() < 0.0025) spawnShooter();
+    if (Math.random() < 0.006) spawnShooter();
   }
 
   /* ════════ 3. 눈 내리는 밤 ════════ */
@@ -373,7 +373,7 @@ const TvEng = (function () {
   let fireflyStars = null;
   function initFireflies() {
     fireflyStars = null;
-    for (let i = 0; i < cnt(38); i++) particles.push(makeFirefly());
+    for (let i = 0; i < cnt(52); i++) particles.push(makeFirefly());
   }
   function makeFirefly() {
     return {
@@ -386,13 +386,13 @@ const TvEng = (function () {
   }
   function drawFireflyBG() {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#050e08'); sky.addColorStop(0.5, '#071a0e'); sky.addColorStop(1, '#0a1f10');
+    sky.addColorStop(0, '#0a1d12'); sky.addColorStop(0.5, '#0f2a18'); sky.addColorStop(1, '#13321c');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     if (!fireflyStars) {
       fireflyStars = [];
       for (let i = 0; i < cnt(60); i++) fireflyStars.push({
         x: Math.random() * W, y: Math.random() * H * 0.80,
-        r: (0.5 + Math.random() * 0.8) * ks, a: 0.15 + Math.random() * 0.35, twkOff: Math.random() * PI2,
+        r: (0.5 + Math.random() * 0.8) * ks, a: 0.35 + Math.random() * 0.4, twkOff: Math.random() * PI2,
       });
     }
     ctx.save();
@@ -429,15 +429,15 @@ const TvEng = (function () {
       if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
       p.blinkPhase += p.blinkS;
       const blink = Math.max(0, Math.sin(p.blinkPhase));
-      const glow = blink * blink;
+      const glow = Math.max(blink * blink, 0.12);   // 꺼진 순간에도 희미하게 보이게
       if (glow > 0.05) {
         ctx.save();
         const glowR = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 9);
-        glowR.addColorStop(0, `rgba(180,255,120,${glow * 0.22})`); glowR.addColorStop(1, 'rgba(180,255,120,0)');
+        glowR.addColorStop(0, `rgba(190,255,120,${glow * 0.45})`); glowR.addColorStop(1, 'rgba(180,255,120,0)');
         ctx.fillStyle = glowR; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 9, 0, PI2); ctx.fill();
         const coreG = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.2);
-        coreG.addColorStop(0, `rgba(230,255,180,${glow * 0.95})`);
-        coreG.addColorStop(0.4, `rgba(160,240,80,${glow * 0.7})`);
+        coreG.addColorStop(0, `rgba(245,255,200,${Math.min(1, glow * 1.2)})`);
+        coreG.addColorStop(0.4, `rgba(175,250,90,${glow * 0.9})`);
         coreG.addColorStop(1, 'rgba(100,200,60,0)');
         ctx.fillStyle = coreG; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2.2, 0, PI2); ctx.fill();
         ctx.restore();
@@ -453,7 +453,7 @@ const TvEng = (function () {
       vx: (-0.10 - Math.random() * 0.18) * kv, vy: (0.13 + Math.random() * 0.22) * kv,
       rot: Math.random() * PI2, rotV: (Math.random() - 0.5) * 0.014,
       swg: Math.random() * PI2, swgS: 0.008 + Math.random() * 0.012,
-      size: (5 + Math.random() * 7) * ks, a: 0.6 + Math.random() * 0.35,
+      size: (5 + Math.random() * 7) * ks, a: 0.8 + Math.random() * 0.2,
       hue: 340 + Math.random() * 28, flip: Math.random() * PI2, flipS: 0.013 + Math.random() * 0.016,
     };
   }
@@ -539,7 +539,7 @@ const TvEng = (function () {
   function explodeShell(x, y) {
     const palette = FW_PALETTES[Math.floor(Math.random() * FW_PALETTES.length)];
     const shape = FW_SHAPES[Math.floor(Math.random() * FW_SHAPES.length)];
-    const count = Math.round((80 + Math.floor(Math.random() * 80)) * Math.max(cf, 0.5));
+    const count = Math.round((80 + Math.floor(Math.random() * 80)) * Math.max(cf, 0.75));
     const speed = (1.2 + Math.random() * 1.8) * kv;
     const isGlitter = Math.random() < 0.4;
     const trailLen = shape === 'willow' ? 28 : 12;
@@ -584,7 +584,7 @@ const TvEng = (function () {
   }
   function drawFireworksBG() {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#03020f'); sky.addColorStop(0.55, '#07051a'); sky.addColorStop(1, '#0b0820');
+    sky.addColorStop(0, '#08061c'); sky.addColorStop(0.55, '#0e0b2c'); sky.addColorStop(1, '#151137');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     ctx.save();
     fwStars.forEach(s => {
@@ -648,7 +648,7 @@ const TvEng = (function () {
       if (p.trail.length > 2) {
         for (let i = 1; i < p.trail.length; i++) {
           const ta = i / p.trail.length;
-          ctx.save(); ctx.globalAlpha = alpha * ta * 0.6;
+          ctx.save(); ctx.globalAlpha = alpha * ta * 0.85;
           ctx.strokeStyle = `hsla(${p.hue},${p.sat}%,${p.lit}%,1)`;
           ctx.lineWidth = p.size * ta * 0.8; ctx.lineCap = 'round';
           ctx.beginPath(); ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y); ctx.lineTo(p.trail[i].x, p.trail[i].y);
@@ -657,12 +657,12 @@ const TvEng = (function () {
       }
       if (p.isGlitter) {
         const flicker = 0.5 + 0.5 * Math.sin(p.life * 0.8);
-        ctx.save(); ctx.globalAlpha = alpha * flicker * 0.95;
+        ctx.save(); ctx.globalAlpha = Math.min(1, alpha * (0.35 + flicker * 0.65));
         ctx.fillStyle = `hsla(${p.hue},${p.sat}%,${p.lit + 10}%,1)`;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.9, 0, PI2); ctx.fill();
         ctx.restore();
       } else {
-        ctx.save(); ctx.globalAlpha = alpha * 0.88;
+        ctx.save(); ctx.globalAlpha = alpha;
         const pg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.4);
         pg.addColorStop(0, `hsla(${p.hue + 20},${p.sat}%,${p.lit + 14}%,1)`);
         pg.addColorStop(0.5, `hsla(${p.hue},${p.sat}%,${p.lit}%,0.7)`);
@@ -682,7 +682,7 @@ const TvEng = (function () {
     rainStars = [];
     for (let i = 0; i < cnt(28); i++) rainStars.push({
       x: Math.random() * W, y: Math.random() * H * 0.45,
-      r: (0.4 + Math.random() * 0.5) * ks, a: 0.06 + Math.random() * 0.16, twk: Math.random() * PI2,
+      r: (0.4 + Math.random() * 0.5) * ks, a: 0.20 + Math.random() * 0.25, twk: Math.random() * PI2,
     });
   }
   function makeRaindrop(scatter) {
@@ -690,12 +690,12 @@ const TvEng = (function () {
       x: Math.random() * W, y: scatter ? Math.random() * H : -10,
       vy: (1.0 + Math.random() * 0.7) * kv, vx: (rainWind + (Math.random() - 0.5) * 0.08) * kv,
       swg: Math.random() * PI2, swgS: 0.006 + Math.random() * 0.006,
-      len: (7 + Math.random() * 7) * ks, a: 0.20 + Math.random() * 0.20,
+      len: (8 + Math.random() * 8) * ks, a: 0.45 + Math.random() * 0.30,
     };
   }
   function drawRainBG() {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#06080f'); sky.addColorStop(0.5, '#090d1a'); sky.addColorStop(1, '#0a1020');
+    sky.addColorStop(0, '#0d1222'); sky.addColorStop(0.5, '#131b33'); sky.addColorStop(1, '#17213c');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     const mx = W * 0.28, my = H * 0.24, mr = 38 * kz;
     ctx.save();
@@ -725,7 +725,7 @@ const TvEng = (function () {
     });
     ctx.restore();
     const wg = ctx.createLinearGradient(0, H * 0.74, 0, H);
-    wg.addColorStop(0, 'rgba(12,20,36,0.97)'); wg.addColorStop(1, 'rgba(5,10,20,1)');
+    wg.addColorStop(0, 'rgba(20,32,56,0.97)'); wg.addColorStop(1, 'rgba(10,18,34,1)');
     ctx.fillStyle = wg; ctx.fillRect(0, H * 0.76, W, H * 0.24);
     ctx.save(); ctx.globalAlpha = 0.04;
     const hg = ctx.createLinearGradient(0, H * 0.74, 0, H * 0.80);
@@ -749,14 +749,14 @@ const TvEng = (function () {
             type: 'ripple', x: p.x + (Math.random() - 0.5) * 6 * kv, y: H * 0.76 + Math.random() * H * 0.20, r: 0,
             maxR: (big ? 22 + Math.random() * 16 : 6 + Math.random() * 9) * Math.max(kv, ks * 0.6),
             life: 0, maxLife: big ? 200 + Math.random() * 100 : 130 + Math.random() * 70,
-            a: big ? 0.18 : 0.24, lw: big ? 0.7 : 0.55,
+            a: big ? 0.40 : 0.50, lw: big ? 1.1 : 0.9,
           });
         }
         Object.assign(p, makeRaindrop(false));
       }
       ctx.globalAlpha = p.a;
-      ctx.strokeStyle = 'rgba(160,210,255,1)';
-      ctx.lineWidth = 0.55;
+      ctx.strokeStyle = 'rgba(175,220,255,1)';
+      ctx.lineWidth = 1.0;
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.vx * 3, p.y - p.len); ctx.stroke();
     });
     ctx.restore();
@@ -768,7 +768,7 @@ const TvEng = (function () {
       const a = e.a * (1 - prog) * (1 - prog);
       if (a < 0.004) return false;
       ctx.save(); ctx.globalAlpha = a;
-      ctx.strokeStyle = 'rgba(120,185,240,1)'; ctx.lineWidth = e.lw || 0.6;
+      ctx.strokeStyle = 'rgba(140,200,250,1)'; ctx.lineWidth = e.lw || 0.9;
       ctx.beginPath(); ctx.ellipse(e.x, e.y, e.r, e.r * 0.25, 0, 0, PI2); ctx.stroke();
       ctx.restore();
       return e.life < e.maxLife;
@@ -782,7 +782,7 @@ const TvEng = (function () {
     for (let i = 0; i < 5; i++) clouds.push(makeCloud(true));
     for (let i = 0; i < cnt(80); i++) moonStars.push({
       x: Math.random() * W, y: Math.random() * H * 0.75,
-      r: (0.4 + Math.random() * 0.6) * ks, a: 0.15 + Math.random() * 0.45, twk: Math.random() * PI2,
+      r: (0.4 + Math.random() * 0.6) * ks, a: 0.40 + Math.random() * 0.45, twk: Math.random() * PI2,
     });
   }
   function makeCloud(scatter) {
@@ -808,12 +808,12 @@ const TvEng = (function () {
       x: scatter ? Math.random() * W * 1.8 - W * 0.4 : -(260 * kc + baseR * scale * 2),
       y: H * (0.04 + Math.random() * 0.38),
       spd: (0.06 + Math.random() * 0.14) * kv,
-      a: 0.28 + Math.random() * 0.28, scale, puffs, kc,
+      a: 0.50 + Math.random() * 0.30, scale, puffs, kc,
     };
   }
   function drawMoonCloudBG() {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#06080f'); sky.addColorStop(0.5, '#080c18'); sky.addColorStop(1, '#0a1022');
+    sky.addColorStop(0, '#0c1120'); sky.addColorStop(0.5, '#111a30'); sky.addColorStop(1, '#16203c');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     ctx.save();
     moonStars.forEach(s => {
@@ -884,14 +884,15 @@ const TvEng = (function () {
   return {
     count: SCENES.length,
     get idx() { return cur; },
+    get id() { return SCENES[cur]; },
     attach(c) { ctx = c; },
     // 화면 크기가 바뀌면 같은 장면을 새 크기로 다시 시작 (원본 resize 와 같음)
     resize(w, h, ratio) {
       W = w; H = h; dpr = ratio || 1;
       kv = Math.max(0.2, Math.min(W / 390, H / 700));
       kz = Math.min(1.2, Math.max(0.3, (W / 390 + H / 700) / 2));
-      ks = Math.min(1.1, Math.max(0.55, Math.sqrt(kz)));
-      cf = Math.min(1, Math.max(0.3, (W * H) / (390 * 700) * 1.2));
+      ks = Math.min(1.2, Math.max(0.85, Math.sqrt(kz)));
+      cf = Math.min(1, Math.max(0.45, (W * H) / (390 * 700) * 1.5));
       sprites = {};
       initScene();
     },
@@ -903,7 +904,7 @@ const TvEng = (function () {
 /* ---------- TV 본체 ---------- */
 const TvBox = {
   LS: 'mg77_tv',
-  RATIO: 0.86,       // TV 전체 높이 / 너비 (tv.css: 너비 100em · 높이 86em)
+  RATIO: 0.70,       // TV 전체 높이 / 너비 (tv.css: 너비 100em · 높이 70em)
   MAX_W: 560,        // 너무 커지지 않게
   PLAY_MIN: 230,     // 이 너비 이상이면 재생
   SHOW_MIN: 140,     // 이 너비 미만이면 숨김 (사이는 꺼진 TV)
@@ -926,15 +927,12 @@ const TvBox = {
     const el = document.createElement('div');
     el.className = 'tv';
     el.innerHTML = `
-      <div class="tv-ant" aria-hidden="true"><i class="tv-rod l"></i><i class="tv-rod r"></i><i class="tv-dome"></i></div>
       <div class="tv-body">
         <div class="tv-bezel"><div class="tv-scr">
           <div class="tv-pic"><canvas class="tv-cv"></canvas><canvas class="tv-noise" width="96" height="72"></canvas><div class="tv-fade"></div></div>
           <div class="tv-osd"></div>
-          <div class="tv-scan"></div><div class="tv-glare"></div>
         </div></div>
         <div class="tv-panel">
-          <div class="tv-brand">MEONG</div>
           <div class="tv-grille" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
           <div class="tv-ctl"><button type="button" class="tv-dial" data-tv="ch" title="채널 (다음 장면)" aria-label="채널"><i class="tv-notch"></i></button><span class="tv-lbl">CH</span></div>
           <div class="tv-ctl"><button type="button" class="tv-pwr" data-tv="pwr" title="전원" aria-label="전원"><i class="tv-led"></i></button><span class="tv-lbl">POWER</span></div>
@@ -993,12 +991,14 @@ const TvBox = {
     this._sync();
   },
   _sizeCanvas() {
-    const w = this.scr.clientWidth, h = this.scr.clientHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = this.scr.getBoundingClientRect(), w = r.width, h = r.height;
+    const dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1));   // 고화질: 최소 2배로 그려서 축소 표시
     if (!w || !h || (w === this._cw && h === this._ch && dpr === this._dpr)) return;
     this._cw = w; this._ch = h; this._dpr = dpr;
     this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(h * dpr);
-    this.cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);   // 원본의 ctx.scale 누적 문제 없이
+    const c2 = this.cv.getContext('2d');
+    c2.setTransform(this.cv.width / w, 0, 0, this.cv.height / h, 0, 0);
+    c2.imageSmoothingQuality = 'high';   // 원본의 ctx.scale 누적 문제 없이
     TvEng.resize(w, h, dpr);
     if (!this._raf) TvEng.frame();                                  // 멈춰 있어도 새 크기로 한 장 그려 둠
   },
@@ -1059,6 +1059,7 @@ const TvBox = {
     this._showOsd();
   },
   _setDial() {
+    if (this.cv) this.cv.dataset.sc = TvEng.id;
     if (this.dial) this.dial.style.transform = `rotate(${TvEng.idx * (360 / TvEng.count)}deg)`;
   },
   _showOsd() {
