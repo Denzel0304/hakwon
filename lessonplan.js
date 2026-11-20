@@ -5,7 +5,7 @@
    반마다 A4 한 장(영역별 + 회차별) / 모든 반 요약표(가로 A4, 영역별만)로 PDF 저장 · 출력
    기록은 meta 테이블 (서버 SQL 변경 없음):
      { id 'LP_반ID', kind:'lplan', classId, areas:{ word:{ method, hw, eval }, gram, read, listen, general },
-       sess:{ '1':{ lesson, hw, test }, '2':…, … }, memo(내부용 — PDF 제외), createdAt, updatedAt }
+       sess:{ '1':{ lesson, hw, test }, '2':…, … }, memo(반 안내 — 반마다 한 장 PDF에서 반 이름 아래에 나옴), createdAt, updatedAt }
    Lesson Plan을 쓰지 않는 반: 설정 meta LPCFG { kind:'lpcfg', off:[반ID] } — 목록·PDF에서 뺀다 (단어 기록과 같은 방식)
    반 정보(요일·시간)와 독해·문법 교재(시험+교재 › 일반 교재 중 그 반에 연결된 것)는 자동으로 보여 준다.
    머리말의 학원 이름·로고는 학생 › Report 설정에 저장된 것을 쓴다.
@@ -115,8 +115,8 @@ const LessonPlan = {
       });
       h += '</div>';
     }
-    h += `<div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">내부용 · PDF에 나오지 않습니다</span></div>
-      <textarea rows="3" data-lpf="memo|" placeholder="예: 다음 학기부터 독해 교재 변경 검토">${esc((p && p.memo) || '')}</textarea></div>`;
+    h += `<div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">반 소개 · PDF에서 반 이름 아래에 나옵니다</span></div>
+      <textarea rows="3" data-lpf="memo|" placeholder="예: 중1 내신 대비반 — 문법 개념 정리와 독해 지문 해석 중심으로 운영합니다">${esc((p && p.memo) || '')}</textarea></div>`;
     return h;
   },
   bind(main) {
@@ -286,9 +286,12 @@ const LessonPlan = {
           <table class="sg"><thead><tr><th class="rl"></th>${sd.map(([i, d]) => `<th class="dh"><span class="dy">${DOW[d]}</span><span class="no">${i}회차</span></th>`).join('')}</tr></thead>
           <tbody>${LP_SFIELDS.map(([f, fl]) => `<tr><th class="rl"><span>${fl}</span></th>${sd.map(([i]) => `<td>${this.sval(p, i, f) ? fmt(this.sval(p, i, f)) : '<span class="none">–</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : '';
         const bks = bookChips(c);
+        // 반 전체 메모 = 반 안내 (반 이름과 영역·회차 사이)
+        const memo = stripZws((p && p.memo) || '').trim();
+        const note = memo ? `<div class="note"><div class="nl"><span>반 안내</span></div><div class="nt">${fmt(memo)}</div></div>` : '';
         return `<div class="pg"><header>${brand}<div class="tag">LESSON PLAN</div></header>
           <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>
-          <div class="secs">${secs}${ses}</div><footer>${academy ? esc(academy) + ' · ' : ''}${today}</footer></div>`;
+          ${note}<div class="secs">${secs}${ses}</div><footer>${academy ? esc(academy) + ' · ' : ''}${today}</footer></div>`;
       }).join('');
     }
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fname)}</title><style>
@@ -310,6 +313,11 @@ const LessonPlan = {
       .hero .cn { font-size: 20pt; font-weight: 800; color: #12304D; line-height: 1.2; }
       .hero .tm { margin-top: 1.5mm; font-size: 10.5pt; color: #4A6075; font-weight: 600; padding-left: 13pt; }
       .hero .bks { margin-top: 3mm; padding-left: 13pt; } .hero .bk { background: #fff; border: 0.5pt solid #D6E4F1; font-size: 8.5pt; }
+      /* 반 안내 (반 전체 메모) */
+      .note { display: flex; margin: -1.5mm 0 5.5mm; border: 0.6pt solid #DCE3EA; border-radius: 2.5mm; overflow: hidden; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+      .note .nl { flex: none; width: 22mm; display: flex; align-items: center; justify-content: center; background: #F4F7FB; border-right: 0.6pt solid #DCE3EA; }
+      .note .nl span { font-size: 9pt; font-weight: 800; color: #1D3557; letter-spacing: .3pt; padding-left: 2mm; border-left: 2pt solid #1D3557; line-height: 1.3; }
+      .note .nt { flex: 1; min-width: 0; padding: 3.2mm 4.5mm; font-size: 9.8pt; color: #26384A; line-height: 1.65; word-break: keep-all; overflow-wrap: anywhere; }
       .secs { display: flex; flex-direction: column; gap: 4.5mm; }
       section { break-inside: avoid; page-break-inside: avoid; border: 0.6pt solid #DCE3EA; border-radius: 2.5mm; overflow: hidden; }
       section h3 { margin: 0; padding: 2.2mm 4mm; font-size: 11pt; color: #fff; background: var(--ac); }
