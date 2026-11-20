@@ -307,6 +307,13 @@ const NP = {
     }
     return out;
   },
+  // 보여 줄 회차 목록: 기본 회차('교과서')는 기록이 있거나 · 회차 이름을 쓴 기록이 없거나 · 지금 일지에서 고른 경우만
+  bkList(prog, mid, st) {
+    const names = this.bkNames(prog, mid, st);
+    const base = !!(prog.mats || {})[mid] || this.bkHas((prog.man || {})[mid]) || !names.length
+      || (!!st && ((st.bks[mid] || '') === '' || Object.values(st.items).some(en => en.matId === mid && en.unitId && !en.bk)));
+    return (base ? [''] : []).concat(names);
+  },
   // 자동완성 후보: 수업일지 대비 교재 칸에 쓴 이름만 (최근에 쓴 것 먼저)
   bkAllNames() {
     const last = {};
@@ -319,10 +326,10 @@ const NP = {
   refsOfRB(r, st, bset, getProg) {
     if (!bset.has(r.mat.id)) return this.refsOfR(r);
     const out = [];
-    [''].concat(this.bkNames(getProg(), r.mat.id, st)).forEach(bk => r.units.forEach(u => out.push(this.key(r.mat.id, u.id, bk))));
+    this.bkList(getProg(), r.mat.id, st).forEach(bk => r.units.forEach(u => out.push(this.key(r.mat.id, u.id, bk))));
     return out;
   },
-  // 회차 이름 바꾸기: 이번 시험 기간 이 반의 수업일지 진도·배부 자료 연결 + 직접 표시. 바꾼 수업일지 수를 돌려준다
+  // 회차 이름 바꾸기: 이번 시험 기간 이 반의 수업일지 진도·배부 자료 연결 + 직접 표시. { lessons: 바꾼 수업일지 수, marks: 바꾼 직접 표시 수 }
   renameBk(classId, exams, mid, from, to) {
     const ws = exams.map(e => this.window(e));
     const lo = ws.map(w => w.from).sort()[0], hi = ws.map(w => w.to).sort().pop();
@@ -358,6 +365,7 @@ const NP = {
       n++;
     });
     const fk = this.sid(mid, from), tk = this.sid(mid, to);
+    let pm = 0;
     exams.forEach(ex => {
       const id = this.pmId(classId, ex.id), r = Store.get('meta', id);
       if (!r || !r.mats || !r.mats[fk]) return;
@@ -370,8 +378,9 @@ const NP = {
       Object.keys(a.unums).forEach(u => { b.unums[u] = [...new Set((b.unums[u] || []).concat(a.unums[u]))].sort((x, y) => x - y); });
       delete mats[fk]; mats[tk] = b;
       Store.put('meta', Object.assign({}, r, { mats }));
+      pm++;
     });
-    return n;
+    return { lessons: n, marks: pm };
   },
   // 내신 요약의 ✎: 새 이름을 받아 바꾼다 (이미 있는 회차면 합칠지 묻는다)
   async renameBkDlg(classId, exIds, mid, from) {
@@ -402,7 +411,8 @@ const NP = {
     const exists = to ? this.bkNames(prog, mid).includes(to) : (!!prog.mats[mid] || this.bkHas(prog.man[mid]));
     if (exists && !await confirmDlg(`“${this.bkLabel(to)}” 회차가 이미 있습니다.\n두 회차의 기록을 하나로 합칠까요?`, '합치기')) return;
     const n = this.renameBk(classId, exams, mid, from, to);
-    toast(`“${this.bkLabel(from)}” → “${this.bkLabel(to)}”` + (n ? ` · 수업일지 ${n}개` : '') + ' 바꿨습니다');
+    if (!n.lessons && !n.marks) { toast(`“${this.bkLabel(from)}” 회차에 바꿀 기록이 없습니다`); App.render(); return; }
+    toast(`“${this.bkLabel(from)}” → “${this.bkLabel(to)}” 바꿨습니다` + (n.lessons ? ` (수업일지 ${n.lessons}개)` : ''));
     App.render();
   },
 
@@ -742,7 +752,7 @@ const NP = {
   bkBarHtml(st, prog, mid) {
     const cb = st.bks[mid] || '';
     const cnt = (bk) => Object.values(st.items).filter(en => en.matId === mid && en.unitId && (en.bk || '') === bk).length;
-    const chips = [''].concat(this.bkNames(prog, mid, st)).map(bk => {
+    const chips = this.bkList(prog, mid, st).map(bk => {
       const c = bk === cb ? 0 : cnt(bk);
       return `<button type="button" class="np-c sm ${bk === cb ? 'on' : ''}" data-np-bk="${mid}|${esc(bk)}" title="${esc(this.bkLabel(bk))} 회차로 기록">${esc(this.bkLabel(bk))}${c ? `<i>오늘 ${c}</i>` : ''}</button>`;
     }).join('');
@@ -882,7 +892,7 @@ const NP = {
         // 대비 교재 회차: 회차마다 한 줄 [교과서 7과 8과 2/2 ✎] [백발백중 7과 8과 1/2 ✎]
         let bkRows = null, bkN = 0;
         if (bset.has(mid)) {
-          const bks = [''].concat(this.bkNames(prog, mid));
+          const bks = this.bkList(prog, mid);           // 빈 '교과서' 줄은 숨김
           bkN = bks.length;
           bkRows = bks.map(bk => {
             const sk = this.sid(mid, bk);
