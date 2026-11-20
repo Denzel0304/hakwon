@@ -572,6 +572,8 @@ const NewStu = {
   q: '',                    // 이름 검색
   todo: true,               // 미완료만 보기
   sel: new Set(),           // 선택한 학생 ID
+  step: 'book',             // 선택바에서 고른 단계
+  bdate: '',                // 선택바 날짜 ('' = 오늘)
 
   /* ---------- 기록 ---------- */
   mid(sid) { return 'NW_' + sid; },
@@ -708,7 +710,7 @@ const NewStu = {
               return;
             }
             if (!t || t.done) return;                             // 직접 지운 할일 · 완료한 할일
-            if (changed && want && t.date !== want) {             // 일정이 바뀜 → 새 날짜로 (직접 옮긴 할일도 함께)
+            if (changed && want && t.date !== want && !t.nwManual) {   // 일정이 바뀜 → 새 날짜로 (직접 옮긴 할일도 함께 · 선택바에서 예정 등록한 할일은 그대로)
               Store.put('todos', Object.assign({}, t, { date: want, text, order: TodoX.maxOrder(want) + 1, remindDone: false }));
               m.dates[k] = want; chg++;
             } else if (t.text !== text) { Store.put('todos', Object.assign({}, t, { text })); chg++; }
@@ -774,13 +776,30 @@ const NewStu = {
   },
 
   /* ---------- 완료 체크 ---------- */
-  setDone(sid, k, v) {
-    const iso = v ? new Date().toISOString() : '';
+  // day: 완료 날짜 (생략 · 오늘 = 지금 시각, 다른 날 = 그날 낮 12시)
+  setDone(sid, k, v, day) {
+    let iso = '';
+    if (v) {
+      if (isYmd(day) && day !== todayStr()) { const x = parseYmd(day); x.setHours(12); iso = x.toISOString(); }
+      else iso = new Date().toISOString();
+    }
     const t = Store.get('todos', this.tid(sid, k));
     if (t && !!t.done !== v) Store.put('todos', Object.assign({}, t, { done: v, doneAt: iso }));
     const m = this.rec(sid);
     m.done[k] = iso;
     if (!v) m.skip[k] = false;
+    Store.put('meta', m);
+  },
+  // 예정 등록 (선택바): 할일을 그 날짜로 만들거나 옮김 · nwManual = 직접 정한 날짜 (등원일·수강반이 바뀌어도 자동으로 옮기지 않음)
+  setPlan(sid, k, day) {
+    const s = Store.get('students', sid);
+    if (!s) return;
+    const id = this.tid(sid, k), t = Store.get('todos', id), m = this.rec(sid);
+    const upd = { date: day, done: false, doneAt: '', order: TodoX.maxOrder(day) + 1, remindDone: false, nwManual: true };
+    if (t) Store.put('todos', Object.assign({}, t, upd));
+    else Store.put('todos', Object.assign({ id, lessonId: '', classId: '', text: this.textOf(k, this.baseCls(sid), s, isYmd(m.first) ? m.first : ''),
+      createdAt: new Date().toISOString(), nwKey: sid, nwStep: k }, upd, TodoX.detailVals({ importance: 3 })));
+    m.made[k] = true; m.dates[k] = day; m.done[k] = ''; m.skip[k] = false;
     Store.put('meta', m);
   },
   // 필요없음: 아직 안 한 할일은 지움 (made를 풀어 두어 미완료로 되돌리면 할일을 다시 만듦)
@@ -871,14 +890,15 @@ const NewStu = {
   },
   selBarHtml() {
     // 늘 자리를 차지하는 버튼 줄 (선택이 없으면 흐리게 · 비활성) — 학생 목록의 bulk-bar와 같은 방식
-    const n = this.sel.size, dis = n ? '' : 'disabled';
+    // 단계(교재 안내 · 첫 문자 · 첫 상담 안내)를 고른 뒤 → 날짜 → 예정 등록 · 완료 처리 · 필요없음 · 문자 보내기
+    const n = this.sel.size, dis = n ? '' : 'disabled', k = this.step;
     return `<div class="bulk-bar nw-selbar${n ? '' : ' off'}"><b>선택 ${n}명</b>
-      <button class="btn sm primary" data-nwbulk="send|first" ${n && !SmsPage.sending ? '' : 'disabled'}>첫 문자 보내기</button>
-      <button class="btn sm primary" data-nwbulk="send|cns" ${n && !SmsPage.sending ? '' : 'disabled'}>첫 상담 안내 보내기</button>
-      <span class="soft small" style="margin-left:6px">완료 처리</span>
-      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="done|${k}" ${dis}>${this.LABEL[k]}</button>`).join('')}
-      <span class="soft small" style="margin-left:6px">필요없음</span>
-      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="need|${k}" ${dis}>${this.LABEL[k]}</button>`).join('')}
+      <span class="att-seg nw-seg">${this.KEYS.map(x => `<button type="button" class="${x === k ? 'on' : ''}" data-nwstep="${x}">${this.LABEL[x]}</button>`).join('')}</span>
+      <span class="soft small" style="margin-left:4px">날짜</span><input type="date" data-nwdate value="${esc(this.bdate || todayStr())}">
+      <button class="btn sm" data-nwbulk="plan" ${dis} title="고른 날짜를 예정일로 정하고 할일에 등록합니다">예정 등록</button>
+      <button class="btn sm" data-nwbulk="done" ${dis} title="고른 날짜에 완료한 것으로 체크합니다">완료 처리</button>
+      <button class="btn sm" data-nwbulk="need" ${dis} title="안내할 필요가 없는 것으로 처리합니다 (날짜 없음)">필요없음</button>
+      <button class="btn sm primary" data-nwbulk="send" ${n && k !== 'book' && !SmsPage.sending ? '' : 'disabled'} title="${k === 'book' ? '교재 안내는 카톡으로 하므로 문자를 보내지 않습니다' : '부모님께 ' + this.LABEL[k] + ' 문자를 보냅니다 (오늘 완료)'}">문자 보내기</button>
       <span style="flex:1"></span><button class="btn sm ghost" data-nwbulk="clear" ${dis}>선택 해제</button></div>`;
   },
   parentOk(s) { return SmsPage.okPhone(SmsPage.digits(s.parentPhone)); },
@@ -927,11 +947,22 @@ const NewStu = {
     });
   },
 
-  async bulk(act, k) {
-    const sids = [...this.sel];
+  async bulk(act) {
+    const sids = [...this.sel], k = this.step;
     if (!sids.length) return;
-    if (act === 'send') { this.preview(sids, k); return; }
+    if (act === 'send') { if (k !== 'book') this.preview(sids, k); return; }
+    const day = this.bdate || todayStr();
+    if ((act === 'plan' || act === 'done') && !isYmd(day)) { toast('날짜를 입력하세요'); return; }
+    if (act === 'done' && day > todayStr()) { toast('완료 날짜는 오늘보다 뒤로 정할 수 없습니다'); return; }
     const todo = sids.filter(id => !this.state(id, k).done);
+    if (act === 'plan') {
+      if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 처리가 끝난 상태입니다`); return; }
+      if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]} 예정일을 ${fmtDate(day)}로 정할까요?\n(할일 목록에도 등록합니다)`, '예정 등록')) return;
+      todo.forEach(id => this.setPlan(id, k, day));
+      toast(`${todo.length}명 ${this.LABEL[k]} 예정 등록`);
+      App.render();
+      return;
+    }
     if (act === 'need') {
       if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 처리가 끝난 상태입니다`); return; }
       if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 필요없음으로 처리할까요?\n(아직 안 한 할일은 할일 목록에서 지웁니다)`, '필요없음 처리')) return;
@@ -941,8 +972,8 @@ const NewStu = {
       return;
     }
     if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 완료 상태입니다`); return; }
-    if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 완료로 체크할까요?`, '완료 처리')) return;
-    todo.forEach(id => this.setDone(id, k, true));
+    if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 ${fmtDate(day)} 완료로 체크할까요?`, '완료 처리')) return;
+    todo.forEach(id => this.setDone(id, k, true, day));
     toast(`${todo.length}명 ${this.LABEL[k]} 완료`);
     App.render();
   },
@@ -964,10 +995,13 @@ const NewStu = {
       if (sd) { const [sid, k] = sd.dataset.nwsend.split('|'); this.preview([sid], k); return; }
       const bk = e.target.closest('[data-nwbulk]');
       if (bk && !bk.disabled) {
-        const [act, k] = bk.dataset.nwbulk.split('|');
+        const act = bk.dataset.nwbulk;
         if (act === 'clear') { this.sel.clear(); App.render(); return; }
-        this.bulk(act, k);
+        this.bulk(act);
+        return;
       }
+      const sp = e.target.closest('[data-nwstep]');
+      if (sp) { this.step = sp.dataset.nwstep; const b = $('#nw-selbar', main); if (b) b.innerHTML = this.selBarHtml(); }   // 선택바만 다시 그림
     };
     main.onchange = (e) => {
       const t = e.target;
@@ -987,6 +1021,7 @@ const NewStu = {
     };
     main.oninput = (e) => {
       const t = e.target;
+      if (t.matches('[data-nwdate]')) { this.bdate = t.value; return; }   // 선택바 날짜 (다시 그리지 않음)
       if (t.matches('[data-nwq]')) { this.q = t.value; const b = $('#nw-body', main); if (b) b.innerHTML = this.bodyHtml(); }   // 검색칸은 다시 그리지 않음 (한글 입력 유지)
     };
   },
@@ -1050,6 +1085,9 @@ const NewStu = {
 .nw-cfg { margin-bottom: 12px; }
 .nw-cfg-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .nw-selbar { margin: 0; }
+.nw-seg button { padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.nw-seg button.on { background: var(--accent); color: #fff; font-weight: 700; }
+.nw-selbar input[type=date] { padding: 3px 6px; }
 .sx7-tabs { position: sticky; top: 0; z-index: 19; background: var(--bg); padding-top: 4px; }
 .nw-top { position: sticky; top: 0; z-index: 18; background: var(--bg); padding: 10px 0 12px; margin: -10px 0 12px; border-bottom: 1px solid var(--line); }
 .nw-top .toolbar { margin-bottom: 10px; }
@@ -1067,7 +1105,7 @@ body.m-body .nw-top { position: static; border-bottom: 0; padding: 0; margin-top
 .nw-chip.green { background: var(--ok-soft); color: var(--ok); }
 .nw-chip.red { background: var(--danger-soft); color: var(--danger); }
 .nw-chip.orange { background: var(--warn-soft); color: var(--warn); }
-.nw-chip.blue { background: var(--accent-soft); color: var(--accent-ink); }
+.nw-chip.blue { background: var(--surface); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent); }   /* 예정: 흰 바탕 + 파란 테두리 (완료와 구분) */
 .nw-chip.gray { background: #EEF2F5; color: var(--ink-soft); }
 .nw-chip:hover { filter: brightness(0.95); }
 .nw-chip.ex { display: inline-block; cursor: default; font-weight: 500; background: #F3F0FA; color: #7A6AA6; box-shadow: inset 0 0 0 1px #D9D1EE; }   /* 제외: 연보라 (설정으로 빠진 단계) */
