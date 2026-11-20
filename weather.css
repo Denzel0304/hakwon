@@ -108,6 +108,21 @@
 .wx-fb.f3 { width: 32px; left: 4px; top: 24px; animation-delay: -3s; }
 @keyframes wx-fogm { from { transform: translateX(-4px); } to { transform: translateX(5px); } }
 
+/* 밤 — 맑으면 달과 별, 그 밖의 날씨는 하늘만 어둡게 */
+.wx-k-moon .wx-art  { background: linear-gradient(#1F2F57, #3E5689); }
+.wx-k-mpart .wx-art { background: linear-gradient(#26375E, #4A6090); }
+.wx-night:not(.wx-k-moon):not(.wx-k-mpart) .wx-art { filter: brightness(.74) saturate(.9); }
+.wx-moon { position: absolute; overflow: visible; fill: #FFE9A8; transform-origin: 50% 50%; animation: wx-rock 6s ease-in-out infinite alternate, wx-mglow 3.6s ease-in-out infinite; }
+.wx-moon.big { width: 22px; height: 22px; left: 14px; top: 4px; }
+.wx-moon.sm  { width: 16px; height: 16px; right: 6px; top: 2px; }
+@keyframes wx-rock  { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+@keyframes wx-mglow {
+  0%, 100% { filter: drop-shadow(0 0 1.5px rgba(255, 233, 168, .6)); }
+  50% { filter: drop-shadow(0 0 4px rgba(255, 233, 168, .95)); }
+}
+.wx-star { position: absolute; left: var(--x); top: var(--y); width: 2px; height: 2px; border-radius: 50%; background: #FFFFFF; animation: wx-twinkle 2.8s ease-in-out infinite; animation-delay: var(--d); }
+@keyframes wx-twinkle { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.25); } }
+
 /* 움직임 줄이기 설정을 켠 기기는 정지 화면 */
 @media (prefers-reduced-motion: reduce) {
   .wx, .wx * , .wx-art::after { animation: none !important; }
