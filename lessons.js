@@ -897,7 +897,27 @@ const Lessons = {
   // 새 일지: 출석은 그 날 수강생 전원 '출석'이 기본
   // 결석 예정으로 등록한 학생은 '결석'이 기본
   // 결석 예정 → 결석, 결석일 전에 보강을 끝낸 결석 예정 → 선보강
-  defAtt(classId, date) { const a = {}; if (classId) Classes.rosterOn(classId, date).forEach(s => { const pr = Makeups.preRec(classId, date, s.id); a[s.id] = pr ? (Makeups.isPreMk(pr) ? 'M' : 'A') : 'P'; }); return a; },
+  // 금요일 개인 시간이 아직 시작 전인 학생은 '미체크'가 기본 (올지 아직 모름 · 오면 출석부나 일지 수정에서 체크)
+  defAtt(classId, date) {
+    const a = {};
+    if (!classId) return a;
+    const c = Store.get('classes', classId);
+    Classes.rosterOn(classId, date).forEach(s => {
+      const pr = Makeups.preRec(classId, date, s.id);
+      if (pr) a[s.id] = Makeups.isPreMk(pr) ? 'M' : 'A';
+      else if (!this.ftWait(c, s.id, date)) a[s.id] = 'P';
+    });
+    return a;
+  },
+  // 금요일 개인 시간 학생의 개인 시간 (그 날이 금요일이 아니거나 지정이 없으면 null)
+  ftOn(c, sid, date) { return dowOf(date) === Classes.FT_DOW ? Classes.ftimeOf(c, sid) : null; },
+  // 아직 오지 않았을 수 있는 학생인지: 오늘 수업 · 개인 시간이 반 시간보다 늦고 · 지금 시각이 개인 시간 시작 전
+  ftWait(c, sid, date) {
+    const ft = this.ftOn(c, sid, date);
+    if (!ft || date !== todayStr()) return false;
+    const st = toMin(ft.start), n = new Date();
+    return st > toMin(Classes.timeOn(c, Classes.FT_DOW).start) && st > n.getHours() * 60 + n.getMinutes();
+  },
   newForm(date, classId) { return { date, classId, att: this.defAtt(classId, date), mkpre: Makeups.preMkpre(classId, date), progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
   // 출석이 기본값(전원 출석) 그대로인지
   attIsDefault(f) {
@@ -1092,7 +1112,8 @@ const Lessons = {
       <div class="att-sum"><span>출석 ${cnt.P}</span><span>지각 ${cnt.L}</span><span>결석 ${cnt.A}</span><span>조퇴 ${cnt.E}</span><span>선보강 ${cnt.M}</span><span class="muted">미체크 ${cnt.none}</span></div>`;
     h += roster.length ? roster.map(s => {
       const a = f.att[s.id] || '';
-      return `<div class="att-row"><div class="nm"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span></div>
+      const ft = this.ftOn(c, s.id, date);         // 금요일 개인 시간 표시
+      return `<div class="att-row"><div class="nm"><b>${esc(s.name)}</b><span class="tag">${esc(stTag(s))}</span>${ft ? `<span class="pft" title="${esc('금요일 개인 시간 ' + Classes.ftLabel(ft) + (this.ftWait(c, s.id, date) ? ' · 아직 시간 전이라 미체크로 둡니다. 오면 체크하세요' : ''))}">금 ${esc(ft.start)} 개인</span>` : ''}</div>
         <div class="att-seg">${Object.keys(ATT).map(k => `<button class="${k} ${a === k ? 'on' : ''}" data-att="${k}" data-sid="${s.id}">${ATT[k]}</button>`).join('')}</div>
         ${a === 'M' ? `<label class="att-mkpre small soft" title="수업 전에 실제로 와서 보강한 날 (선택)">보강한 날 <input type="date" data-mkpre="${s.id}" max="${esc(date)}" value="${esc((f.mkpre || {})[s.id] || '')}"></label>` : ''}</div>`;
     }).join('') : '<div class="empty">이 날짜에 이 반 수강생이 없습니다. 반 메뉴에서 학생을 배정하세요.</div>';
@@ -1175,7 +1196,8 @@ const Lessons = {
       if (dt) { const d = f.todos[+dt.dataset.ddet]; if (d) TodoX.detailDlg(d).then(ok => { if (ok && this.form === f) App.render(); }); return; }
       if (e.target.closest('[data-clearatt]')) { Classes.rosterOn(classId, date).forEach(s => { delete f.att[s.id]; }); App.render(); return; }
       if (e.target.closest('[data-allp]')) {
-        Classes.rosterOn(classId, date).forEach(s => { if (!f.att[s.id]) f.att[s.id] = 'P'; });
+        const ac = Store.get('classes', classId);     // 금요일 개인 시간이 아직 시작 전인 학생은 건너뜀
+        Classes.rosterOn(classId, date).forEach(s => { if (!f.att[s.id] && !this.ftWait(ac, s.id, date)) f.att[s.id] = 'P'; });
         App.render();
         return;
       }
