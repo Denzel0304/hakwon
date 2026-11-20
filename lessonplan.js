@@ -186,7 +186,7 @@ const LessonPlan = {
     if (!src.length) { toast(`${tn} 내용이나 메모를 적어 둔 다른 반이 없습니다`); return; }
     Modal.open({
       title: `다른 반 내용 복사 (${tn})`, size: 'sm', autofocus: false,
-      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}과 반 전체 메모를 이 반으로 가져옵니다. ${ss ? '영역별' : '회차별'} 내용은 그대로 둡니다.</p>
+      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}과 반 전체 메모를 이 반으로 가져옵니다.</p>
         <div class="pick-list lp-pick">${src.map((c, i) => `<label><input type="radio" name="lpsrc" value="${c.id}" ${i ? '' : 'checked'}>${Classes.dot(c)}${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('')}</div>`,
       buttons: [
         { text: '취소' },
@@ -194,7 +194,7 @@ const LessonPlan = {
           const sid = ($('[name=lpsrc]:checked', m.body) || {}).value, sp = sid && this.plan(sid);
           if (!sp) return false;
           const cur = this.plan(cid);
-          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용과 반 전체 메모를 고른 반 내용으로 바꿀까요?\n(${ss ? '영역별' : '회차별'} 내용은 그대로)`, '바꾸기')) return false;
+          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용과 반 전체 메모를 고른 반 내용으로 바꿀까요?`, '바꾸기')) return false;
           const rec = Object.assign({}, cur || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, sess: {}, memo: '', createdAt: new Date().toISOString() },
             { [key]: JSON.parse(JSON.stringify(sp[key] || {})), memo: sp.memo || '', updatedAt: new Date().toISOString() });
           Store.put('meta', rec);
