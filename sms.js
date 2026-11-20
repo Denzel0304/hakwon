@@ -1052,7 +1052,7 @@ const NewStu = {
 .nw-chip.blue { background: var(--accent-soft); color: var(--accent-ink); }
 .nw-chip.gray { background: #EEF2F5; color: var(--ink-soft); }
 .nw-chip:hover { filter: brightness(0.95); }
-.nw-chip.ex { display: inline-block; cursor: default; font-weight: 500; }
+.nw-chip.ex { display: inline-block; cursor: default; font-weight: 500; background: #F3F0FA; color: #7A6AA6; box-shadow: inset 0 0 0 1px #D9D1EE; }   /* 제외: 연보라 (설정으로 빠진 단계) */
 .nw-chip.ex:hover { filter: none; }
 .nw-off th, .nw-off td { text-align: center; }
 .nw-off th:first-child, .nw-off td:first-child { text-align: left; }
