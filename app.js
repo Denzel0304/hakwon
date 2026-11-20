@@ -92,6 +92,7 @@ const App = {
     HolidayRemind.check();            // 달마다 처음 열 때 공휴일 입력 확인
     Makeups.retSync();                // 결석 후 첫 등원 할일 만들기 · 정리
     Books.autoSync();                 // 반 교재(독해·문법) 학생 교재 자동 등록 · 정리
+    StartRemind.check();              // 접속 알림: 결석+보강 처리 필요 · SMS 신규생 안내 (다른 창이 닫힌 뒤)
   },
 
   /* ---------- 로그인 ---------- */
@@ -156,6 +157,96 @@ const App = {
     $('#main').innerHTML = '';
     this.setSync('');
     this.showLogin();
+  },
+};
+
+/* =========================================================
+   접속 알림 (PC 전용 · 사이트를 열거나 새로고침할 때마다, 서버 내용을 처음 받은 뒤 한 번)
+   - 결석+보강 › 처리 필요 탭의 결석 전부 (탭 숫자와 같은 기준: 오늘까지의 결석 중 미지정·예정)
+   - SMS › 신규생: 날짜가 오늘이거나 지난 미완료 안내 (교재 안내 · 첫 문자 · 첫 상담 안내 — 칩의 '오늘'·'지남')
+     날짜 없는 '미완료'(일정 등록 '안 함' 등)는 넣지 않는다
+   - 해결하기 전까지는 접속할 때마다 뜬다 (따로 '다시 보지 않기' 기록 없음). 탭으로 돌아오기만 하면 뜨지 않음
+   - 공휴일 확인 · 진급 등 다른 창이 열려 있으면 모두 닫힌 뒤에 띄운다 (띄울 때 다시 계산)
+   - 칸마다 최대 LIMIT건, 나머지는 '외 N건'
+   ========================================================= */
+const StartRemind = {
+  LIMIT: 8,
+  _t: null,
+
+  check() {
+    clearTimeout(this._t);
+    let tries = 0;
+    const tick = () => {
+      if (!Auth.key() || !Store.firstPullDone) return;
+      if (Modal.stack.length || !document.body.classList.contains('app-on')) {
+        if (++tries < 1500) this._t = setTimeout(tick, 400);   // 다른 창이 닫힐 때까지 기다림 (약 10분까지)
+        return;
+      }
+      try { this.show(); } catch (e) { console.warn('[mg77] 접속 알림 실패', e); }
+    };
+    this._t = setTimeout(tick, 700);   // 시작 직후 뜨는 다른 확인창이 먼저 열리도록 잠시 기다림
+  },
+
+  // 결석+보강 › 처리 필요와 같은 목록 · 같은 순서
+  makeups() {
+    return Makeups.collect().filter(o => !o.fut && ['none', 'plan'].includes(o.status))
+      .sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
+  },
+  // SMS 신규생: 날짜가 오늘까지인 미완료 단계 (오래된 날짜 먼저)
+  newStu() {
+    const today = todayStr(), out = [], seen = new Set();
+    NewStu._bc = new Map();            // 제외 반 판단 캐시를 새로 (신규생 탭 groups()와 같음)
+    Store.where('todos', t => t.nwKey && t.nwStep && !t.done).forEach(t => {
+      const sid = t.nwKey, k = t.nwStep, key = sid + '|' + k;
+      if (seen.has(key) || !NewStu.KEYS.includes(k)) return;
+      seen.add(key);
+      const s = Store.get('students', sid);
+      if (!s || (s.status || 'active') !== 'active' || !(s.name || '').trim()) return;
+      const st = NewStu.state(sid, k);
+      if (st.done || !isYmd(st.date) || st.date > today) return;
+      out.push({ s, k, date: st.date, c: NewStu.baseCls(sid), late: st.date < today });
+    });
+    return out.sort((a, b) => ko(a.date, b.date) || Students.sortFn(a.s, b.s) || NewStu.KEYS.indexOf(a.k) - NewStu.KEYS.indexOf(b.k));
+  },
+
+  show() {
+    const mk = this.makeups(), nw = this.newStu();
+    if (!mk.length && !nw.length) return;
+    const more = (n) => n > this.LIMIT ? `<div class="small soft" style="margin-top:4px">외 ${n - this.LIMIT}건</div>` : '';
+    const row = (inner) => `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--line)">${inner}</div>`;
+    const head = (t, n, go, btn) => `<div style="display:flex;align-items:center;gap:8px;margin:0 0 6px"><b>${t}</b><span class="badge red">${n}건</span><span style="flex:1"></span><button type="button" class="btn sm primary" data-srgo="${go}">${btn}</button></div>`;
+    let body = '';
+    if (mk.length) {
+      body += `<div style="margin-bottom:16px">${head('결석+보강 · 처리 필요', mk.length, 'mk', '결석+보강으로 이동')}`;
+      body += mk.slice(0, this.LIMIT).map(o => {
+        const m = o.mk || {};
+        const stt = o.status === 'plan'
+          ? `<span class="badge orange">예정${isYmd(m.date) ? ' ' + fmtMD(m.date) + (m.time ? ' ' + esc(m.time) : '') : ' (보강일 없음)'}</span>`
+          : '<span class="badge gray">미지정</span>';
+        return row(`<b>${esc(o.s.name)}</b><span class="tag">${esc(stTag(o.s))}</span><span class="badge red">결석 ${fmtMD(o.l.date)}</span>${stt}<span class="small soft">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>`);
+      }).join('') + more(mk.length) + '</div>';
+    }
+    if (nw.length) {
+      body += `<div>${head('SMS · 신규생 안내', nw.length, 'nw', 'SMS 신규생으로 이동')}`;
+      body += nw.slice(0, this.LIMIT).map(o => {
+        const x = parseYmd(o.date), md = (x.getMonth() + 1) + '/' + x.getDate();
+        return row(`<b>${esc(o.s.name)}</b><span class="tag">${esc(stTag(o.s))}</span><span>${esc(NewStu.LABEL[o.k])}</span>${o.late ? `<span class="badge red">지남 ${md}</span>` : '<span class="badge orange">오늘</span>'}<span class="small soft">${esc(o.c ? o.c.name : '')}</span>`);
+      }).join('') + more(nw.length) + '</div>';
+    }
+    body += '<p class="small muted" style="margin:12px 0 0">처리하기 전까지는 사이트에 접속할 때마다 알려줍니다.</p>';
+    Modal.open({
+      title: '확인할 일', size: 'md', autofocus: false, body,
+      onMount: (b, m) => {
+        b.addEventListener('click', (e) => {
+          const g = e.target.closest('[data-srgo]');
+          if (!g) return;
+          m.close();
+          if (g.dataset.srgo === 'mk') { Makeups.tab = 'open'; Makeups.q = ''; App.go('makeups', {}); }
+          else { SmsPage.tab = 'new'; NewStu.cls = ''; NewStu.q = ''; NewStu.todo = true; App.go('sms', {}); }
+        });
+      },
+      buttons: [{ text: '닫기', cls: 'primary', primary: true }],
+    });
   },
 };
 
