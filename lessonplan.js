@@ -5,7 +5,7 @@
    반마다 A4 한 장(영역별 + 회차별) / 모든 반 요약표(가로 A4, 영역별만)로 PDF 저장 · 출력
    기록은 meta 테이블 (서버 SQL 변경 없음):
      { id 'LP_반ID', kind:'lplan', classId, areas:{ word:{ method, hw, eval }, gram, read, listen, general },
-       sess:{ '1':{ subj(그날 과목), lesson, hw, test }, '2':…, … }, memo(반 안내 — 반마다 한 장 PDF에서 반 이름 아래에 나옴), createdAt, updatedAt }
+       sess:{ '1':{ subj(그날 과목), lesson, hw, test }, '2':…, … }, memo(반 안내 — 회차별 탭에만 있음 · PDF 1쪽 반 이름 아래에 나옴), createdAt, updatedAt }
    Lesson Plan을 쓰지 않는 반: 설정 meta LPCFG { kind:'lpcfg', off:[반ID] } — 목록·PDF에서 뺀다 (단어 기록과 같은 방식)
    반 정보(요일·시간)와 독해·문법 교재(시험+교재 › 일반 교재 중 그 반에 연결된 것)는 자동으로 보여 준다.
    머리말의 학원 이름·로고는 학생 › Report 설정에 저장된 것을 쓴다.
@@ -124,8 +124,8 @@ const LessonPlan = {
     const chips = (arr) => arr.length ? arr.map(n => `<span class="lp-bk">${esc(n)}</span>`).join('') : '<span class="muted small">연결된 교재 없음</span>';
     let h = `<div class="panel lp-info"><div class="lp-ttl">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
         <span class="soft">${esc(Classes.timeLabel(c))}</span><span style="flex:1"></span>
-        <button type="button" class="btn sm" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 이 반으로 가져옵니다">다른 반 내용 복사</button>
-        <button type="button" class="btn sm danger" data-lpa="reset" title="이 반의 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 모두 지웁니다">초기화</button></div>
+        <button type="button" class="btn sm" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별 내용과 반 전체 메모를' : '영역별 내용을'} 이 반으로 가져옵니다">다른 반 내용 복사</button>
+        <button type="button" class="btn sm danger" data-lpa="reset" title="이 반의 ${this.tab === 'sess' ? '회차별 내용과 반 전체 메모를' : '영역별 내용을'} 모두 지웁니다">초기화</button></div>
       <div class="lp-books"><div><span class="bk-cat read">독해</span>${chips(bk.read)}</div><div><span class="bk-cat gram">문법</span>${chips(bk.gram)}</div></div>
       <div class="small muted">교재는 시험+교재 › 일반 교재에서 이 반에 연결한 독해·문법 교재가 자동으로 나옵니다.</div></div>`;
     if (this.tab === 'sess') {
@@ -154,7 +154,7 @@ const LessonPlan = {
       });
       h += '</div>';
     }
-    h += `<div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">반 소개 · PDF에서 반 이름 아래에 나옵니다</span></div>
+    if (this.tab === 'sess') h += `<div class="panel lp-memo"><div class="lp-ah"><b>반 전체 메모</b><span class="small muted">반 소개 · PDF 1쪽 반 이름 아래에 나옵니다</span></div>
       <textarea rows="3" data-lpf="memo|" placeholder="예: 중1 내신 대비반 — 문법 개념 정리와 독해 지문 해석 중심으로 운영합니다">${esc((p && p.memo) || '')}</textarea></div>`;
     return h;
   },
@@ -189,17 +189,18 @@ const LessonPlan = {
     };
   },
 
-  // 다른 반 내용을 지금 반으로 — 지금 탭(영역별 / 회차별)의 모든 필드 + 반 전체 메모 (지금 반에 적은 내용이 있으면 확인 후 덮어씀)
+  // 다른 반 내용을 지금 반으로 — 회차별 탭: 회차별 모든 필드 + 반 전체 메모 / 영역별 탭: 영역별 모든 필드만 (지금 반에 적은 내용이 있으면 확인 후 덮어씀)
   copyDlg() {
     const cid = this.cid, ss = this.tab === 'sess';
     const tn = ss ? '회차별' : '영역별', key = ss ? 'sess' : 'areas';
     const memoOf = (p) => stripZws((p && p.memo) || '').trim();
-    const has = (p) => (ss ? this.sessAny(p) : this.areasAny(p)) || !!memoOf(p);
+    const has = (p) => ss ? (this.sessAny(p) || !!memoOf(p)) : this.areasAny(p);
+    const what = ss ? '회차별 내용과 반 전체 메모' : '영역별 내용';
     const src = this.classes(true).filter(c => c.id !== cid && has(this.plan(c.id)));
-    if (!src.length) { toast(`${tn} 내용이나 메모를 적어 둔 다른 반이 없습니다`); return; }
+    if (!src.length) { toast(`${ss ? '회차별 내용이나 메모를' : '영역별 내용을'} 적어 둔 다른 반이 없습니다`); return; }
     Modal.open({
       title: `다른 반 내용 복사 (${tn})`, size: 'sm', autofocus: false,
-      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(수업·숙제·시험)' : '영역별 내용(학습 방법·숙제·평가)'}과 반 전체 메모를 이 반으로 가져옵니다.</p>
+      body: `<p class="small soft" style="margin:0 0 8px">고른 반의 ${ss ? '회차별 내용(과목·수업·숙제·시험)과 반 전체 메모를' : '영역별 내용(숙제·평가 방식)을'} 이 반으로 가져옵니다.</p>
         <div class="pick-list lp-pick">${src.map((c, i) => `<label><input type="radio" name="lpsrc" value="${c.id}" ${i ? '' : 'checked'}>${Classes.dot(c)}${esc(c.name)} <span class="muted small">${esc(Classes.timeLabel(c))}</span></label>`).join('')}</div>`,
       buttons: [
         { text: '취소' },
@@ -207,9 +208,9 @@ const LessonPlan = {
           const sid = ($('[name=lpsrc]:checked', m.body) || {}).value, sp = sid && this.plan(sid);
           if (!sp) return false;
           const cur = this.plan(cid);
-          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${tn} 내용과 반 전체 메모를 고른 반 내용으로 바꿀까요?`, '바꾸기')) return false;
+          if (has(cur) && !await confirmDlg(`이 반에 적어 둔 ${what}을 고른 반 내용으로 바꿀까요?`, '바꾸기')) return false;
           const rec = Object.assign({}, cur || { id: this.pid(cid), kind: 'lplan', classId: cid, areas: {}, sess: {}, memo: '', createdAt: new Date().toISOString() },
-            { [key]: JSON.parse(JSON.stringify(sp[key] || {})), memo: sp.memo || '', updatedAt: new Date().toISOString() });
+            Object.assign({ [key]: JSON.parse(JSON.stringify(sp[key] || {})), updatedAt: new Date().toISOString() }, ss ? { memo: sp.memo || '' } : {}));
           Store.put('meta', rec);
           toast('내용을 가져왔습니다');
           App.render();
@@ -218,15 +219,15 @@ const LessonPlan = {
     });
   },
 
-  // 초기화 — 지금 반의 지금 탭(영역별 / 회차별) 내용 + 반 전체 메모를 모두 지움 (다른 탭 내용은 그대로)
+  // 초기화 — 회차별 탭: 회차별 내용 + 반 전체 메모 / 영역별 탭: 영역별 내용만 지움 (다른 탭 내용은 그대로)
   async resetDlg() {
     const cid = this.cid, ss = this.tab === 'sess';
     const tn = ss ? '회차별' : '영역별', key = ss ? 'sess' : 'areas';
     const cur = this.plan(cid);
-    const has = !!cur && ((ss ? this.sessAny(cur) : this.areasAny(cur)) || !!stripZws(cur.memo || '').trim());
-    if (!has) { toast(`지울 ${tn} 내용이나 메모가 없습니다`); return; }
-    if (!await confirmDlg(`이 반의 ${tn} 내용과 반 전체 메모를 모두 지울까요?\n(${ss ? '영역별' : '회차별'} 내용은 그대로 · 되돌릴 수 없습니다)`, '초기화', true)) return;
-    Store.put('meta', Object.assign({}, cur, { [key]: {}, memo: '', updatedAt: new Date().toISOString() }));
+    const has = !!cur && (ss ? (this.sessAny(cur) || !!stripZws(cur.memo || '').trim()) : this.areasAny(cur));
+    if (!has) { toast(ss ? '지울 회차별 내용이나 메모가 없습니다' : '지울 영역별 내용이 없습니다'); return; }
+    if (!await confirmDlg(`이 반의 ${ss ? '회차별 내용과 반 전체 메모를' : '영역별 내용을'} 모두 지울까요?\n(${ss ? '영역별' : '회차별'} 내용은 그대로 · 되돌릴 수 없습니다)`, '초기화', true)) return;
+    Store.put('meta', Object.assign({}, cur, { [key]: {}, updatedAt: new Date().toISOString() }, ss ? { memo: '' } : {}));
     toast('초기화했습니다');
     App.render();
   },
@@ -287,7 +288,7 @@ const LessonPlan = {
   // PDF에 낼 내용이 있는 반 (회차별 · 영역별 · 반 안내 중 하나라도)
   pdfHas(c) { const p = this.plan(c.id); return this.hasAny(p, c) || !!stripZws((p && p.memo) || '').trim(); },
 
-  // 반마다 2쪽: 1쪽 = 반 이름·시간·교재·반 안내 + 회차별 / 2쪽 = 반 이름·시간·반 안내 + 영역별
+  // 반마다 2쪽: 1쪽 = 반 이름·시간·교재·반 안내 + 회차별 / 2쪽 = 반 이름·시간 + 영역별
   pdf(cls) {
     const today = todayStr();
     const cfg = typeof Reports !== 'undefined' && Reports.cfg ? Reports.cfg() : { academy: '', logo: '' };
@@ -313,10 +314,11 @@ const LessonPlan = {
       const memo = stripZws((p && p.memo) || '').trim();
       // 반 전체 메모 = 반 안내 (반 이름과 표 사이)
       const note = memo ? `<div class="note"><div class="nl"><span>반 안내</span></div><div class="nt">${fmt(memo)}</div></div>` : '';
-      const head = (withBooks) => {
-        const bks = withBooks ? bookChips(c) : '';
+      // 1쪽(회차별)만 교재 · 반 안내를 넣음 / 2쪽(영역별)은 반 이름 · 시간만
+      const head = (first) => {
+        const bks = first ? bookChips(c) : '';
         return `<header>${brand}<div class="tag">LESSON PLAN</div></header>
-          <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>${note}`;
+          <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>${first ? note : ''}`;
       };
       const foot = academy ? `<footer>${esc(academy)}</footer>` : '';
       // 1쪽: 회차는 가로(열) — 수업 요일 전부, 비어 있는 회차·칸도 그대로 보여 주간 흐름이 보이게
