@@ -101,11 +101,14 @@ const LessonPlan = {
     tb.style.top = top + 'px';
     if (side) side.style.top = (top + tb.offsetHeight + 12) + 'px';
   },
+  // PC: 칸 높이를 고르게 늘려 마지막 카드 아래 끝을 왼쪽 사이드바 맨 아래 선(동기화 표시 위)에 맞춤
+  //   회차별 = 반 전체 메모 끝 / 영역별 = 단어 · 듣기 카드 끝
   fitSess() {
     const main = $('#main');
-    if (App.page !== 'lessonplan' || this.tab !== 'sess' || !main) return;
-    const wrap = $('.lp-wrap', main), memo = $('.lp-memo', main), tas = $$('.lp-sg textarea', main);
-    if (!wrap || !memo || !tas.length) return;
+    if (App.page !== 'lessonplan' || !main) return;
+    const ss = this.tab === 'sess';
+    const wrap = $('.lp-wrap', main), last = $(ss ? '.lp-memo' : '.lp-areas', main), tas = $$(ss ? '.lp-sg textarea' : '.lp-areas textarea', main);
+    if (!wrap || !last || !tas.length) return;
     tas.forEach(t => { t.style.height = ''; });
     // 화면이 좁아 반 목록과 내용이 위아래로 쌓이면 원래 높이(CSS) 그대로
     if (getComputedStyle(wrap).gridTemplateColumns.trim().split(/\s+/).length < 2) return;
@@ -114,8 +117,15 @@ const LessonPlan = {
     const r = bar.getBoundingClientRect();
     if (!r.height) return;
     const bottom = Math.min(r.top, window.innerHeight - bar.offsetHeight);
-    const memoBottom = memo.getBoundingClientRect().bottom + main.scrollTop;   // 스크롤 맨 위 기준 위치
-    const extra = Math.floor((bottom - memoBottom) / LP_SFIELDS.length);      // 수업 · 숙제 · 시험 세 줄에 나눠 줌
+    const lastBottom = last.getBoundingClientRect().bottom + main.scrollTop;   // 스크롤 맨 위 기준 위치
+    // 위아래로 쌓인 칸 수: 회차별 = 수업 · 숙제 · 시험 / 영역별 = 줄마다 가장 많은 칸 수의 합 (문법·독해 2 + 단어·듣기 1)
+    let stack = LP_SFIELDS.length;
+    if (!ss) {
+      const cols = getComputedStyle(last).gridTemplateColumns.trim().split(/\s+/).length;
+      stack = 0;
+      for (let k = 0; k < LP_AREAS.length; k += cols) stack += Math.max(...LP_AREAS.slice(k, k + cols).map(([a]) => lpFields(a).length));
+    }
+    const extra = Math.floor((bottom - lastBottom) / stack);
     if (extra <= 0) return;
     tas.forEach(t => { t.style.height = (t.offsetHeight + extra) + 'px'; });
   },
