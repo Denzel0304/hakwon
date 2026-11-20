@@ -111,7 +111,7 @@ const LessonPlan = {
     const chips = (arr) => arr.length ? arr.map(n => `<span class="lp-bk">${esc(n)}</span>`).join('') : '<span class="muted small">연결된 교재 없음</span>';
     let h = `<div class="panel lp-info"><div class="lp-ttl">${Classes.dot(c)}<b>${esc(c.name)}</b>${c.active === false ? ' <span class="badge gray">종료</span>' : ''}
         <span class="soft">${esc(Classes.timeLabel(c))}</span><span style="flex:1"></span>
-        <button type="button" class="btn sm ghost" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 이 반으로 가져옵니다">다른 반 내용 복사</button>
+        <button type="button" class="btn sm" data-lpa="copy" title="다른 반에 적어 둔 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 이 반으로 가져옵니다">다른 반 내용 복사</button>
         <button type="button" class="btn sm danger" data-lpa="reset" title="이 반의 ${this.tab === 'sess' ? '회차별' : '영역별'} 내용과 반 전체 메모를 모두 지웁니다">초기화</button></div>
       <div class="lp-books"><div><span class="bk-cat read">독해</span>${chips(bk.read)}</div><div><span class="bk-cat gram">문법</span>${chips(bk.gram)}</div></div>
       <div class="small muted">교재는 시험+교재 › 일반 교재에서 이 반에 연결한 독해·문법 교재가 자동으로 나옵니다.</div></div>`;
@@ -318,7 +318,7 @@ const LessonPlan = {
         const note = memo ? `<div class="note"><div class="nl"><span>반 안내</span></div><div class="nt">${fmt(memo)}</div></div>` : '';
         return `<div class="pg"><header>${brand}<div class="tag">LESSON PLAN</div></header>
           <div class="hero"><div class="cn"><span class="dot" style="background:${Classes.colorOf(c)}"></span>${esc(c.name)}</div><div class="tm">${esc(Classes.timeLabel(c))}</div>${bks ? `<div class="bks">${bks}</div>` : ''}</div>
-          ${note}<div class="secs">${secs}${ses}</div><footer>${academy ? esc(academy) + ' · ' : ''}${today}</footer></div>`;
+          ${note}<div class="secs">${secs}${ses}</div>${academy ? `<footer>${esc(academy)}</footer>` : ''}</div>`;
       }).join('');
     }
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(fname)}</title><style>
