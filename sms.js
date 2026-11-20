@@ -857,7 +857,7 @@ const NewStu = {
   },
   selBarHtml() {
     const n = this.sel.size;
-    if (!n) return '<div class="small muted nw-selbar">학생을 체크하면 여러 명을 한꺼번에 보내거나 완료 처리할 수 있습니다.</div>';
+    if (!n) return '<div class="small muted nw-selbar">학생을 체크하면 여러 명을 한꺼번에 보내거나 완료 · 필요없음(안내할 필요 없는 학생)으로 처리할 수 있습니다.</div>';
     return `<div class="nw-selbar on"><b>선택 ${n}명</b>
       <button class="btn sm primary" data-nwbulk="send|first" ${SmsPage.sending ? 'disabled' : ''}>첫 문자 보내기</button>
       <button class="btn sm primary" data-nwbulk="send|cns" ${SmsPage.sending ? 'disabled' : ''}>첫 상담 안내 보내기</button>
