@@ -64,14 +64,28 @@ const SmsPage = {
 
   onLeave() {},
 
+  // 보내기 · 신규생 · 발송 기록 탭을 제목줄 바로 아래에 고정, 신규생 탭은 설정 · 선택 처리 줄도 그 아래에 고정
+  // (Lesson Plan stick()과 같은 방식 · 제목줄은 top:-26px로 고정됨 · 모바일은 제목줄이 없어 고정하지 않음)
+  stick() {
+    const main = $('#main');
+    if (App.page !== 'sms' || !main) return;
+    const ph = $('.page-head', main), tb = $('.sx7-tabs', main), tp = $('.nw-top', main);
+    if (!ph || !tb || !ph.offsetHeight) return;
+    const top = ph.offsetHeight - 26;
+    tb.style.top = top + 'px';
+    if (tp) tp.style.top = (top + tb.offsetHeight) + 'px';
+  },
+
   /* ---------- 화면 ---------- */
   render(main) {
     let h = `<div class="page-head"><h1>SMS</h1>${this.tab === 'new' ? '<button type="button" class="btn sm" data-nwa="cfg" title="반마다 하지 않는 안내(교재 안내·첫 문자·첫 상담 안내)를 고릅니다">⚙ 설정</button>' : ''}</div>
-      <div class="tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
+      <div class="tabs sx7-tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
     if (this.tab === 'new') NewStu.sync();          // 신규생: 등록일·수강반이 바뀐 것을 할일에 먼저 반영
     h += this.tab === 'log' ? this.logHtml() : this.tab === 'new' ? NewStu.html() : this.sendHtml();
     main.innerHTML = h;
+    this.stick();
+    if (!this._stickOn) { this._stickOn = true; window.addEventListener('resize', debounce(() => this.stick(), 100)); }
     if (this.tab === 'new') { NewStu.bind(main); return; }
     this.bind(main);
     if (this.tab === 'log') this.paintDel(main);   // 전체 선택의 일부 선택(−) 표시
@@ -934,16 +948,7 @@ const NewStu = {
   },
 
   /* ---------- 이벤트 ---------- */
-  // 설정 · 반 선택 · 선택 처리 줄을 제목줄 바로 아래에 고정 (Lesson Plan stick()과 같은 방식 · 제목줄은 top:-26px로 고정됨)
-  stick() {
-    const main = $('#main');
-    if (App.page !== 'sms' || SmsPage.tab !== 'new' || !main) return;
-    const ph = $('.page-head', main), tp = $('.nw-top', main);
-    if (ph && tp && ph.offsetHeight) tp.style.top = (ph.offsetHeight - 26) + 'px';
-  },
-  bind(main) {
-    this.stick();
-    if (!this._stickOn) { this._stickOn = true; window.addEventListener('resize', debounce(() => this.stick(), 100)); }
+  bind(main) {   // 위쪽 고정은 SmsPage.stick()에서 함
     main.onclick = (e) => {
       const tb = e.target.closest('[data-tab]');
       if (tb) { SmsPage.tab = tb.dataset.tab; App.render(); return; }
@@ -1045,9 +1050,11 @@ const NewStu = {
 .nw-cfg { margin-bottom: 12px; }
 .nw-cfg-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .nw-selbar { margin: 0; }
-.nw-top { position: sticky; top: 0; z-index: 19; background: var(--bg); padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.sx7-tabs { position: sticky; top: 0; z-index: 19; background: var(--bg); padding-top: 4px; }
+.nw-top { position: sticky; top: 0; z-index: 18; background: var(--bg); padding: 10px 0 12px; margin: -10px 0 12px; border-bottom: 1px solid var(--line); }
 .nw-top .toolbar { margin-bottom: 10px; }
-body.m-body .nw-top { position: static; border-bottom: 0; padding-bottom: 0; }   /* 모바일: 화면이 좁아 고정하지 않음 */
+body.m-body .sx7-tabs { position: static; padding-top: 0; }
+body.m-body .nw-top { position: static; border-bottom: 0; padding: 0; margin-top: 0; }   /* 모바일: 화면이 좁아 고정하지 않음 */
 .nw-cls { margin-bottom: 12px; }
 .nw-ch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .nw-cnt { margin-left: auto; color: var(--ink-soft); }
