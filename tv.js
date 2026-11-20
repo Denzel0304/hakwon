@@ -904,7 +904,7 @@ const TvEng = (function () {
 /* ---------- TV 본체 ---------- */
 const TvBox = {
   LS: 'mg77_tv',
-  RATIO: 0.70,       // TV 전체 높이 / 너비 (tv.css: 너비 100em · 높이 70em)
+  RATIO: 0.66,       // TV 전체 높이 / 너비 (tv.css: 너비 100em · 높이 66em)
   MAX_W: 560,        // 너무 커지지 않게
   PLAY_MIN: 230,     // 이 너비 이상이면 재생
   SHOW_MIN: 140,     // 이 너비 미만이면 숨김 (사이는 꺼진 TV)
@@ -938,7 +938,7 @@ const TvBox = {
           <div class="tv-ctl"><button type="button" class="tv-pwr" data-tv="pwr" title="전원" aria-label="전원"><i class="tv-led"></i></button><span class="tv-lbl">POWER</span></div>
         </div>
       </div>
-      <div class="tv-legs" aria-hidden="true"><i></i><i></i></div>`;
+`;
     this.el = el;
     this.scr = el.querySelector('.tv-scr');
     this.cv = el.querySelector('.tv-cv');

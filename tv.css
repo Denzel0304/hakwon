@@ -1,6 +1,6 @@
 /* =========================================================
    tv.css — 레트로 TV (tv.js) · PC 전용 · index.html에서만 불러옴
-   크기: .tv 의 font-size = 몸통 너비/100 (tv.js가 넣음) → 모든 치수를 em 으로 (너비 100em · 높이 70em)
+   크기: .tv 의 font-size = 몸통 너비/100 (tv.js가 넣음) → 모든 치수를 em 으로 (너비 100em · 높이 66em)
    ========================================================= */
 
 /* 자리: 날짜 화면 왼쪽 열에서 카드들 아래 남는 공간 전부 (넓은 화면 두 열일 때만) */
@@ -13,7 +13,7 @@
 }
 @media (max-width: 1100px) { .tv-slot { display: none; } }
 
-.tv { position: relative; width: 100em; height: 70em; flex: none; user-select: none; -webkit-user-select: none; }
+.tv { position: relative; width: 100em; height: 66em; flex: none; user-select: none; -webkit-user-select: none; }
 .tv[hidden] { display: none; }
 
 /* 회색 몸통 */
@@ -121,9 +121,3 @@
 .tv.on .tv-led { background: #5dff84; box-shadow: 0 0 1em #5dff84, 0 0 .3em #c8ffd4; }
 .tv-dial:focus-visible, .tv-pwr:focus-visible { box-shadow: 0 0 0 .5em #a9aeb5, 0 0 0 .9em var(--accent); }
 .tv.tight .tv-dial, .tv.tight .tv-pwr { cursor: default; }
-
-/* 다리 */
-.tv-legs { position: absolute; left: 0; right: 0; top: 65.5em; height: 4.5em; pointer-events: none; }
-.tv-legs i { position: absolute; top: 0; width: 6.5em; height: 4.5em; background: linear-gradient(#4a4f55, #2b2e33); border-radius: 0 0 1.4em 1.4em; }
-.tv-legs i:first-child { left: 14em; transform: skewX(8deg); }
-.tv-legs i:last-child { right: 14em; transform: skewX(-8deg); }
