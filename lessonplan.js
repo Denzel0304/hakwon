@@ -5,7 +5,7 @@
    반마다 A4 한 장(영역별 + 회차별) / 모든 반 요약표(가로 A4, 영역별만)로 PDF 저장 · 출력
    기록은 meta 테이블 (서버 SQL 변경 없음):
      { id 'LP_반ID', kind:'lplan', classId, areas:{ word:{ method, hw, eval }, gram, read, listen, general },
-       sess:{ '1':{ lesson, hw, test }, '2':…, … }, memo(반 안내 — 반마다 한 장 PDF에서 반 이름 아래에 나옴), createdAt, updatedAt }
+       sess:{ '1':{ subj(그날 과목), lesson, hw, test }, '2':…, … }, memo(반 안내 — 반마다 한 장 PDF에서 반 이름 아래에 나옴), createdAt, updatedAt }
    Lesson Plan을 쓰지 않는 반: 설정 meta LPCFG { kind:'lpcfg', off:[반ID] } — 목록·PDF에서 뺀다 (단어 기록과 같은 방식)
    반 정보(요일·시간)와 독해·문법 교재(시험+교재 › 일반 교재 중 그 반에 연결된 것)는 자동으로 보여 준다.
    머리말의 학원 이름·로고는 학생 › Report 설정에 저장된 것을 쓴다.
@@ -32,7 +32,7 @@ const LessonPlan = {
   // 회차: 반의 수업 요일 (월~일 순) — 요일 수 = 1주 회차 수
   sessDays(c) { return DAY_ORDER.filter(d => ((c && c.days) || []).includes(d)); },
   sval(p, i, f) { return stripZws(((p && p.sess && p.sess[i]) || {})[f] || '').trim(); },
-  sessHas(p, i) { return LP_SFIELDS.some(([f]) => this.sval(p, i, f)); },
+  sessHas(p, i) { return !!this.sval(p, i, 'subj') || LP_SFIELDS.some(([f]) => this.sval(p, i, f)); },
   // n을 주면 1~n회차만, 없으면 적어 둔 모든 회차
   sessAny(p, n) { if (!p || !p.sess) return false; const ks = n == null ? Object.keys(p.sess) : Array.from({ length: n }, (_, i) => String(i + 1)); return ks.some(i => this.sessHas(p, i)); },
   // c를 주면 그 반의 회차 수까지만 본다
@@ -83,6 +83,28 @@ const LessonPlan = {
     main.innerHTML = h;
     enhanceAll(main);
     this.bind(main);
+    // PC: 회차별 칸 높이를 늘려 반 전체 메모 아래 끝을 왼쪽 사이드바 맨 아래 선(동기화 표시 위)에 맞춤
+    if (!this._fitOn) { this._fitOn = true; window.addEventListener('resize', debounce(() => this.fitSess(), 100)); }
+    this.fitSess();
+    requestAnimationFrame(() => this.fitSess());
+  },
+  fitSess() {
+    const main = $('#main');
+    if (App.page !== 'lessonplan' || this.tab !== 'sess' || !main) return;
+    const wrap = $('.lp-wrap', main), memo = $('.lp-memo', main), tas = $$('.lp-sg textarea', main);
+    if (!wrap || !memo || !tas.length) return;
+    tas.forEach(t => { t.style.height = ''; });
+    // 화면이 좁아 반 목록과 내용이 위아래로 쌓이면 원래 높이(CSS) 그대로
+    if (getComputedStyle(wrap).gridTemplateColumns.trim().split(/\s+/).length < 2) return;
+    const bar = $('#sync-bar');
+    if (!bar) return;
+    const r = bar.getBoundingClientRect();
+    if (!r.height) return;
+    const bottom = Math.min(r.top, window.innerHeight - bar.offsetHeight);
+    const memoBottom = memo.getBoundingClientRect().bottom + main.scrollTop;   // 스크롤 맨 위 기준 위치
+    const extra = Math.floor((bottom - memoBottom) / LP_SFIELDS.length);      // 수업 · 숙제 · 시험 세 줄에 나눠 줌
+    if (extra <= 0) return;
+    tas.forEach(t => { t.style.height = (t.offsetHeight + extra) + 'px'; });
   },
   editorHtml(c) {
     const p = this.plan(c.id), bk = this.books(c.id);
@@ -100,10 +122,14 @@ const LessonPlan = {
         // 회차를 가로(열)로 — 수업 · 숙제 · 시험은 행. 비어 있는 회차도 그대로 보여 주간 흐름이 보이게
         h += `<div class="panel lp-sess" style="--lpc:${LP_SCOLOR}"><div class="lp-ah"><b>회차별 수업 계획</b><span class="soft small">주 ${days.length}회</span></div>
           <div class="lp-sx"><div class="lp-sg" style="grid-template-columns:56px repeat(${days.length}, minmax(190px, 1fr))"><div class="lp-sgc"></div>`;
-        days.forEach((d, n) => { h += `<div class="lp-sgh"><span class="dy">${DOW[d]}</span><b>${n + 1}회차</b></div>`; });
+        days.forEach((d, n) => {
+          const i = String(n + 1);
+          h += `<div class="lp-sgh"><div class="lp-sgt"><span class="dy">${DOW[d]}</span><b>${i}회차</b></div>
+            <input type="text" class="lp-subj" data-lpf="s:${i}|subj" maxlength="30" placeholder="과목 (예: ${['문법', '독해', '주간 테스트'][n % 3]})" value="${esc(((p && p.sess && p.sess[i]) || {}).subj || '')}"></div>`;
+        });
         LP_SFIELDS.forEach(([f, fl, ph]) => {
           h += `<div class="lp-sgl">${fl}</div>`;
-          days.forEach((d, n) => { const i = String(n + 1); h += `<textarea rows="3" data-lpf="s:${i}|${f}" placeholder="${n ? '' : esc(ph)}">${esc(((p && p.sess && p.sess[i]) || {})[f] || '')}</textarea>`; });
+          days.forEach((d, n) => { const i = String(n + 1); h += `<div class="lp-sgv"><textarea rows="3" data-lpf="s:${i}|${f}" placeholder="${n ? '' : esc(ph)}">${esc(((p && p.sess && p.sess[i]) || {})[f] || '')}</textarea></div>`; });
         });
         h += '</div></div></div>';
       }
@@ -282,8 +308,9 @@ const LessonPlan = {
         const secs = LP_AREAS.filter(([a]) => this.areaHas(p, a)).map(([a, lb]) => `<section style="--ac:${LP_COLORS[a]}"><h3><span>${lb}</span></h3><div class="rows">${LP_FIELDS.filter(([f]) => this.val(p, a, f)).map(([f, fl]) => `<div class="row"><div class="k">${fl}</div><div class="v">${fmt(this.val(p, a, f))}</div></div>`).join('')}</div></section>`).join('');
         // 회차는 가로(열) — 수업 요일 전부, 비어 있는 회차·칸도 그대로 보여 주간 흐름이 보이게
         const sd = this.sessDays(c).map((d, n) => [String(n + 1), d]);
+        const anySubj = sd.some(([i]) => this.sval(p, i, 'subj'));
         const ses = this.sessAny(p, sd.length) ? `<section class="ses" style="--ac:${LP_SCOLOR}"><h3><span>회차별 수업 계획</span><small>주 ${sd.length}회</small></h3>
-          <table class="sg"><thead><tr><th class="rl"></th>${sd.map(([i, d]) => `<th class="dh"><span class="dy">${DOW[d]}</span><span class="no">${i}회차</span></th>`).join('')}</tr></thead>
+          <table class="sg"><thead><tr><th class="rl"></th>${sd.map(([i, d]) => { const sj = this.sval(p, i, 'subj'); return `<th class="dh"><div class="dt"><span class="dy">${DOW[d]}</span><span class="no">${i}회차</span></div>${anySubj ? `<div class="sj${sj ? '' : ' none'}">${sj ? esc(sj) : '–'}</div>` : ''}</th>`; }).join('')}</tr></thead>
           <tbody>${LP_SFIELDS.map(([f, fl]) => `<tr><th class="rl"><span>${fl}</span></th>${sd.map(([i]) => `<td>${this.sval(p, i, f) ? fmt(this.sval(p, i, f)) : '<span class="none">–</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></section>` : '';
         const bks = bookChips(c);
         // 반 전체 메모 = 반 안내 (반 이름과 영역·회차 사이)
@@ -335,6 +362,8 @@ const LessonPlan = {
       section.ses table.sg th.dh + th.dh { border-left: 0.5pt solid #E2E8F0; }
       section.ses .dh .dy { display: inline-flex; align-items: center; justify-content: center; width: 8mm; height: 8mm; border-radius: 50%; background: var(--ac); color: #fff; font-size: 10.5pt; font-weight: 800; vertical-align: middle; }
       section.ses .dh .no { display: inline-block; margin-left: 2mm; font-size: 9pt; font-weight: 700; color: #475569; vertical-align: middle; letter-spacing: .3pt; }
+      section.ses .dh .sj { display: inline-block; margin-top: 2.2mm; min-width: 22mm; max-width: 100%; padding: 1.1mm 3.5mm; border-radius: 10mm; background: #EEF3F9; border: 0.6pt solid #C9D6E5; color: var(--ac); font-size: 10pt; font-weight: 800; line-height: 1.35; letter-spacing: .2pt; word-break: keep-all; overflow-wrap: anywhere; }
+      section.ses .dh .sj.none { border-color: #E2E8F0; color: #CBD5E1; font-weight: 600; }
       section.ses table.sg tbody th.rl { padding: 3mm 0 3mm 3mm; vertical-align: top; }
       section.ses tbody th.rl span { display: inline-block; margin-top: 0.3mm; font-size: 8.5pt; font-weight: 800; color: var(--ac); padding-left: 2mm; border-left: 2pt solid var(--ac); line-height: 1.3; }
       section.ses table.sg tbody td { padding: 2.8mm 3mm; border-left: 0.5pt solid #E2E8F0; word-break: keep-all; overflow-wrap: anywhere; }
@@ -418,7 +447,11 @@ const LessonPlan = {
 .lp-sess { border-top: 3px solid var(--lpc); padding: 14px 16px; }
 .lp-sx { overflow-x: auto; }
 .lp-sg { display: grid; gap: 8px; align-items: stretch; }
-.lp-sgh { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 6px; border-radius: 8px; background: var(--tint-strong); border: 1px solid var(--line); }
+.lp-sgh { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 8px; border-radius: 8px; background: var(--tint-strong); border: 1px solid var(--line); }
+.lp-sgt { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.lp-sgh .lp-subj { width: 100%; text-align: center; font-weight: 700; font-size: 14px; color: var(--lpc); border-radius: 999px; padding: 5px 12px; }
+.lp-sgv { min-width: 0; }
+.lp-sgv textarea { width: 100%; }
 .lp-sgh .dy { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lpc); color: #fff; font-weight: 800; font-size: 14px; }
 .lp-sgh b { font-size: 14px; color: var(--ink); }
 .lp-sgl { display: flex; align-items: flex-start; justify-content: center; padding-top: 10px; font-size: 13px; font-weight: 800; color: var(--lpc); }
