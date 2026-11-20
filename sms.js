@@ -66,7 +66,7 @@ const SmsPage = {
 
   /* ---------- 화면 ---------- */
   render(main) {
-    let h = `<div class="page-head"><h1>SMS</h1></div>
+    let h = `<div class="page-head"><h1>SMS</h1>${this.tab === 'new' ? '<button type="button" class="btn sm" data-nwa="cfg" title="반마다 하지 않는 안내(교재 안내·첫 문자·첫 상담 안내)를 고릅니다">⚙ 설정</button>' : ''}</div>
       <div class="tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
     if (this.tab === 'new') NewStu.sync();          // 신규생: 등록일·수강반이 바뀐 것을 할일에 먼저 반영
@@ -531,9 +531,12 @@ const SmsPage = {
    - 문자는 무조건 부모님 번호로 보낸다 (교재 안내는 카톡으로 하므로 완료 체크만)
    - 학생 기록 meta NW_학생ID { kind:'nw', studentId, plan(할일 일정 등록), bookDays(교재 안내 N일 전, null = 생략),
                                 made:{ book, first, cns }(할일을 만든 적 있음), dates:{ … }(만들 때·옮길 때 정한 날짜),
-                                done:{ … }(완료 시각 ISO, '' = 미완료), skip:{ book }(교재 안내 생략), first(첫 등원일),
-                                key(일정 계산값 — 바뀌면 할일을 옮김), createdAt }
-   - 설정 meta NWCFG { kind:'nw_cfg', tplFirst, tplCns(보내기 탭 템플릿 id), bookDays(확인창 기본 N일) }
+                                done:{ … }(완료 시각 ISO, '' = 미완료), skip:{ book, first, cns }(필요없음), first(첫 등원일),
+                                cls(첫 수업 반 id — 반 제외 판단 기준), key(일정 계산값 — 바뀌면 할일을 옮김), createdAt }
+   - 설정 meta NWCFG { kind:'nw_cfg', tplFirst, tplCns(보내기 탭 템플릿 id), bookDays(확인창 기본 N일),
+                       off:{ book:[반ID], first:[…], cns:[…] }(⚙ 설정에서 그 단계를 하지 않는 반 → '제외') }
+   - 필요없음: 선택바에서 처리 (아직 안 한 할일은 지움) · 칩을 누르면 미완료로 되돌림
+   - 전체 반 보기에서는 3종이 모두 끝난(완료·필요없음·제외) 반을 숨김
    - 할일 id TDN_학생ID_book / _first / _cns (nwKey 학생ID, nwStep 단계) · 중요도 높음 · "[반 이름] 홍길동 교재 안내 문자 (12/2 등원예정)"
      · 교재 안내: 첫 수업일 N일 전 (이미 지났으면 오늘) — 수업이 이미 시작된 학생도 확인창에서 고르면 오늘로 만듦
      · 첫 문자: 첫 수업 다음날 (주말·공휴일이면 다음 평일 → 금요일 첫 수업은 월요일)
@@ -564,17 +567,58 @@ const NewStu = {
   rec(sid) {
     const m = Store.get('meta', this.mid(sid));
     const z = () => ({ book: '', first: '', cns: '' });
-    return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, first: '', key: '', createdAt: new Date().toISOString() }, m || {},
+    return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, first: '', cls: '', key: '', createdAt: new Date().toISOString() }, m || {},
       { made: Object.assign({ book: false, first: false, cns: false }, (m && m.made) || {}), dates: Object.assign(z(), (m && m.dates) || {}),
-        done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false }, (m && m.skip) || {}) });
+        done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false, first: false, cns: false }, (m && m.skip) || {}) });
   },
-  // 단계 상태 { done, at(완료 시각), date(할일 날짜), skip, todo }
+  // 단계 상태 { done, at(완료 시각), date(할일 날짜), skip(필요없음), ex(반 제외), todo }
   state(sid, k) {
     const m = Store.get('meta', this.mid(sid)), t = Store.get('todos', this.tid(sid, k));
-    const skip = !!(m && m.skip && m.skip[k]);
-    if (t) return { done: !!t.done, at: t.doneAt || '', date: t.date || '', skip: false, todo: t };
+    if (t && (t.done || !this.isEx(sid, k))) return { done: !!t.done, at: t.doneAt || '', date: t.date || '', skip: false, ex: false, todo: t };
     const at = (m && m.done && m.done[k]) || '';
-    return { done: !!at || skip, at, date: '', skip: skip && !at, todo: null };
+    if (at) return { done: true, at, date: '', skip: false, ex: false, todo: t || null };
+    if (m && m.skip && m.skip[k]) return { done: true, at: '', date: '', skip: true, ex: false, todo: null };
+    if (this.isEx(sid, k)) return { done: true, at: '', date: '', skip: false, ex: true, todo: null };
+    return { done: false, at: '', date: '', skip: false, ex: false, todo: null };
+  },
+  /* ---------- 반 제외 (⚙ 설정) ---------- */
+  isExCls(cid, k) { const o = this.cfg().off || {}; return (o[k] || []).includes(cid); },
+  // 제외 판단 기준 반: 첫 수업 반(기록) → 지금 다니는 반 → 다닐 예정인 반 (화면 그릴 때마다 groups()에서 캐시를 비움)
+  baseCls(sid) {
+    if (this._bc && this._bc.has(sid)) return this._bc.get(sid);
+    const m = Store.get('meta', this.mid(sid));
+    let c = m && m.cls ? Store.get('classes', m.cls) : null;
+    if (!c) { const cur = Students.activeClassesOf(sid); c = cur.length ? Classes.sorted(cur)[0] : null; }
+    if (!c) { const up = Students.upcomingClassesOf(sid); c = up.length ? up[0].c : null; }
+    if (this._bc) this._bc.set(sid, c || null);
+    return c || null;
+  },
+  isEx(sid, k) { const c = this.baseCls(sid); return !!c && this.isExCls(c.id, k); },
+  cfgDlg() {
+    const all = SmsPage.activeClasses(), cur = this.cfg().off || {}, sets = {};
+    this.KEYS.forEach(k => { sets[k] = new Set(cur[k] || []); });
+    Modal.open({
+      title: '신규생 설정', size: 'md', autofocus: false,
+      body: `<p class="small muted" style="margin-top:0">반마다 하는 안내만 체크하세요. 체크를 끈 단계는 그 반 학생에게 '제외'로 표시되고 할일을 만들지 않습니다. (아직 안 한 할일은 지우고, 이미 완료한 기록은 그대로 둡니다 · 두 반 이상 다니는 학생은 첫 수업 반을 따릅니다)</p>
+        ${all.length ? `<div class="tbl-wrap"><table class="tbl compact nw-off"><thead><tr><th>반</th>${this.KEYS.map(k => `<th>${this.LABEL[k]}</th>`).join('')}</tr></thead><tbody>
+          ${all.map(c => `<tr><td class="nowrap">${Classes.dot(c)}<b>${esc(c.name)}</b></td>${this.KEYS.map(k => `<td><input type="checkbox" name="nwo_${k}" value="${c.id}" ${sets[k].has(c.id) ? '' : 'checked'}></td>`).join('')}</tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty small">진행 중인 반이 없습니다.</div>'}`,
+      buttons: [
+        { text: '취소' },
+        { text: '저장', cls: 'primary', primary: true, onClick: (m) => {
+          const off = {};
+          this.KEYS.forEach(k => {
+            const on = new Set($$(`[name=nwo_${k}]:checked`, m.body).map(i => i.value));
+            const keep = [...sets[k]].filter(id => !all.some(c => c.id === id));   // 종료된 반의 설정은 그대로
+            off[k] = keep.concat(all.filter(c => !on.has(c.id)).map(c => c.id));
+          });
+          this.setCfg({ off, updatedAt: new Date().toISOString() });
+          this.sync();
+          toast('설정을 저장했습니다');
+          App.render();
+        } },
+      ],
+    });
   },
   allDone(sid) { return this.KEYS.every(k => this.state(sid, k).done); },
 
@@ -626,14 +670,19 @@ const NewStu = {
           if (!isYmd(m.first) || m.first > today) {                // 첫 등원 전에 등원 예정이 없어짐 → 할일 모두 삭제, 처음 상태로
             delAll(false);
             const z = () => ({ book: '', first: '', cns: '' });
-            Object.assign(m, { made: { book: false, first: false, cns: false }, dates: z(), done: z(), first: '', key: '' });
+            Object.assign(m, { made: { book: false, first: false, cns: false }, dates: z(), done: z(), first: '', cls: '', key: '' });
           } else delAll(true);                                    // 다니다가 퇴원·휴원 → 아직 안 한 할일만 삭제
         } else {
           const key = [p.first, p.bookRaw, p.firstMsg, p.cns].join('|');
           const changed = !!m.key && m.key !== key;              // 등원 예정일·수강반이 바뀌어 일정이 달라짐
+          m.cls = p.c ? p.c.id : '';
           this.KEYS.forEach(k => {
             const id = this.tid(sid, k), t = Store.get('todos', id);
             const want = k === 'book' ? p.book : k === 'first' ? p.firstMsg : p.cns, text = this.textOf(k, p.c, s, p.first);
+            if (p.c && this.isExCls(p.c.id, k)) {                 // ⚙ 설정에서 이 반은 하지 않는 단계 → 아직 안 한 할일 삭제 (다시 켜면 새로 만듦)
+              if (t && !t.done) { Store.del('todos', id); m.made[k] = false; chg++; }
+              return;
+            }
             if (!m.made[k]) {
               if (!want || m.done[k] || m.skip[k]) return;
               if (!t) {
@@ -720,24 +769,34 @@ const NewStu = {
     if (!v) m.skip[k] = false;
     Store.put('meta', m);
   },
+  // 필요없음: 아직 안 한 할일은 지움 (made를 풀어 두어 미완료로 되돌리면 할일을 다시 만듦)
+  setNeed(sid, k) {
+    const t = Store.get('todos', this.tid(sid, k));
+    if (t && !t.done) Store.del('todos', t.id);
+    const m = this.rec(sid);
+    m.skip[k] = true; m.done[k] = ''; m.made[k] = false;
+    Store.put('meta', m);
+  },
 
   /* ---------- 화면 ---------- */
   // 반별 학생 (재원생 · 지금 다니거나 다닐 예정)
   groups() {
     const today = todayStr(), q = this.q.trim();
+    this._bc = new Map();
     return SmsPage.activeClasses().filter(c => !this.cls || c.id === this.cls).map(c => {
       const seen = new Set();
       const list = Store.where('enrollments', e => e.classId === c.id && (!e.to || today < e.to))
         .map(e => Store.get('students', e.studentId)).filter(s => s && (s.status || 'active') === 'active' && (s.name || '').trim() && !seen.has(s.id) && seen.add(s.id))
         .sort((a, b) => Students.sortFn(a, b));
-      return { c, all: list, list: list.filter(s => (!q || s.name.includes(q)) && (!this.todo || !this.allDone(s.id))) };
+      return { c, all: list, fin: list.length > 0 && list.every(s => this.allDone(s.id)), list: list.filter(s => (!q || s.name.includes(q)) && (!this.todo || !this.allDone(s.id))) };
     });
   },
   chip(sid, k, today) {
     const st = this.state(sid, k);
     const md = (d) => { const x = parseYmd(d); return (x.getMonth() + 1) + '/' + x.getDate(); };
     let cls, txt;
-    if (st.skip) { cls = 'gray'; txt = '생략'; }
+    if (st.ex) return `<span class="nw-chip gray ex" title="⚙ 설정에서 이 반은 ${this.LABEL[k]}를 하지 않도록 했습니다">제외</span>`;
+    if (st.skip) { cls = 'gray'; txt = '필요없음'; }
     else if (st.done) { cls = 'green'; txt = '✓ 완료' + (st.at ? ' ' + md(ymd(new Date(st.at))) : ''); }
     else if (st.date && st.date < today) { cls = 'red'; txt = '지남 ' + md(st.date); }
     else if (st.date === today) { cls = 'orange'; txt = '오늘'; }
@@ -772,9 +831,10 @@ const NewStu = {
   bodyHtml(gs) {
     const today = todayStr();
     gs = gs || this.groups();
-    const shown = gs.filter(g => g.list.length);
+    const hide = (g) => !this.cls && g.fin;                   // 전체 반: 3종 안내가 모두 끝난 반은 숨김
+    const shown = gs.filter(g => g.list.length && !hide(g));
     let h = '';
-    if (!shown.length) return h + `<div class="panel"><div class="empty">${gs.some(g => g.all.length) ? (this.todo ? '처리할 학생이 없습니다. (모두 완료)' : '해당하는 학생이 없습니다.') : '재원생이 없습니다.'}</div></div>`;
+    if (!shown.length) return h + `<div class="panel"><div class="empty">${gs.some(g => g.all.length) ? (gs.every(g => !g.all.length || hide(g)) ? '모든 반의 안내가 끝났습니다.' : this.todo ? '처리할 학생이 없습니다. (모두 완료)' : '해당하는 학생이 없습니다.') : '재원생이 없습니다.'}</div></div>`;
     h += shown.map(g => {
       const n = g.all.length, cnt = (k) => g.all.filter(s => this.state(s.id, k).done).length;
       const allSel = g.list.every(s => this.sel.has(s.id));
@@ -803,6 +863,8 @@ const NewStu = {
       <button class="btn sm primary" data-nwbulk="send|cns" ${SmsPage.sending ? 'disabled' : ''}>첫 상담 안내 보내기</button>
       <span class="soft small" style="margin-left:6px">완료 처리</span>
       ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="done|${k}">${this.LABEL[k]}</button>`).join('')}
+      <span class="soft small" style="margin-left:6px">필요없음</span>
+      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="need|${k}">${this.LABEL[k]}</button>`).join('')}
       <button class="btn sm ghost" data-nwbulk="clear">선택 해제</button></div>`;
   },
   parentOk(s) { return SmsPage.okPhone(SmsPage.digits(s.parentPhone)); },
@@ -832,7 +894,7 @@ const NewStu = {
     let body = `<div class="sx7-pv">
       <p style="margin:0 0 8px"><b>${esc(this.LABEL[k])}</b> · 템플릿 "${esc(tpl.name)}" · 부모님께 <b>${out.length}건</b> 발송 (예상 약 ${totalParts}통)</p>
       <p class="small soft" style="margin:0 0 6px">발송 접수가 되면 ${esc(this.LABEL[k])}를 자동으로 완료 처리합니다.</p>`;
-    if (done.length) body += `<p class="small soft" style="margin:0 0 6px">이미 완료한 ${done.length}명은 뺐습니다: ${esc(done.map(s => s.name).join(', '))}</p>`;
+    if (done.length) body += `<p class="small soft" style="margin:0 0 6px">이미 완료했거나 필요없음·제외인 ${done.length}명은 뺐습니다: ${esc(done.map(s => s.name).join(', '))}</p>`;
     if (out.some(o => SmsPage.parts(o.text) > 1)) body += `<p class="small sx7-warn" style="margin:0 0 6px">긴 문자는 여러 통으로 나뉘어 도착할 수 있습니다.</p>`;
     if (miss.length) body += `<div class="small" style="margin:8px 0 4px"><b class="sx7-no">제외 ${miss.length}건</b></div><div class="sx7-miss small">${miss.map(esc).join('<br>')}</div>`;
     if (out.length) body += `<div class="small soft" style="margin:12px 0 4px">미리보기${out.length > 3 ? ' (처음 3건)' : ''}</div>` +
@@ -856,6 +918,14 @@ const NewStu = {
     if (!sids.length) return;
     if (act === 'send') { this.preview(sids, k); return; }
     const todo = sids.filter(id => !this.state(id, k).done);
+    if (act === 'need') {
+      if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 처리가 끝난 상태입니다`); return; }
+      if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 필요없음으로 처리할까요?\n(아직 안 한 할일은 할일 목록에서 지웁니다)`, '필요없음 처리')) return;
+      todo.forEach(id => this.setNeed(id, k));
+      toast(`${todo.length}명 ${this.LABEL[k]} 필요없음`);
+      App.render();
+      return;
+    }
     if (!todo.length) { toast(`선택한 학생은 모두 ${this.LABEL[k]} 완료 상태입니다`); return; }
     if (!await confirmDlg(`선택한 ${todo.length}명의 ${this.LABEL[k]}를 완료로 체크할까요?`, '완료 처리')) return;
     todo.forEach(id => this.setDone(id, k, true));
@@ -868,6 +938,7 @@ const NewStu = {
     main.onclick = (e) => {
       const tb = e.target.closest('[data-tab]');
       if (tb) { SmsPage.tab = tb.dataset.tab; App.render(); return; }
+      if (e.target.closest('[data-nwa="cfg"]')) { this.cfgDlg(); return; }
       const tg = e.target.closest('[data-nwtg]');
       if (tg) {
         const [sid, k] = tg.dataset.nwtg.split('|'), v = !this.state(sid, k).done;
@@ -981,6 +1052,11 @@ const NewStu = {
 .nw-chip.blue { background: var(--accent-soft); color: var(--accent-ink); }
 .nw-chip.gray { background: #EEF2F5; color: var(--ink-soft); }
 .nw-chip:hover { filter: brightness(0.95); }
+.nw-chip.ex { display: inline-block; cursor: default; font-weight: 500; }
+.nw-chip.ex:hover { filter: none; }
+.nw-off th, .nw-off td { text-align: center; }
+.nw-off th:first-child, .nw-off td:first-child { text-align: left; }
+.nw-off input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .nw-send { margin-left: 6px; padding: 2px 9px; font-size: 12.5px; }
 .nw-ask-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .nw-ask-r > :first-child { flex: none; white-space: nowrap; }
