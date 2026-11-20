@@ -155,7 +155,7 @@ body.m-body #main[data-page="timetable"] { padding: 0; overflow: hidden; }
 /* ---------- 진도 ---------- */
 .m-npx { margin-bottom: 10px; }
 .m-ro [data-pm], .m-ro [data-pp] { pointer-events: none; }  /* 내신 요약은 보기만 */
-.m-ro [data-pbren] { display: none; }                         /* 회차 이름 바꾸기는 PC에서만 */
+.m-ro [data-pbren], .m-ro [data-pbdel], .m-ro [data-pbadd] { display: none; }   /* 회차 이름 바꾸기·지우기·추가는 PC에서만 */
 body.m-body .np-sgrid { grid-template-columns: 52px minmax(0, 1fr); }
 body.m-body .np-sum { margin-bottom: 10px; }
 body.m-body .np-sum + .np-sum { margin-top: 0; }

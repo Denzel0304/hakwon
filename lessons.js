@@ -32,6 +32,7 @@ const mkDone = (st) => st === 'done' || st === 'info';     // 보강 처리가 �
    대비 교재 회차(중학교 내신 교과서만): 같은 과를 다른 내신 대비 교재로 다시 나갈 때 진도 항목에 bk(대비 교재 이름)
                     bk가 없으면 기본 회차('교과서') · 진도 칸 구분 = 교재ID@대비교재 (기본 회차는 교재ID 그대로)
                     수동 진도(pman)의 mats 키도 같은 구분 (교재ID@대비교재)
+                    미리 만든 회차(기록 없이 이름만): 수동 진도(pman)의 bks:{ 교재ID: [대비교재 이름] } — 내신 요약 '+ 회차 추가' · 수업일지 '+ 추가' 후 저장
                       gp:[ { matId(일반 교재), unitId, text, done } ]             ← 비내신 진도 (내신과 동시에 쓰지 않음)
    수동 진도(meta):  id PM_반ID_시험ID, { kind:'pman', classId, examId, mats:{ 교재ID: 표시 } }   (날짜 없이 끝낸 것으로 표시)
    수업 준비(meta):  id PP_교재ID, { kind:'prep', matId, mark: 표시 }                              (교재 기준, 모든 반 공통)
@@ -301,6 +302,7 @@ const NP = {
     const add = (b) => { if (b && !out.includes(b)) out.push(b); };
     Object.keys(prog.mats || {}).forEach(k => { if (k.startsWith(pre)) add(k.slice(pre.length)); });
     Object.keys(prog.man || {}).forEach(k => { if (k.startsWith(pre) && this.bkHas(prog.man[k])) add(k.slice(pre.length)); });
+    ((prog.reg || {})[mid] || []).forEach(add);                   // 미리 만든 회차 (내신 요약 · 수업일지에서 추가)
     if (st) {
       Object.values(st.items).forEach(en => { if (en.matId === mid) add(en.bk); });
       ((st.bkx || {})[mid] || []).forEach(add);
@@ -318,6 +320,7 @@ const NP = {
   bkAllNames() {
     const last = {};
     Store.all('lessons').forEach(l => (l.np || []).forEach(en => { if (en.bk && !(last[en.bk] >= l.date)) last[en.bk] = l.date; }));
+    Store.where('meta', r => r.kind === 'pman' && r.bks).forEach(r => Object.values(r.bks).forEach(a => (a || []).forEach(b => { if (b && !(b in last)) last[b] = ''; })));
     return Object.keys(last).sort((a, b) => ko(last[b], last[a]) || ko(a, b));
   },
   // 지금 일지에서 이 교재의 과를 누르면 들어갈 회차 (회차를 나누지 않는 교재는 기본)
@@ -329,6 +332,36 @@ const NP = {
     this.bkList(getProg(), r.mat.id, st).forEach(bk => r.units.forEach(u => out.push(this.key(r.mat.id, u.id, bk))));
     return out;
   },
+  // 미리 만든 회차 등록 (이 교재가 들어 있는 시험의 수동 진도 기록에 bks로)
+  regBk(classId, exIds, mid, name) {
+    if (!name || !exIds.length) return;
+    if (exIds.some(id => { const r = Store.get('meta', this.pmId(classId, id)); return r && ((r.bks || {})[mid] || []).includes(name); })) return;
+    const home = exIds.find(id => { const e = Store.get('exams', id); return e && (e.items || []).some(it => it.matId === mid); }) || exIds[0];
+    const id = this.pmId(classId, home);
+    const r = Store.get('meta', id) || { id, kind: 'pman', classId, examId: home, mats: {} };
+    const bks = JSON.parse(JSON.stringify(r.bks || {}));
+    bks[mid] = (bks[mid] || []).concat(name);
+    Store.put('meta', Object.assign({}, r, { bks }));
+  },
+  // 미리 만든 회차 지우기 (기록이 없는 회차만 — 내신 요약의 ✕)
+  unregBk(classId, exIds, mid, name) {
+    exIds.forEach(exId => {
+      const r = Store.get('meta', this.pmId(classId, exId));
+      if (!r || !((r.bks || {})[mid] || []).includes(name)) return;
+      const bks = JSON.parse(JSON.stringify(r.bks));
+      bks[mid] = bks[mid].filter(b => b !== name);
+      if (!bks[mid].length) delete bks[mid];
+      Store.put('meta', Object.assign({}, r, { bks }));
+    });
+  },
+  // 수업일지 저장 때: 이 일지에서 '+ 추가'로 만든 이름을 회차로 등록 (과를 고르지 않았어도 내신 요약에 남도록)
+  saveBkReg(st, ctx) {
+    if (!st || !st.on) return;
+    const sel = this.selExams(st, ctx), bset = this.bkMatIds(sel), ids = sel.map(e => e.id);
+    Object.keys(st.bkx || {}).forEach(mid => { if (bset.has(mid)) st.bkx[mid].forEach(b => this.regBk(ctx.classId, ids, mid, b)); });
+  },
+  // 이 회차에 기록(수업일지 · 직접 표시)이 있는지
+  bkUsed(prog, mid, bk) { const k = this.sid(mid, bk); return !!(prog.mats || {})[k] || this.bkHas((prog.man || {})[k]); },
   // 회차 이름 바꾸기: 이번 시험 기간 이 반의 수업일지 진도·배부 자료 연결 + 직접 표시. { lessons: 바꾼 수업일지 수, marks: 바꾼 직접 표시 수 }
   renameBk(classId, exams, mid, from, to) {
     const ws = exams.map(e => this.window(e));
@@ -368,8 +401,19 @@ const NP = {
     let pm = 0;
     exams.forEach(ex => {
       const id = this.pmId(classId, ex.id), r = Store.get('meta', id);
-      if (!r || !r.mats || !r.mats[fk]) return;
-      const mats = JSON.parse(JSON.stringify(r.mats));
+      if (!r) return;
+      // 미리 만든 회차 이름 (기본 회차로 바꾸면 목록에서 뺀다)
+      if (from && ((r.bks || {})[mid] || []).includes(from)) {
+        const bks = JSON.parse(JSON.stringify(r.bks));
+        const a = [];
+        bks[mid].forEach(b => { const v = b === from ? to : b; if (v && !a.includes(v)) a.push(v); });
+        if (a.length) bks[mid] = a; else delete bks[mid];
+        Store.put('meta', Object.assign({}, r, { bks }));
+        pm++;
+      }
+      const r2 = Store.get('meta', id);
+      if (!r2.mats || !r2.mats[fk]) return;
+      const mats = JSON.parse(JSON.stringify(r2.mats));
       const a = this.normMark(mats[fk]), b = this.normMark(mats[tk]);
       b.nums = [...new Set(b.nums.concat(a.nums))].sort((x, y) => x - y);
       Object.assign(b.units, a.units);
@@ -377,22 +421,18 @@ const NP = {
       Object.keys(b.units).forEach(u => { delete b.parts[u]; });       // 완료가 있으면 진행 중 표시는 뺀다
       Object.keys(a.unums).forEach(u => { b.unums[u] = [...new Set((b.unums[u] || []).concat(a.unums[u]))].sort((x, y) => x - y); });
       delete mats[fk]; mats[tk] = b;
-      Store.put('meta', Object.assign({}, r, { mats }));
+      Store.put('meta', Object.assign({}, r2, { mats }));
       pm++;
     });
     return { lessons: n, marks: pm };
   },
-  // 내신 요약의 ✎: 새 이름을 받아 바꾼다 (이미 있는 회차면 합칠지 묻는다)
-  async renameBkDlg(classId, exIds, mid, from) {
-    const exams = exIds.map(id => Store.get('exams', id)).filter(Boolean);
-    const m = this.mat(mid);
-    if (!exams.length || !m) return;
-    const prog = this.progress(classId, exams, null);
-    const v = await new Promise(res => Modal.open({
-      title: '회차 이름 바꾸기', size: 'sm',
-      body: `<p class="small" style="margin-top:0"><b>${esc(this.matName(m))}</b> · <b>${esc(this.bkLabel(from))}</b> 회차<br>이번 시험 기간에 이 반 수업일지의 진도·배부 자료와 직접 표시에 쓴 이 회차 이름을 한꺼번에 바꿉니다.</p>
-        <input type="text" name="bkname" list="dl-npbkr" maxlength="20" value="${esc(this.bkLabel(from))}" placeholder="새 이름 (기본 회차는 교과서)" style="width:100%">
-        <datalist id="dl-npbkr">${[this.BK_BASE].concat(this.bkAllNames()).map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`,
+  // 대비 교재 이름 입력 창 (취소하면 null) · withBase: 후보에 '교과서'도
+  bkNameDlg(title, msgHtml, value, okText, withBase) {
+    return new Promise(res => Modal.open({
+      title, size: 'sm',
+      body: `<p class="small" style="margin-top:0">${msgHtml}</p>
+        <input type="text" name="bkname" list="dl-npbkr" maxlength="20" value="${esc(value || '')}" placeholder="${withBase ? '새 이름 (기본 회차는 교과서)' : '대비 교재 이름 (예: 최종점검)'}" style="width:100%">
+        <datalist id="dl-npbkr">${(withBase ? [this.BK_BASE] : []).concat(this.bkAllNames()).map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`,
       onMount: (b, mm) => {
         const i = $('[name=bkname]', b);
         i.focus(); i.select();
@@ -400,10 +440,37 @@ const NP = {
       },
       buttons: [
         { text: '취소', onClick() { res(null); } },
-        { text: '바꾸기', cls: 'primary', primary: true, onClick: (mm) => { res($('[name=bkname]', mm.body).value); } },
+        { text: okText, cls: 'primary', primary: true, onClick: (mm) => { res($('[name=bkname]', mm.body).value); } },
       ],
       onClose() { res(null); },
     }));
+  },
+  // 내신 요약의 '+ 회차 추가': 기록 없이 회차 이름만 만든다 (수업일지 버튼 줄에도 바로 나옴)
+  async addBkDlg(classId, exIds, mid) {
+    const exams = exIds.map(id => Store.get('exams', id)).filter(Boolean);
+    const m = this.mat(mid);
+    if (!exams.length || !m) return;
+    const v = await this.bkNameDlg('회차 추가', `<b>${esc(this.matName(m))}</b><br>같은 과를 다시 나갈 내신 대비 교재 이름을 넣으세요. 수업일지의 대비 교재 버튼 줄에도 바로 나옵니다.`, '', '추가', false);
+    if (v === null) return;
+    if (!stripZws(v).trim()) { toast('대비 교재 이름을 입력하세요'); return; }
+    const name = this.bkNorm(v);
+    if (!name) { toast('교과서는 기본 회차라 따로 추가하지 않아도 됩니다'); return; }
+    const prog = this.progress(classId, exams, null);
+    if (this.bkNames(prog, mid).includes(name)) { toast(`“${name}” 회차가 이미 있습니다`); return; }
+    this.regBk(classId, exams.map(e => e.id), mid, name);
+    toast(`“${name}” 회차를 추가했습니다`);
+    App.render();
+  },
+  // 내신 요약의 ✎: 새 이름을 받아 바꾼다 (이미 있는 회차면 합칠지 묻는다)
+  async renameBkDlg(classId, exIds, mid, from) {
+    const exams = exIds.map(id => Store.get('exams', id)).filter(Boolean);
+    const m = this.mat(mid);
+    if (!exams.length || !m) return;
+    const prog = this.progress(classId, exams, null);
+    if (!this.bkUsed(prog, mid, from) && !(from && (prog.reg[mid] || []).includes(from))) { toast(`“${this.bkLabel(from)}” 회차에 바꿀 기록이 없습니다`); return; }
+    const v = await this.bkNameDlg('회차 이름 바꾸기',
+      `<b>${esc(this.matName(m))}</b> · <b>${esc(this.bkLabel(from))}</b> 회차<br>이번 시험 기간에 이 반 수업일지의 진도·배부 자료와 직접 표시에 쓴 이 회차 이름을 한꺼번에 바꿉니다.`,
+      this.bkLabel(from), '바꾸기', true);
     if (v === null) return;
     if (!stripZws(v).trim()) { toast('이름을 입력하세요'); return; }
     const to = this.bkNorm(v);
@@ -429,7 +496,7 @@ const NP = {
   /* ---------- 진도 상황 ---------- */
   // 이 반이 이 시험들을 위해 나간 진도 (exclude: 지금 고치는 수업일지는 빼고 계산)
   progress(classId, exams, exclude) {
-    const st = { mats: {}, man: {}, dist: [], lastBk: {} };     // lastBk: 교재별 마지막으로 쓴 대비 교재 회차
+    const st = { mats: {}, man: {}, dist: [], lastBk: {}, reg: {} };     // lastBk: 교재별 마지막으로 쓴 대비 교재 회차 · reg: 미리 만든 회차 이름
     if (!exams.length) return st;
     const ws = exams.map(e => this.window(e));
     const from = ws.map(w => w.from).sort()[0], to = ws.map(w => w.to).sort().pop();
@@ -452,6 +519,7 @@ const NP = {
       });
     exams.forEach(ex => {
       const r = Store.get('meta', this.pmId(classId, ex.id));
+      Object.keys((r && r.bks) || {}).forEach(mid => { const a = st.reg[mid] = st.reg[mid] || []; (r.bks[mid] || []).forEach(b => { if (b && !a.includes(b)) a.push(b); }); });
       Object.keys((r && r.mats) || {}).forEach(mid => {
         const k = this.normMark(r.mats[mid]), s = slot(st.man, mid);
         k.nums.forEach(n => s.nums.add(+n));
@@ -605,7 +673,8 @@ const NP = {
       return { np: [], npExams: [], dist: this.distOut(st, 'gen'), gp, mode: 'gen' };
     }
     if (!st.on) return { np: [], npExams: [], dist: this.distOut(st, ''), gp: [], mode: '' };
-    const np = Object.values(st.items).map(en => {
+    const ord = st.ord || {}, at = (k) => (k in ord ? ord[k] : 1e9);
+    const np = Object.keys(st.items).sort((a, b) => at(a) - at(b)).map(k => st.items[k]).map(en => {     // 화면 순서대로 (모르는 것은 고른 순서)
       const e = { matId: en.matId };
       if (en.unitId) { e.unitId = en.unitId; e.nums = (en.nums || []).slice(); e.text = stripZws(en.text || '').trim(); e.done = !!en.done; if (en.bk) e.bk = en.bk; }
       else e.nums = (en.nums || []).slice();
@@ -703,10 +772,12 @@ const NP = {
       // 학교별 카드: 학교가 바뀌는 첫 교재 위에 학교 이름 (진한 구분선)
       if (ctx.hwPlaced.size) { let prev = ''; range.forEach((r, i) => { const lb = lbs[first(r)] || ''; if (lb && lb !== prev) cardOf[i] = lb; prev = lb; }); }
     }
+    st.ord = {};                                    // 화면에 보이는 순서 (저장할 때 진도를 이 순서로 — 진도 문장 순서 = 화면 순서)
     range.forEach((r, ri) => {
       const m = r.mat, mid = m.id;
       h += `<div class="np-mat${cardOf[ri] ? ' np-school' : ''}">${cardOf[ri] ? `<div class="np-school-h">${esc(cardOf[ri])}</div>` : ''}<div class="np-mhead"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b>${esc(this.matName(m))}</b></div>`;
       if (m.type === 'mock') {
+        st.ord[mid] = Object.keys(st.ord).length;
         const en = st.items[mid];
         h += '<div class="np-chips">' + r.nums.map(n => { const s = this.numSt(prog, mid, n), on = !!(en && (en.nums || []).includes(n)); return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-num="${mid}|${n}"${this.lockAttr(s, on, this.numDate(prog, mid, n))}>${n}</button>`; }).join('') + '</div>';
       } else {
@@ -716,6 +787,7 @@ const NP = {
         const cb = bkm ? (st.bks[mid] || '') : '', sk = this.sid(mid, cb);
         if (bkm) h += this.bkBarHtml(st, prog, mid);
         const whole = r.units.filter(u => !u.nums), numbered = r.units.filter(u => u.nums);
+        (bkm ? this.bkList(prog, mid, st) : ['']).forEach(bk => r.units.forEach(u => { st.ord[this.key(mid, u.id, bk)] = Object.keys(st.ord).length; }));
         if (whole.length) h += '<div class="np-chips">' + whole.map(u => { const s = this.unitSt(prog, sk, u), on = !!st.items[this.key(mid, u.id, cb)]; return `<button type="button" class="np-c ${this.chipCls(s)} ${on ? 'on' : ''}" data-np-unit="${mid}|${u.id}"${this.lockAttr(s, on, this.unitDate(prog, sk, u)) || ` title="${esc(u.notes.join(' · '))}"`}>${esc(u.name)}${u.notes.length ? '<i>일부</i>' : ''}</button>`; }).join('') + '</div>';
         numbered.forEach(u => {
           const en = st.items[this.key(mid, u.id, cb)];
@@ -906,8 +978,10 @@ const NP = {
               if (s === 'les' || s === 'man') d++;
               return `<button type="button" class="np-c ${this.chipCls(s)}" data-pm="${exIdStr}|${sk}|unit|${u.id}|" data-st="${s}" title="${esc(last ? fmtMD(last.date) + ' ' + last.text : '')}">${esc(u.name)}${(s === 'part' || s === 'mpart') && last ? ' · ' + esc(last.text) : ''}${u.notes.length ? `<i>${esc(u.notes.join(' · '))}</i>` : ''}</button>`;
             });
-            return `<div class="np-chips np-bkline"><span class="np-ul np-bkl">${esc(this.bkLabel(bk))}</span>${cs.join('')}<span class="small soft">${d}/${r.units.length}</span><button type="button" class="icon-btn np-bkren" data-pbren="${exIdStr}|${mid}|${esc(bk)}" title="회차 이름 바꾸기 (이번 시험 기간 이 반 기록 전체)">✎</button></div>`;
-          }).join('');
+            const del = bk && !this.bkUsed(prog, mid, bk) && (prog.reg[mid] || []).includes(bk)
+              ? `<button type="button" class="icon-btn np-bkren" data-pbdel="${exIdStr}|${mid}|${esc(bk)}" title="회차 지우기 (기록이 없는 회차)">✕</button>` : '';
+            return `<div class="np-chips np-bkline"><span class="np-ul np-bkl">${esc(this.bkLabel(bk))}</span>${cs.join('')}<span class="small soft">${d}/${r.units.length}</span><button type="button" class="icon-btn np-bkren" data-pbren="${exIdStr}|${mid}|${esc(bk)}" title="회차 이름 바꾸기 (이번 시험 기간 이 반 기록 전체)">✎</button>${del}</div>`;
+          }).join('') + `<div class="np-chips np-bkline"><button type="button" class="np-c sm np-bkplus" data-pbadd="${exIdStr}|${mid}" title="같은 과를 다른 내신 대비 교재로 다시 나갈 때">+ 회차 추가</button></div>`;
         }
         if (m.type === 'mock') {
           r.nums.forEach(n => {
@@ -960,6 +1034,16 @@ const NP = {
   },
   // 요약 칸 클릭 (처리했으면 true)
   handleSummary(e, classId) {
+    const ba = e.target.closest('[data-pbadd]');          // 대비 교재 회차 추가
+    if (ba) { const [exIds, mid] = ba.dataset.pbadd.split('|'); this.addBkDlg(classId, exIds.split(','), mid); return true; }
+    const bd = e.target.closest('[data-pbdel]');          // 기록 없는 회차 지우기
+    if (bd) {
+      const v = bd.dataset.pbdel, i = v.indexOf('|'), j = v.indexOf('|', i + 1), name = v.slice(j + 1);
+      this.unregBk(classId, v.slice(0, i).split(','), v.slice(i + 1, j), name);
+      toast(`“${name}” 회차를 지웠습니다`);
+      App.render();
+      return true;
+    }
     const br = e.target.closest('[data-pbren]');          // 대비 교재 회차 이름 바꾸기
     if (br) {
       const v = br.dataset.pbren, i = v.indexOf('|'), j = v.indexOf('|', i + 1);
@@ -1511,6 +1595,7 @@ const Lessons = {
       return;
     }
     Store.put('lessons', rec);
+    NP.saveBkReg(f.np, { classId: f.classId, date: f.date });         // '+ 추가'로 만든 대비 교재 회차 → 내신 요약에도
     const preN = Makeups.preSync(true).done;                          // 결석 예정이던 학생이 출석·선보강 등으로 바뀜 → 남은 결석 예정 할일 완료
     if (this.isSkipped(f.classId, f.date)) Store.del('meta', this.skipId(f.classId, f.date));   // 일지를 쓰면 건너뛰기 표시는 없앤다
     const now = Date.now();
@@ -1565,6 +1650,7 @@ const Lessons = {
     rec.npMode = np.mode;                                             // 진도 방식 (다시 열 때 그대로)
     const mp = this.mkpreOf(f.att, f.mkpre); if (Object.keys(mp).length) rec.mkpre = mp; else delete rec.mkpre;   // 선보강한 날
     Store.put('lessons', rec);
+    NP.saveBkReg(f.np, { classId: f.classId, date: nd });             // '+ 추가'로 만든 대비 교재 회차 → 내신 요약에도
     if (lid !== id) {
       // 날짜를 옮기면 딸린 할일·보강 기록도 새 날짜 수업으로 옮긴다
       Store.where('todos', t => t.lessonId === id).forEach(t => Store.put('todos', Object.assign({}, t, { lessonId: lid })));
