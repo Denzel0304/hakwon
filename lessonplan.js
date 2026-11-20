@@ -10,7 +10,7 @@
    반 정보(요일·시간)와 독해·문법 교재(시험+교재 › 일반 교재 중 그 반에 연결된 것)는 자동으로 보여 준다.
    머리말의 학원 이름·로고는 학생 › Report 설정에 저장된 것을 쓴다.
    ========================================================= */
-const LP_AREAS = [['gram', '문법'], ['read', '독해'], ['word', '단어'], ['listen', '듣기'], ['general', '일반']];
+const LP_AREAS = [['gram', '문법'], ['read', '독해'], ['word', '단어'], ['listen', '듣기']];   // '일반'은 쓰지 않음 (예전 기록이 있어도 화면·PDF에 안 나옴)
 const LP_FIELDS = [['method', '학습 방법', '예: 매 수업 30개 암기 → 스펠링·뜻 쓰기'], ['hw', '숙제 방식', '예: 다음 시간 범위 미리 외워 오기, 오답 노트'], ['eval', '평가 방식', '예: 매 수업 단어 테스트 (80점 미만 재시험)']];
 // 영역마다 쓰는 필드 (단어 = 평가 방식만 · 듣기 = 숙제 방식만 · 문법·독해 = 숙제·평가 · 일반 = 전부)
 const LP_AFIELDS = { gram: ['hw', 'eval'], read: ['hw', 'eval'], word: ['eval'], listen: ['hw'], general: ['method', 'hw', 'eval'] };
@@ -86,9 +86,20 @@ const LessonPlan = {
     enhanceAll(main);
     this.bind(main);
     // PC: 회차별 칸 높이를 늘려 반 전체 메모 아래 끝을 왼쪽 사이드바 맨 아래 선(동기화 표시 위)에 맞춤
-    if (!this._fitOn) { this._fitOn = true; window.addEventListener('resize', debounce(() => this.fitSess(), 100)); }
+    if (!this._fitOn) { this._fitOn = true; window.addEventListener('resize', debounce(() => { this.stick(); this.fitSess(); }, 100)); }
+    this.stick();
     this.fitSess();
     requestAnimationFrame(() => this.fitSess());
+  },
+  // 회차별 · 영역별 탭을 제목줄 바로 아래에 고정 (스크롤해도 보이게) — 반 목록도 탭 아래에 고정
+  stick() {
+    const main = $('#main');
+    if (App.page !== 'lessonplan' || !main) return;
+    const ph = $('.page-head', main), tb = $('.lp-tabs', main), side = $('.lp-side', main);
+    if (!ph || !tb) return;
+    const top = ph.offsetHeight - 26;                 // 제목줄은 top:-26px로 고정됨 (style.css)
+    tb.style.top = top + 'px';
+    if (side) side.style.top = (top + tb.offsetHeight + 12) + 'px';
   },
   fitSess() {
     const main = $('#main');
@@ -296,7 +307,7 @@ const LessonPlan = {
       return one('read', '독해') + one('gram', '문법');
     };
     const fname = 'LessonPlan_' + (cls.length === 1 ? cls[0].name.replace(/[\\/:*?"<>|]/g, '').trim() + '_' : '') + today;
-    const page = 'A4 portrait', margin = '13mm 0';
+    const page = 'A4 portrait', margin = '0';   // 여백 0 = 브라우저 머리글·바닥글(파일 이름·주소·날짜·쪽 번호)이 나오지 않음
     const body = cls.map(c => {
       const p = this.plan(c.id);
       const memo = stripZws((p && p.memo) || '').trim();
@@ -333,7 +344,7 @@ const LessonPlan = {
       .bk { display: inline-block; font-size: 8pt; border-radius: 3pt; padding: 0.4mm 2mm; margin: 0 1.5mm 1mm 0; background: #F1F5F9; color: #334155; }
       .bk b { margin-right: 3pt; } .bk.read b { color: #1D5E93; } .bk.gram b { color: #5B3FA6; }
       /* 반마다 한 장 */
-      .pg { width: 210mm; min-height: 270mm; padding: 1mm 15mm 7mm; position: relative; break-after: page; page-break-after: always; }
+      .pg { width: 210mm; min-height: 297mm; padding: 14mm 15mm 16mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; position: relative; break-after: page; page-break-after: always; }
       /* 아래 끝 채우기는 인쇄 직전에 잼 (한 장에 들어갈 때만 표·칸을 늘림 · 넘치면 그대로 다음 장으로) */
       section.ses { break-inside: auto; page-break-inside: auto; }
       section.ses > h3 { break-after: avoid; page-break-after: avoid; }
@@ -382,7 +393,7 @@ const LessonPlan = {
       .li.gap { height: 1.6mm; }
       .li .mk { flex: none; min-width: 1.3em; padding-right: 0.35em; white-space: nowrap; color: #475569; font-weight: 600; }
       .li .tx { flex: 1; min-width: 0; }
-      .pg footer { position: absolute; left: 15mm; right: 15mm; bottom: 0; text-align: right; font-size: 7.5pt; color: #94A3B8; }
+      .pg footer { position: absolute; left: 15mm; right: 15mm; bottom: 8mm; text-align: right; font-size: 7.5pt; color: #94A3B8; }
       /* 요약표 */
       .thead { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3mm; margin-bottom: 4mm; border-bottom: 1.2pt solid #1D3557; }
       .thead .ttl { text-align: right; } .thead h1 { margin: 0; font-size: 16pt; color: #12304D; letter-spacing: .5pt; }
@@ -407,10 +418,10 @@ const LessonPlan = {
     const doc = fr.contentDocument;
     doc.open(); doc.write(html); doc.close();
     const t0 = document.title;
-    // 한 장(위아래 여백 뺀 270mm)에 들어가는 쪽만 아래 끝까지 채움: 1쪽은 회차 표, 2쪽은 영역 격자를 남은 높이만큼 늘림
+    // 한 장(297mm)에 들어가는 쪽만 아래 끝까지 채움: 1쪽은 회차 표, 2쪽은 영역 격자를 남은 높이만큼 늘림
     const fill = () => {
       const probe = doc.createElement('div');
-      probe.style.cssText = 'position:absolute;visibility:hidden;height:270mm;width:1px';   // 한 장에 쓸 수 있는 높이 (.pg 최소 높이와 같게)
+      probe.style.cssText = 'position:absolute;visibility:hidden;height:297mm;width:1px';   // 한 장 높이 (.pg 최소 높이와 같게)
       doc.body.appendChild(probe);
       const pageH = probe.getBoundingClientRect().height;
       probe.remove();
@@ -441,6 +452,7 @@ const LessonPlan = {
   st.textContent = `
 .lp-wrap { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
 .lp-side { position: sticky; top: 0; }
+.lp-tabs { position: sticky; top: 0; z-index: 19; background: var(--bg); padding-top: 4px; }
 .lp-list { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px; }
 .lp-cls { display: flex; align-items: center; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 8px; font-size: 14.5px; color: var(--ink); cursor: pointer; }
 .lp-cls:hover { background: var(--accent-soft); }
