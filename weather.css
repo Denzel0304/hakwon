@@ -1,0 +1,118 @@
+/* =========================================================
+   weather.css — 오늘 날씨 칩 (weather.js · PC 날짜 요약 화면)
+   왼쪽의 작은 하늘 창은 테마와 상관없이 날씨 색, 나머지는 테마 색을 따른다
+   ========================================================= */
+.wx {
+  display: inline-flex; align-items: center; gap: 9px; flex: none; height: 36px;
+  padding: 2px 11px 2px 2px; border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--surface); box-shadow: 0 1px 2px rgba(30, 50, 67, .06);
+  cursor: default; user-select: none; animation: wx-in .35s ease-out both;
+}
+.wx[hidden] { display: none; }
+@keyframes wx-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+/* 글자 */
+.wx-info { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.wx-city { font-size: 11.5px; font-weight: 700; color: var(--accent-ink); white-space: nowrap; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.wx-city em { font-style: normal; font-weight: 700; color: var(--ink-mute); margin-right: 4px; }
+.wx-txt { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.wx-tmp { display: inline-flex; align-items: baseline; gap: 2px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+.wx-tmp .lo { color: #3A80C6; }
+.wx-tmp .hi { color: #E0603A; }
+.wx-tmp i { font-style: normal; font-weight: 400; color: var(--ink-mute); margin: 0 1px; }
+.wx-pop { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; color: var(--ink-soft); font-variant-numeric: tabular-nums; padding-left: 9px; border-left: 1px solid var(--line); }
+.wx-pop svg { width: 13px; height: 13px; fill: #5AA6DE; }
+
+/* ---------- 하늘 창 ---------- */
+.wx-art {
+  position: relative; display: block; flex: none; width: 50px; height: 30px; overflow: hidden;
+  border-radius: 8px; background: linear-gradient(#8FD0F5, #D2ECFB);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35);
+}
+.wx-k-part .wx-art    { background: linear-gradient(#97CCEE, #D9EDF9); }
+.wx-k-cloud .wx-art   { background: linear-gradient(#AFBFCD, #DCE4EB); }
+.wx-k-fog .wx-art     { background: linear-gradient(#C3CBD2, #E7EBEE); }
+.wx-k-drizzle .wx-art { background: linear-gradient(#97AABA, #C9D5DF); }
+.wx-k-rain .wx-art    { background: linear-gradient(#72889D, #A9B9C8); }
+.wx-k-sleet .wx-art   { background: linear-gradient(#93A5B5, #CBD6DF); }
+.wx-k-snow .wx-art    { background: linear-gradient(#AFC3D5, #E6EFF6); }
+.wx-k-storm .wx-art   { background: linear-gradient(#45536A, #78879A); }
+
+/* 해 */
+.wx-sun { position: absolute; overflow: visible; }
+.wx-sun.big { width: 26px; height: 26px; left: 12px; top: 2px; }
+.wx-sun.sm  { width: 19px; height: 19px; right: 4px; top: 1px; }
+.wx-rays { stroke: #FFD45C; stroke-width: 2; stroke-linecap: round; transform-origin: 12px 12px; animation: wx-spin 14s linear infinite; }
+.wx-core { fill: #FFC93C; transform-origin: 12px 12px; animation: wx-glow 3.2s ease-in-out infinite; }
+@keyframes wx-spin { to { transform: rotate(360deg); } }
+@keyframes wx-glow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 1.5px rgba(255, 214, 92, .7)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 3.5px rgba(255, 214, 92, .95)); }
+}
+
+/* 구름 */
+.wx-cl { position: absolute; fill: #FFFFFF; filter: drop-shadow(0 1px 1px rgba(40, 60, 80, .18)); }
+.wx-cl.gray  { fill: #E8EDF2; }
+.wx-cl.dark  { fill: #D3DBE3; }
+.wx-cl.snowc { fill: #F6F9FC; }
+.wx-k-storm .wx-cl.dark { fill: #A9B4C1; }
+.wx-cl.c1 { width: 28px; height: 15px; left: 5px; bottom: 3px; animation: wx-drift 6s ease-in-out infinite alternate; }
+.wx-cl.c2 { width: 22px; height: 12px; right: 3px; top: 3px; animation: wx-drift 8s ease-in-out infinite alternate-reverse; }
+.wx-k-part .wx-cl.c1 { left: 4px; bottom: 2px; }
+.wx-cl.top { width: 32px; height: 17px; left: 9px; top: -1px; z-index: 2; animation: wx-drift-s 7s ease-in-out infinite alternate; }
+@keyframes wx-drift   { from { transform: translateX(-3px); } to { transform: translateX(5px); } }
+@keyframes wx-drift-s { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
+
+/* 비 */
+.wx-drop {
+  position: absolute; left: var(--x); top: 9px; width: 1.8px; height: 7px; border-radius: 1px;
+  background: linear-gradient(rgba(255, 255, 255, 0), rgba(240, 248, 255, 1));
+  animation: wx-fall .75s linear infinite; animation-delay: var(--d);
+}
+.wx-drop.slow { height: 4px; animation-duration: 1.25s; opacity: .85; }
+.wx-drop.fast { animation-duration: .55s; }
+@keyframes wx-fall {
+  from { transform: translate(0, 0) rotate(14deg); opacity: 0; }
+  15% { opacity: 1; }
+  to { transform: translate(-6px, 26px) rotate(14deg); opacity: .9; }
+}
+
+/* 눈 */
+.wx-flake {
+  position: absolute; left: var(--x); top: 6px; width: 3.4px; height: 3.4px; border-radius: 50%;
+  background: #FFFFFF; box-shadow: 0 0 2px rgba(255, 255, 255, .9);
+  animation: wx-snow 3s linear infinite; animation-delay: calc(var(--d) * 3.4);
+}
+.wx-flake:nth-child(3n) { width: 2.4px; height: 2.4px; animation-duration: 3.8s; }
+.wx-flake:nth-child(4n) { width: 4px; height: 4px; animation-duration: 2.6s; }
+.wx-flake.mix { animation-duration: 1.8s; }
+@keyframes wx-snow {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: 1; }
+  30% { transform: translate(3px, 8px); }
+  55% { transform: translate(-2px, 15px); }
+  80% { transform: translate(3px, 21px); opacity: 1; }
+  100% { transform: translate(0, 27px); opacity: 0; }
+}
+
+/* 번개 */
+.wx-bolt { position: absolute; width: 10px; height: 15px; left: 21px; top: 12px; z-index: 3; fill: #FFE066; opacity: 0; animation: wx-bolt 3.6s linear infinite; filter: drop-shadow(0 0 2px rgba(255, 224, 102, .9)); }
+.wx-k-storm .wx-art::after { content: ''; position: absolute; inset: 0; background: #FFFFFF; opacity: 0; animation: wx-flash 3.6s linear infinite; pointer-events: none; }
+@keyframes wx-bolt  { 0%, 70%, 78%, 100% { opacity: 0; } 72%, 76% { opacity: 1; } 74% { opacity: .3; } }
+@keyframes wx-flash { 0%, 70%, 78%, 100% { opacity: 0; } 72% { opacity: .45; } 74% { opacity: .1; } 76% { opacity: .3; } }
+
+/* 안개 */
+.wx-fb { position: absolute; height: 2.6px; border-radius: 2px; background: rgba(255, 255, 255, .85); animation: wx-fogm 4.5s ease-in-out infinite alternate; }
+.wx-fb.f1 { width: 30px; left: 6px; top: 14px; }
+.wx-fb.f2 { width: 24px; left: 16px; top: 19px; animation-delay: -1.5s; }
+.wx-fb.f3 { width: 32px; left: 4px; top: 24px; animation-delay: -3s; }
+@keyframes wx-fogm { from { transform: translateX(-4px); } to { transform: translateX(5px); } }
+
+/* 움직임 줄이기 설정을 켠 기기는 정지 화면 */
+@media (prefers-reduced-motion: reduce) {
+  .wx, .wx * , .wx-art::after { animation: none !important; }
+  .wx-drop, .wx-flake { opacity: .9; transform: translateY(10px) rotate(14deg); }
+}
+
+/* 설정 화면 — 지역 검색 결과 (misc.js Settings.wxHtml) */
+.wx-res { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

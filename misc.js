@@ -103,7 +103,7 @@ const Settings = {
       <div class="panel" style="margin-top:14px"><h2>테마</h2>
         <p class="small muted">프로그램 색을 고릅니다. 고른 테마는 서버에 저장되어 모바일 화면도 같은 색으로 따라갑니다.</p>
         <div class="theme-picks">${Theme.LIST.map(t => `<button type="button" class="theme-pick${t.id === Theme.current() ? ' on' : ''}" data-a="theme" data-t="${t.id}" title="${esc(t.label)}"><span class="sw" style="background:${t.bg}"><i style="background:${t.side}"></i><b style="background:${t.dot}"></b></span><span class="nm">${esc(t.label)}</span></button>`).join('')}</div>
-      </div>`;
+      </div>${this.wxHtml()}`;
     main.onclick = async (e) => {
       const a = e.target.closest('[data-a]'); if (!a) return;
       if (a.dataset.a === 'sync') { await Store.syncNow(); toast('동기화했습니다'); App.render(); }
@@ -114,8 +114,44 @@ const Settings = {
         Theme.set(a.dataset.t);
         main.querySelectorAll('.theme-pick').forEach(b => b.classList.toggle('on', b.dataset.t === Theme.current()));
       }
+      if (a.dataset.a === 'wxfind') this.wxFind(main);
+      if (a.dataset.a === 'wxpick') {
+        const r = (this._wxRes || [])[+a.dataset.i];
+        if (r && typeof Weather !== 'undefined') { Weather.setLoc(r); this._wxRes = null; this._wxMsg = ''; toast(`날씨 지역을 '${r.name}'(으)로 정했습니다`); App.render(); }
+      }
+      if (a.dataset.a === 'wxreset' && typeof Weather !== 'undefined') { Weather.resetLoc(); this._wxRes = null; this._wxMsg = ''; toast('날씨 지역을 서울(기본값)로 되돌렸습니다'); App.render(); }
     };
     main.onchange = null;
+    // 날씨 지역 검색창에서 Enter → 검색
+    main.onkeydown = (e) => { if (e.key === 'Enter' && e.target.closest('[data-wxq]')) { e.preventDefault(); this.wxFind(main); } };
+  },
+
+  /* ---------- 날씨 지역 (weather.js · 이 기기에만 저장) ---------- */
+  _wxRes: null, _wxMsg: '', _wxQ: '',
+  wxHtml() {
+    if (typeof Weather === 'undefined') return '';
+    const l = Weather.loc();
+    const res = this._wxRes && this._wxRes.length ? `<div class="wx-res">${this._wxRes.map((r, i) => `<button type="button" class="btn sm" data-a="wxpick" data-i="${i}"><b>${esc(r.name)}</b>${r.sub ? ` <span class="small muted">${esc(r.sub)}</span>` : ''}</button>`).join('')}</div>` : '';
+    return `<div class="panel" style="margin-top:14px"><h2>날씨 지역</h2>
+      <p class="small muted">날짜 요약 화면의 '할일 검색' 오른쪽에 보이는 오늘 날씨의 지역입니다. 이 기기에만 저장되며, 정하지 않으면 서울로 보여 줍니다. (날씨 정보: Open-Meteo.com)</p>
+      <p class="small">현재 지역: <b>${esc(l.name)}</b>${l.sub ? ` <span class="muted">${esc(l.sub)}</span>` : ''}${l.def ? ' <span class="badge gray">기본값</span>' : ''}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="search" data-wxq value="${esc(this._wxQ)}" placeholder="예: 분당구, 수원시, 해운대구" style="width:240px">
+        <button class="btn" data-a="wxfind">검색</button>${l.def ? '' : '<button class="btn ghost" data-a="wxreset">서울로 되돌리기</button>'}</div>
+      ${this._wxMsg ? `<p class="small muted" style="margin:8px 0 0">${esc(this._wxMsg)}</p>` : ''}${res}</div>`;
+  },
+  async wxFind(main) {
+    if (typeof Weather === 'undefined') return;
+    const inp = main.querySelector('[data-wxq]');
+    const q = inp ? inp.value.trim() : '';
+    this._wxQ = q;
+    if (q.length < 2) { toast('지역 이름을 두 글자 이상 입력하세요'); return; }
+    const res = await Weather.search(q);
+    this._wxRes = res || [];
+    this._wxMsg = res === null ? '검색하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 해 보세요.'
+      : !res.length ? '찾는 지역이 없습니다. 시·구 이름(예: 성남시, 분당구)으로 다시 검색해 보세요.'
+      : '아래에서 지역을 고르세요.';
+    if (inp) inp.blur();
+    if (App.page === 'settings') App.render();
   },
 };
 

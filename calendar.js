@@ -486,6 +486,8 @@ const DayPage = {
     </div></div>`;
     main.innerHTML = h;
     TodoX.mount(main);
+    // 오늘 날씨 ('할일 검색' 오른쪽 · PC 전용 weather.js · 실패하면 표시 안 함)
+    try { if (typeof Weather !== 'undefined') Weather.mount(main, isToday); } catch (e) {}
     // 왼쪽 열 고정 위치 = 고정된 제목줄 바로 아래 (처음 놓인 자리 그대로, 스크롤해도 움직이지 않음)
     // --dh: 고정 위치(sticky top) / --dmax: 왼쪽 열 최대 높이 (넘치면 왼쪽 열 안에서 따로 스크롤) — style.css .day-cols
     // 제목줄 높이나 창 높이가 바뀌면 다시 맞춘다
