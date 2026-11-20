@@ -462,7 +462,8 @@ const DayPage = {
 
     const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
     const hol = Holidays.name(date);           // 공휴일: 수업 목록을 흐리게 + 안내 (일지는 눌러서 쓸 수 있음)
-    h += `<div class="grid-2 day-cols"><div class="day-col">
+    const tvOk = classes.length && !hol;       // TV(tv.js): 수업이 있는 날만 (공휴일 제외) — 왼쪽 열 남는 공간에
+    h += `<div class="grid-2 day-cols"><div class="day-col${tvOk ? ' has-tv' : ''}">
       <div class="panel" style="--o:4"><h2>수업 <span class="sub">${DOW[dowOf(date)]}요일</span>${!hol && unwritten.length > 1 ? '<button class="btn sm ghost" data-skipall style="float:right;margin-top:-3px" title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</h2>`;
     if (hol && classes.length) h += `<div class="hol-note">공휴일(${esc(hol)})입니다. 수업이 없어 일지를 쓰지 않아도 됩니다.</div>`;
     h += classes.length ? `<div class="list${hol ? ' hol-dim' : ''}">` + classes.map(c => {
@@ -479,7 +480,7 @@ const DayPage = {
         ${les && checked ? `<span class="badge">출석 ${came}/${roster.length}</span>` : ''}${absent ? ` <span class="badge red">결석 ${absent}</span>` : ''}</div>
         ${les || (hol && !sk) ? '' : sk ? `<button class="btn sm ghost" data-unskip="${c.id}" title="건너뛰기 취소">건너뛰기 취소</button>` : `<button class="btn sm ghost" data-skip="${c.id}" title="이 수업은 일지를 쓰지 않음">일지 건너뛰기</button>`}</div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
-    h += `</div>${upHtml}${tops.join('')}</div><div class="day-col">
+    h += `</div>${upHtml}${tops.join('')}${tvOk ? '<div class="tv-slot"></div>' : ''}</div><div class="day-col">
       <div class="panel todo-panel" style="--o:5"><h2>할일 <span class="sub">${tdList.left}개 남음</span></h2>
       ${tdList.html}</div>
       ${tdLate.n ? `<div class="panel todo-panel late" style="--o:6"><h2>밀린 할일 <span class="sub">${tdLate.n}개</span></h2>${tdLate.html}</div>` : ''}
@@ -504,6 +505,8 @@ const DayPage = {
       setDh();
       if (window.ResizeObserver) { this._dhRO = new ResizeObserver(setDh); this._dhRO.observe(dHead); this._dhRO.observe(main); }
     }
+    // 레트로 TV (PC 전용 tv.js · 자리가 없으면 TV를 떼고 멈춤)
+    try { if (typeof TvBox !== 'undefined') TvBox.mount(main); } catch (e) {}
     main.onclick = (e) => {
       if (e.target.closest('[data-dpick]')) { DatePicker.open(date, '날짜 이동').then(d => { if (d && d !== date) App.pickDate(d); }); return; }
       const a = e.target.closest('[data-a]');
