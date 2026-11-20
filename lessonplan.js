@@ -25,6 +25,14 @@ const LessonPlan = {
   pdfScope: 'cur',    // 'cur' 지금 반 / 'act' 진행 중인 반 전체 / 'pick' 직접 고르기
   tab: 'sess',        // 'sess' 회차별 / 'area' 영역별 — 처음 열면 회차별
 
+  /* ---------- 양면 프린터 설정 (이 기기 · 표지+양식 · 단어 출제와 같은 방식) ----------
+     Lesson Plan 출력은 언제나 단면: 양면 프린터면 쪽마다 뒤에 빈 장을 넣어 뒷면이 비게 함 / 단면 프린터면 빈 장 없이
+     localStorage mg77_ 접두사 → 로그아웃하면 함께 지워짐. 처음엔 양면 프린터 사용(켜짐) */
+  LS_DUPLEX: 'mg77_lplan_duplex',
+  duplex() { try { const v = JSON.parse(localStorage.getItem(this.LS_DUPLEX) || 'null'); return typeof v === 'boolean' ? v : true; } catch (e) { return true; } },
+  setDuplex(on) { try { localStorage.setItem(this.LS_DUPLEX, JSON.stringify(!!on)); } catch (e) {} },
+  duplexHint(on) { return on ? '쪽마다 뒤에 빈 장을 넣어, 모든 쪽이 앞면에만 인쇄돼요.' : '단면 프린터용: 빈 장 없이 인쇄해요.'; },
+
   /* ---------- 데이터 ---------- */
   pid(cid) { return 'LP_' + cid; },
   plan(cid) { return Store.get('meta', this.pid(cid)); },
@@ -270,13 +278,21 @@ const LessonPlan = {
     const body = `<div class="form">
       <label>범위</label><div class="row">${[['cur', '지금 반'], ['act', '진행 중인 반 전체'], ['pick', '직접 고르기']].map(([k, t]) => `<label class="chk"><input type="radio" name="lpscope" value="${k}" ${this.pdfScope === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
       <label class="top" data-lppick>반</label><div data-lppick><div class="pick-list lp-pick">${all.map(c => `<label><input type="checkbox" name="lpc" value="${c.id}" ${c.id === this.cid ? 'checked' : ''}>${Classes.dot(c)}${esc(c.name)}${c.active === false ? ' <span class="badge gray">종료</span>' : ''}${this.pdfHas(c) ? '' : ' <span class="muted small">(내용 없음)</span>'}</label>`).join('')}</div></div>
-    </div><p class="small muted" style="margin:10px 0 0">인쇄 창에서 대상을 “PDF로 저장”으로 고르면 파일로, 프린터를 고르면 바로 출력됩니다. 반마다 1쪽 회차별, 2쪽 영역별로 나옵니다. 내용을 적지 않은 반·쪽·영역은 빠집니다.</p>`;
+      <label class="top">프린터</label><div><label class="chk"><input type="checkbox" data-lpdup ${this.duplex() ? 'checked' : ''}>양면 프린터 사용</label>
+        <div class="small muted" data-lpdup-hint style="margin-top:2px">${this.duplexHint(this.duplex())}</div></div>
+    </div><p class="small muted" style="margin:10px 0 0">인쇄 창에서 대상을 “PDF로 저장”으로 고르면 파일로, 프린터를 고르면 바로 출력됩니다. 반마다 1쪽 회차별, 2쪽 영역별로 나옵니다. 내용을 적지 않은 반·쪽·영역은 빠집니다. 양면 프린터를 사용할 땐 인쇄 창의 <b>양면 인쇄</b>도 켜져 있어야 해요.</p>`;
     Modal.open({
       title: 'Lesson Plan PDF 저장', size: 'md', autofocus: false, body,
       onMount: (b) => {
         const sync = () => { const pk = ($('[name=lpscope]:checked', b) || {}).value === 'pick'; $$('[data-lppick]', b).forEach(x => { x.style.display = pk ? '' : 'none'; }); };
         sync();
-        b.addEventListener('change', (e) => { if (e.target.name === 'lpscope') sync(); });
+        b.addEventListener('change', (e) => {
+          if (e.target.name === 'lpscope') sync();
+          else if (e.target.matches('[data-lpdup]')) {
+            this.setDuplex(e.target.checked);          // 고르는 즉시 이 기기에 저장 (표지+양식과 같음)
+            const h = $('[data-lpdup-hint]', b); if (h) h.textContent = this.duplexHint(e.target.checked);
+          }
+        });
       },
       buttons: [
         { text: '취소' },
@@ -289,7 +305,7 @@ const LessonPlan = {
           else ids = $$('[name=lpc]:checked', b).map(i => i.value);
           const cls = all.filter(c => ids.includes(c.id) && this.pdfHas(c));
           if (!cls.length) { toast(ids.length ? '고른 반에 적어 둔 내용이 없습니다' : '반을 고르세요'); return false; }
-          this.pdf(cls);
+          this.pdf(cls, $('[data-lpdup]', b).checked);
         } },
       ],
     });
@@ -299,7 +315,9 @@ const LessonPlan = {
   pdfHas(c) { const p = this.plan(c.id); return this.hasAny(p, c) || !!stripZws((p && p.memo) || '').trim(); },
 
   // 반마다 2쪽: 1쪽 = 반 이름·시간·교재·반 안내 + 회차별 / 2쪽 = 반 이름·시간 + 영역별
-  pdf(cls) {
+  // duplex = 양면 프린터 사용 (생략하면 이 기기 설정) → 쪽마다 뒤에 빈 장
+  pdf(cls, duplex) {
+    if (typeof duplex !== 'boolean') duplex = this.duplex();
     const today = todayStr();
     const cfg = typeof Reports !== 'undefined' && Reports.cfg ? Reports.cfg() : { academy: '', logo: '' };
     const academy = String(cfg.academy || '').trim(), logo = cfg.logo || '';
@@ -363,6 +381,8 @@ const LessonPlan = {
       .agrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; align-content: stretch; }
       .agrid > section:last-child:nth-child(odd) { grid-column: 1 / -1; }
       .pg:last-child { break-after: auto; page-break-after: auto; }
+      /* 양면 프린터용 빈 장 (쪽 뒷면) */
+      .pg.blank { padding: 0; }
       .pg header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4mm; border-bottom: 1.2pt solid #1D3557; }
       .pg .tag { font-size: 9pt; font-weight: 800; letter-spacing: 2.5pt; color: #1D3557; }
       .hero { margin: 7mm 0 6mm; padding: 6mm 7mm; border-radius: 3mm; background: linear-gradient(135deg, #EEF5FC, #F7FAFD); border: 0.6pt solid #D6E4F1; }
@@ -447,8 +467,32 @@ const LessonPlan = {
         if (used <= pageH && gap > 0) tgt.style.height = (tgt.getBoundingClientRect().height + gap) + 'px';
       });
     };
+    // 양면 프린터: 언제나 단면 출력이 되도록 쪽마다 뒤에 빈 장을 넣음 (표지+양식 · 단어 출제와 같은 방식)
+    //   한 쪽(.pg)이 넘쳐 종이 여러 장이 되면, 그 쪽이 차지하는 장 수가 짝수가 되도록 채워 다음 쪽이 늘 새 종이 앞면에서 시작
+    //   (마지막 쪽 뒤에도 넣음 — 여러 부를 이어 찍을 때 다음 부 첫 장이 뒷면에 붙지 않게)
+    const padDuplex = () => {
+      const probe = doc.createElement('div');
+      probe.style.cssText = 'position:absolute;visibility:hidden;height:297mm;width:1px';
+      doc.body.appendChild(probe);
+      const pageH = probe.getBoundingClientRect().height;
+      probe.remove();
+      const cs = (el) => fr.contentWindow.getComputedStyle(el);
+      Array.from(doc.querySelectorAll('.pg')).forEach(pg => {
+        const h = pg.getBoundingClientRect().height;
+        const padV = (parseFloat(cs(pg).paddingTop) || 0) + (parseFloat(cs(pg).paddingBottom) || 0);   // 넘친 장마다 위아래 여백이 다시 붙음 (box-decoration-break: clone)
+        let n = 1;
+        while (n < 20 && h + (n - 1) * padV > n * pageH + 2) n++;
+        if (n % 2 === 1) pg.insertAdjacentHTML('afterend', '<div class="pg blank"></div>');
+      });
+    };
     setTimeout(() => {
       try { fill(); } catch (e) { /* 채우기 실패해도 인쇄는 그대로 */ }
+      if (duplex) {
+        try { padDuplex(); } catch (e) {
+          // 재기 실패하면 단순하게 쪽마다 빈 장 하나
+          doc.querySelectorAll('.pg:not(.blank)').forEach(pg => pg.insertAdjacentHTML('afterend', '<div class="pg blank"></div>'));
+        }
+      }
       document.title = fname;                 // 저장 파일 이름
       try { fr.contentWindow.focus(); fr.contentWindow.print(); } finally {
         document.title = t0;
