@@ -16,23 +16,23 @@
 .tv { position: relative; width: 100em; height: 70em; flex: none; user-select: none; -webkit-user-select: none; }
 .tv[hidden] { display: none; }
 
-/* 나무 몸통 */
+/* 회색 몸통 */
 .tv-body {
   position: absolute; left: 0; top: 0; width: 100em; height: 66em; border-radius: 6em;
   background:
-    repeating-linear-gradient(93deg, rgba(60,30,10,.07) 0 .5em, transparent .5em 2.3em, rgba(255,230,200,.05) 2.3em 2.8em, transparent 2.8em 4.6em),
-    linear-gradient(180deg, #b07a4f 0%, #946039 45%, #7a4b2b 100%);
+    repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 .3em, transparent .3em 1.1em),
+    linear-gradient(180deg, #a9aeb4 0%, #8d9399 45%, #737980 100%);
   box-shadow:
-    inset 0 .7em 0 rgba(255,236,210,.22),
-    inset 0 -1em 0 rgba(40,20,5,.28),
-    0 1.4em 2.6em rgba(60,35,15,.22);
+    inset 0 .7em 0 rgba(255,255,255,.28),
+    inset 0 -1em 0 rgba(20,24,30,.28),
+    0 1.4em 2.6em rgba(30,40,55,.22);
 }
 
 /* 화면 테두리 · 브라운관 */
 .tv-bezel {
-  position: absolute; left: 4.5em; top: 4.5em; width: 69em; height: 57em; padding: 3em;
-  border-radius: 5em; background: linear-gradient(150deg, #403b38, #1c1a19);
-  box-shadow: inset 0 .4em .5em rgba(255,255,255,.08), 0 .35em 0 rgba(255,236,210,.18);
+  position: absolute; left: 4.5em; top: 4.5em; width: 75.5em; height: 57em; padding: 3em;
+  border-radius: 5em; background: linear-gradient(150deg, #3d4045, #1b1d20);
+  box-shadow: inset 0 .4em .5em rgba(255,255,255,.08), 0 .35em 0 rgba(255,255,255,.22);
 }
 .tv-scr {
   position: relative; width: 100%; height: 100%; overflow: hidden;
@@ -86,31 +86,31 @@
 
 /* 오른쪽 조작판 */
 .tv-panel {
-  position: absolute; left: 77em; top: 5em; width: 18.5em; height: 56em; border-radius: 3em;
-  background: linear-gradient(180deg, #ece2cc, #cdbf9f);
-  box-shadow: inset 0 .35em 0 rgba(255,255,255,.65), inset 0 -.5em 0 rgba(90,70,40,.15), 0 .3em .6em rgba(40,20,5,.25);
+  position: absolute; left: 83.5em; top: 5em; width: 12em; height: 56em; border-radius: 3em;
+  background: linear-gradient(180deg, #e6e8eb, #c3c7cc);
+  box-shadow: inset 0 .35em 0 rgba(255,255,255,.7), inset 0 -.5em 0 rgba(30,40,55,.15), 0 .3em .6em rgba(20,25,35,.25);
   display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;
 }
-.tv-grille { width: 12em; display: flex; flex-direction: column; gap: 1.3em; }
-.tv-grille i { display: block; height: .75em; border-radius: .4em; background: #8c7c62; box-shadow: inset 0 .2em .2em rgba(0,0,0,.35); }
+.tv-grille { width: 7.5em; display: flex; flex-direction: column; gap: 1.3em; }
+.tv-grille i { display: block; height: .75em; border-radius: .4em; background: #848a91; box-shadow: inset 0 .2em .2em rgba(0,0,0,.35); }
 .tv-ctl { display: flex; flex-direction: column; align-items: center; gap: .8em; }
-.tv-lbl { font: 700 2.1em/1 var(--font); letter-spacing: .08em; color: #8a7860; }
+.tv-lbl { font: 700 2.1em/1 var(--font); letter-spacing: .08em; color: #6c727a; }
 
 .tv-dial, .tv-pwr { font-size: inherit; border: 0; padding: 0; margin: 0; position: relative; cursor: pointer; outline: none; }
 .tv-dial {
-  width: 12.5em; height: 12.5em; border-radius: 50%;
+  width: 7.5em; height: 7.5em; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fbfbfb, #c3c3c3 55%, #8f8f8f);
-  box-shadow: 0 0 0 .5em #b6a888, 0 .6em 1em rgba(0,0,0,.35), inset 0 -.5em .7em rgba(0,0,0,.25);
+  box-shadow: 0 0 0 .5em #a9aeb5, 0 .6em 1em rgba(0,0,0,.35), inset 0 -.5em .7em rgba(0,0,0,.25);
   transition: transform .4s cubic-bezier(.3,1.5,.5,1);
 }
 .tv-notch {
-  position: absolute; left: 50%; top: 1em; width: 1.2em; height: 4.2em; margin-left: -.6em;
-  border-radius: .6em; background: #5b4630;
+  position: absolute; left: 50%; top: .6em; width: .9em; height: 2.6em; margin-left: -.45em;
+  border-radius: .45em; background: #3f444a;
 }
 .tv-pwr {
   width: 7.5em; height: 7.5em; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #666, #232323 70%);
-  box-shadow: 0 0 0 .5em #b6a888, 0 .5em .8em rgba(0,0,0,.35);
+  box-shadow: 0 0 0 .5em #a9aeb5, 0 .5em .8em rgba(0,0,0,.35);
   transition: transform .1s;
 }
 .tv-pwr:active { transform: scale(.93); }
@@ -119,11 +119,11 @@
   border-radius: 50%; background: #5a1d1d; box-shadow: inset 0 .2em .3em rgba(0,0,0,.5);
 }
 .tv.on .tv-led { background: #5dff84; box-shadow: 0 0 1em #5dff84, 0 0 .3em #c8ffd4; }
-.tv-dial:focus-visible, .tv-pwr:focus-visible { box-shadow: 0 0 0 .5em #b6a888, 0 0 0 .9em var(--accent); }
+.tv-dial:focus-visible, .tv-pwr:focus-visible { box-shadow: 0 0 0 .5em #a9aeb5, 0 0 0 .9em var(--accent); }
 .tv.tight .tv-dial, .tv.tight .tv-pwr { cursor: default; }
 
 /* 다리 */
 .tv-legs { position: absolute; left: 0; right: 0; top: 65.5em; height: 4.5em; pointer-events: none; }
-.tv-legs i { position: absolute; top: 0; width: 6.5em; height: 4.5em; background: linear-gradient(#5a3c25, #3a2616); border-radius: 0 0 1.4em 1.4em; }
+.tv-legs i { position: absolute; top: 0; width: 6.5em; height: 4.5em; background: linear-gradient(#4a4f55, #2b2e33); border-radius: 0 0 1.4em 1.4em; }
 .tv-legs i:first-child { left: 14em; transform: skewX(8deg); }
 .tv-legs i:last-child { right: 14em; transform: skewX(-8deg); }
