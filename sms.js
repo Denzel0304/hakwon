@@ -814,18 +814,18 @@ const NewStu = {
     const alive = new Set(); gs.forEach(g => g.all.forEach(s => alive.add(s.id)));
     [...this.sel].forEach(id => { if (!alive.has(id)) this.sel.delete(id); });
 
-    let h = `<div class="panel nw-cfg">
+    let h = `<div class="nw-top"><div class="panel nw-cfg">
         <div class="nw-cfg-r"><span class="soft small">첫 문자 템플릿</span>${tsel('tplFirst', cfg.tplFirst)}
           <span class="soft small">첫 상담 안내 템플릿</span>${tsel('tplCns', cfg.tplCns)}
           <span class="soft small">교재 안내 기본</span><span><input type="number" data-nwcfg="bookDays" min="0" max="30" value="${+cfg.bookDays || 0}" style="width:64px"> 일 전</span></div>
-        <div class="small muted" style="margin-top:6px">문자는 부모님 번호로만 보냅니다. 템플릿은 보내기 탭에서 만들고 저장하세요. 교재 안내는 완료 체크만 합니다.</div>
+        <div class="small muted" style="margin-top:6px">문자는 부모님 번호로만 보냅니다. 템플릿은 보내기 탭에서 만들고 저장하세요. 교재 안내는 완료 체크만 합니다. 학생을 체크하면 여러 명을 한꺼번에 보내거나 완료 · 필요없음(안내할 필요 없는 학생)으로 처리할 수 있습니다.</div>
       </div>
       <div class="toolbar">
         <div class="sx7-clsbar" style="margin:0">${Classes.selDot(this.cls ? classes.find(c => c.id === this.cls) : null)}<select data-nwcls aria-label="반 선택"><option value="">전체 반</option>${classes.map(c => `<option value="${c.id}" ${this.cls === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <input type="search" data-nwq value="${esc(this.q)}" placeholder="이름 검색" style="width:160px">
         <label class="chk small"><input type="checkbox" data-nwtodo ${this.todo ? 'checked' : ''}> 미완료만</label>
       </div>
-      <div id="nw-selbar">${this.selBarHtml()}</div>`;
+      <div id="nw-selbar">${this.selBarHtml()}</div></div>`;
     return h + `<div id="nw-body">${this.bodyHtml(gs)}</div>`;
   },
   bodyHtml(gs) {
@@ -856,16 +856,16 @@ const NewStu = {
     return h;
   },
   selBarHtml() {
-    const n = this.sel.size;
-    if (!n) return '<div class="small muted nw-selbar">학생을 체크하면 여러 명을 한꺼번에 보내거나 완료 · 필요없음(안내할 필요 없는 학생)으로 처리할 수 있습니다.</div>';
-    return `<div class="nw-selbar on"><b>선택 ${n}명</b>
-      <button class="btn sm primary" data-nwbulk="send|first" ${SmsPage.sending ? 'disabled' : ''}>첫 문자 보내기</button>
-      <button class="btn sm primary" data-nwbulk="send|cns" ${SmsPage.sending ? 'disabled' : ''}>첫 상담 안내 보내기</button>
+    // 늘 자리를 차지하는 버튼 줄 (선택이 없으면 흐리게 · 비활성) — 학생 목록의 bulk-bar와 같은 방식
+    const n = this.sel.size, dis = n ? '' : 'disabled';
+    return `<div class="bulk-bar nw-selbar${n ? '' : ' off'}"><b>선택 ${n}명</b>
+      <button class="btn sm primary" data-nwbulk="send|first" ${n && !SmsPage.sending ? '' : 'disabled'}>첫 문자 보내기</button>
+      <button class="btn sm primary" data-nwbulk="send|cns" ${n && !SmsPage.sending ? '' : 'disabled'}>첫 상담 안내 보내기</button>
       <span class="soft small" style="margin-left:6px">완료 처리</span>
-      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="done|${k}">${this.LABEL[k]}</button>`).join('')}
+      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="done|${k}" ${dis}>${this.LABEL[k]}</button>`).join('')}
       <span class="soft small" style="margin-left:6px">필요없음</span>
-      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="need|${k}">${this.LABEL[k]}</button>`).join('')}
-      <button class="btn sm ghost" data-nwbulk="clear">선택 해제</button></div>`;
+      ${this.KEYS.map(k => `<button class="btn sm" data-nwbulk="need|${k}" ${dis}>${this.LABEL[k]}</button>`).join('')}
+      <span style="flex:1"></span><button class="btn sm ghost" data-nwbulk="clear" ${dis}>선택 해제</button></div>`;
   },
   parentOk(s) { return SmsPage.okPhone(SmsPage.digits(s.parentPhone)); },
 
@@ -934,7 +934,16 @@ const NewStu = {
   },
 
   /* ---------- 이벤트 ---------- */
+  // 설정 · 반 선택 · 선택 처리 줄을 제목줄 바로 아래에 고정 (Lesson Plan stick()과 같은 방식 · 제목줄은 top:-26px로 고정됨)
+  stick() {
+    const main = $('#main');
+    if (App.page !== 'sms' || SmsPage.tab !== 'new' || !main) return;
+    const ph = $('.page-head', main), tp = $('.nw-top', main);
+    if (ph && tp && ph.offsetHeight) tp.style.top = (ph.offsetHeight - 26) + 'px';
+  },
   bind(main) {
+    this.stick();
+    if (!this._stickOn) { this._stickOn = true; window.addEventListener('resize', debounce(() => this.stick(), 100)); }
     main.onclick = (e) => {
       const tb = e.target.closest('[data-tab]');
       if (tb) { SmsPage.tab = tb.dataset.tab; App.render(); return; }
@@ -1035,8 +1044,10 @@ const NewStu = {
 /* 신규생 탭 (nw- 접두사) */
 .nw-cfg { margin-bottom: 12px; }
 .nw-cfg-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
-.nw-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
-.nw-selbar.on { padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
+.nw-selbar { margin: 0; }
+.nw-top { position: sticky; top: 0; z-index: 19; background: var(--bg); padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.nw-top .toolbar { margin-bottom: 10px; }
+body.m-body .nw-top { position: static; border-bottom: 0; padding-bottom: 0; }   /* 모바일: 화면이 좁아 고정하지 않음 */
 .nw-cls { margin-bottom: 12px; }
 .nw-ch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .nw-cnt { margin-left: auto; color: var(--ink-soft); }
