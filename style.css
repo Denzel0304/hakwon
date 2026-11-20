@@ -839,6 +839,15 @@ body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none
 .np-sgrid { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 10px; align-items: start; }
 .np-sl { font-size: 12.5px; color: var(--ink-mute); padding-top: 5px; }
 .np-sgrid .np-chips { margin: 0; }
+/* 대비 교재 회차 (중학교 내신 교과서): 입력 버튼 줄 · 요약의 회차별 줄 */
+.np-bkbar { padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px dotted var(--line); }
+.np-bkbar .np-ul { color: var(--accent-ink); }
+.np-bkplus { border-style: dashed; color: var(--ink-soft); }
+.np-bkadd { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.np-bkadd input[type=text] { width: 190px; }
+.np-bkline + .np-bkline { margin-top: 4px; }
+.np-bkl { min-width: 52px; color: var(--accent-ink); }
+.np-bkren { font-size: 13px; padding: 0 4px; }
 .mk-dist { display: flex; margin: 2px 0; }
 .mk-dist.got { color: var(--ink-mute); text-decoration: line-through; }
 
