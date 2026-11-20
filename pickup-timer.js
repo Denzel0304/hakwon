@@ -314,7 +314,8 @@ const PickupTimer = {
   },
 
   /* ---------- 시계 아이콘 (오늘·날짜 화면 '할일 검색' 바로 오른쪽 → 그 오른쪽에 날씨) ---------- */
-  ICON: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5M12 2.5V5"/></svg>',
+  // 자명종 시계: 테두리는 버튼 글자색, 시계판은 연한 녹색, 바늘은 녹색 (테마 색을 따름)
+  ICON: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.4 6.6a3.8 3.8 0 0 1 4.2-3.8"/><path d="M20.6 6.6a3.8 3.8 0 0 0-4.2-3.8"/><path d="M7.2 19.4 5.6 21.2M16.8 19.4l1.6 1.8"/><circle cx="12" cy="13" r="7.4" style="fill:var(--ok-soft)"/><path d="M12 8.9V13l2.8 1.7" style="stroke:var(--ok)" stroke-width="2.1"/><circle cx="12" cy="13" r="1" style="fill:var(--ok);stroke:none"/></svg>',
   mountBtn() {
     const main = $('#main');
     const sb = main && main.querySelector('.page-head [data-a="tdsearch"]');
@@ -333,7 +334,7 @@ const PickupTimer = {
   init() {
     const st = document.createElement('style');
     st.textContent = `
-.btn.lt-btn { padding-left: 9px; padding-right: 9px; display: inline-flex; align-items: center; justify-content: center; }
+.btn.lt-btn { width: 36px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }   /* 버튼 크기는 예전 그대로 (36×32), 아이콘만 크게 */
 #lt-win { position: fixed; z-index: 480; display: flex; flex-direction: column; box-sizing: border-box;
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-top: 3px solid var(--ok);
   border-radius: 12px; box-shadow: 0 10px 28px rgba(22, 48, 70, .22); font-size: 14px; cursor: move; }
