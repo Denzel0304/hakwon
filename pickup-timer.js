@@ -19,6 +19,9 @@ const PickupTimer = {
   LS: 'mg77_ltimer',
   MIN_W: 320,
   MIN_H: 170,
+  DEF_W: 600,               // 처음 너비: 학생 한 줄(이름 · 도착 · 수업 · 하원 · 남은 시간 · 하원 버튼)이 한 줄에 들어가는 폭
+  DEF_H: 380,
+  BOX_V: 2,
   el: null,
   st: null,
   _tick: null,
@@ -32,7 +35,7 @@ const PickupTimer = {
       open: !!s.open,
       dur: s.dur === 90 ? 90 : 80,
       list: Array.isArray(s.list) ? s.list.filter(x => x && x.id && isFinite(x.start)).map(x => ({ id: String(x.id), name: String(x.name || ''), start: +x.start, dur: x.dur === 90 ? 90 : 80 })) : [],
-      box: s.box && isFinite(s.box.x) && isFinite(s.box.y) && isFinite(s.box.w) && isFinite(s.box.h) ? s.box : null,
+      box: s.box && s.box.v === this.BOX_V && isFinite(s.box.x) && isFinite(s.box.y) && isFinite(s.box.w) && isFinite(s.box.h) ? s.box : null,   // 예전 판의 위치·크기는 버리고 새 기본 크기로
     };
   },
   save() { try { localStorage.setItem(this.LS, JSON.stringify(this.st)); } catch (e) { /* 저장 못 해도 이번 화면에서는 동작 */ } },
@@ -210,7 +213,7 @@ const PickupTimer = {
     const box = this.el, b = this.st.box;
     if (b) Object.assign(box.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px' });
     else {
-      const w = 470, h = 360;
+      const w = this.DEF_W, h = this.DEF_H;
       Object.assign(box.style, { width: w + 'px', height: h + 'px', left: Math.max(10, window.innerWidth - w - 30) + 'px', top: '80px' });
     }
     this.clampIn();
@@ -219,8 +222,8 @@ const PickupTimer = {
   clampIn() {
     const box = this.el;
     if (!box || box.style.display === 'none') return;
-    const w = Math.min(parseFloat(box.style.width) || 470, window.innerWidth - 20);
-    const h = Math.min(parseFloat(box.style.height) || 360, window.innerHeight - 20);
+    const w = Math.min(parseFloat(box.style.width) || this.DEF_W, window.innerWidth - 20);
+    const h = Math.min(parseFloat(box.style.height) || this.DEF_H, window.innerHeight - 20);
     box.style.width = Math.max(this.MIN_W, w) + 'px';
     box.style.height = Math.max(this.MIN_H, h) + 'px';
     const l = parseFloat(box.style.left) || 0, t = parseFloat(box.style.top) || 0;
@@ -229,7 +232,7 @@ const PickupTimer = {
   },
   saveBox() {
     const s = this.el.style;
-    this.st.box = { x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: parseFloat(s.height) };
+    this.st.box = { v: this.BOX_V, x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: parseFloat(s.height) };
     this.save();
   },
   bindMove() {
@@ -308,15 +311,18 @@ const PickupTimer = {
 #lt-win .lt-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 #lt-win .lt-row + .lt-row { margin-top: 6px; }
 #lt-win [data-lt-name] { flex: 1; min-width: 120px; }
+#lt-win .lt-seg button { cursor: pointer; font: inherit; font-size: 13.5px; }
+#lt-win .lt-seg button.on { background: var(--ok); color: #fff; font-weight: 700; }   /* 고른 수업시간 */
 #lt-win input, #lt-win select, #lt-win button { cursor: auto; }
 #lt-win button { cursor: pointer; }
-#lt-win .lt-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px; border-bottom: 1px dashed var(--line); border-radius: 8px; }
+#lt-win .lt-item { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; padding: 6px 8px; border-bottom: 1px dashed var(--line); border-radius: 8px; }
+#lt-win .lt-item > * { flex: none; }
 #lt-win .lt-item:last-child { border-bottom: 0; }
-#lt-win .lt-nm { flex: 1 1 70px; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#lt-win .lt-in input { width: 108px; }
+#lt-win .lt-nm { flex: 1 1 60px; min-width: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lt-win .lt-in input { width: 104px; }
 #lt-win .lt-out { white-space: nowrap; font-variant-numeric: tabular-nums; }
 #lt-win .lt-out b { color: var(--ok); font-size: 15px; }
-#lt-win .lt-left { color: var(--ink-mute); white-space: nowrap; min-width: 64px; }
+#lt-win .lt-left { flex: 0 1 98px; color: var(--ink-mute); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 창을 줄이면 남은 시간 글자부터 줄어듦 */
 #lt-win .lt-empty { padding: 10px 2px; }
 #lt-win .lt-foot { flex: none; display: flex; justify-content: flex-end; padding: 8px 12px 10px; border-top: 1px solid var(--line); margin-top: 6px; }
 /* 하원 시각이 된 줄: 할일 알림창과 같은 깜빡임 (흰색 ↔ 녹색) · 마우스를 올리면 멈춤 */
