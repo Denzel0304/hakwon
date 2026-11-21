@@ -7,6 +7,7 @@
      · 화면이 좁아 한 열이 되면(1100px 이하) 숨김 (tv.css)
    - 화면: 메엉 힐링 애니메이션 8장면 (소리 없음)
      · 2분마다 다음 장면 (셔플: 8개를 섞어서 한 번씩 모두 재생 → 다 돌면 다시 섞음, 방금 장면은 바로 다음에 안 나옴)
+       2분은 시계 기준 — 다른 탭·창에 가 있던 시간도 포함. 돌아왔을 때 2분이 지났으면 바로 다음 장면
      · 채널 다이얼: 바로 다음 장면 (지지직 화면 + 채널 표시) · 2분은 다시 셈
      · 전원 버튼: 켜기 / 끄기 (브라운관처럼 줄어들며 꺼짐). 상태는 이 PC localStorage mg77_tv 에 저장
    - 앱이 화면을 다시 그려도(App.render) TV는 한 번만 만들어 두고 새 자리로 옮겨 끼우기만 함 → 장면이 끊기지 않음
@@ -908,12 +909,12 @@ const TvBox = {
   MAX_W: 560,        // 너무 커지지 않게
   PLAY_MIN: 230,     // 이 너비 이상이면 재생
   SHOW_MIN: 140,     // 이 너비 미만이면 숨김 (사이는 꺼진 TV)
-  AUTO_MS: 120000,   // 2분마다 다음 장면
+  AUTO_MS: 120000,   // 2분마다 다음 장면 (시계 기준)
   STEP_MS: 1000 / 60,
   el: null, slot: null, ro: null,
   power: true,
   fit: 'hide',       // play | small | hide
-  _raf: 0, _last: 0, _acc: 0, _sceneMs: 0,
+  _raf: 0, _last: 0, _acc: 0, _sceneAt: Date.now(),   // _sceneAt: 지금 장면이 시작된 시각
   _noiseUntil: 0, _osdT: null, _fading: false, _fadeT: null,
   _cw: 0, _ch: 0, _dpr: 1,
 
@@ -1030,15 +1031,15 @@ const TvBox = {
     let steps = 0;
     while (this._acc >= this.STEP_MS && steps < 3) { TvEng.frame(); this._acc -= this.STEP_MS; steps++; }
     if (steps === 3) this._acc = 0;
-    this._sceneMs += dt;
-    if (this._sceneMs >= this.AUTO_MS && !this._fading) this._autoNext();
+    // 시계 기준 2분: 다른 탭·창에 가 있던 시간도 포함 → 돌아왔을 때 2분이 지났으면 바로 다음 장면
+    if (Date.now() - this._sceneAt >= this.AUTO_MS && !this._fading) this._autoNext();
     this._drawNoise(ts);
   },
 
   // 2분마다: 원본처럼 검게 사라졌다가 다음 장면
   _autoNext() {
     this._fading = true;
-    this._sceneMs = 0;
+    this._sceneAt = Date.now();
     this.fadeEl.style.opacity = '1';
     this._fadeT = setTimeout(() => {
       TvEng.next(); this._setDial();
@@ -1049,7 +1050,7 @@ const TvBox = {
   // 채널 다이얼: 지지직 → 바로 다음 장면, 2분은 다시 셈
   channel() {
     if (!this.power || this.fit !== 'play') return;
-    this._sceneMs = 0;
+    this._sceneAt = Date.now();
     clearTimeout(this._fadeT);           // 자동 전환 도중에 눌러도 두 번 넘어가지 않게
     this._fading = false;
     this.fadeEl.style.opacity = '0';
@@ -1090,7 +1091,7 @@ const TvBox = {
       this.osd.classList.remove('show');
     } else {
       this.power = true; this.save();
-      this._sceneMs = 0;
+      this._sceneAt = Date.now();      // 켤 때는 지금 장면부터 2분
       void el.offsetWidth;
       el.classList.add('anim-on');
       this._sync();
