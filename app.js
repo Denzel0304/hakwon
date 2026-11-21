@@ -170,7 +170,8 @@ const App = {
    - SMS 신규생 안내는 날짜가 정해지면 모두 할일이라 넣지 않는다
    - 해결하기 전까지는 접속할 때마다 뜬다 (따로 '다시 보지 않기' 기록 없음). 탭으로 돌아오기만 하면 뜨지 않음
    - 공휴일 확인 · 진급 등 다른 창이 열려 있으면 모두 닫힌 뒤에 띄운다 (띄울 때 다시 계산)
-   - 최대 LIMIT건, 나머지는 '외 N건'
+   - 최대 LIMIT건, 나머지는 '외 N건' · 줄마다 [안내 완료] [보강 완료(예정 + 보강일 지남)] [보강 안 함]으로 바로 정리
+   - 결석 후 첫 등원 할일을 PC에서 완료 체크하면 그 자리에서 보강을 어떻게 했는지 묻는다 (retAsk)
    ========================================================= */
 const StartRemind = {
   LIMIT: 8,
@@ -201,34 +202,110 @@ const StartRemind = {
       .sort((a, b) => (a.status === 'plan' ? 0 : 1) - (b.status === 'plan' ? 0 : 1) || ko(a.mk && a.mk.date, b.mk && b.mk.date) || ko(b.l.date, a.l.date));
   },
 
-  show() {
-    const mk = this.makeups();
-    if (!mk.length) return;
-    const row = (inner) => `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--line)">${inner}</div>`;
+  // 한 줄의 처리 버튼: 안내 완료 · (예정 + 보강일이 오늘까지면) 보강 완료 · 보강 안 함
+  btns(o, i) {
+    const m = o.mk || {}, b = (st, t, cls) => `<button type="button" class="btn sm ${cls || ''}" data-srset="${i}|${st}">${t}</button>`;
+    return b('info', '안내 완료') + (o.status === 'plan' && isYmd(m.date) && m.date <= todayStr() ? b('done', '보강 완료') : '') + b('skip', '보강 안 함', 'danger');
+  },
+  html(mk) {
+    const row = (inner) => `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)">${inner}</div>`;
     let body = `<div style="display:flex;align-items:center;gap:8px;margin:0 0 6px"><b>결석+보강 · 처리 필요</b><span class="badge red">${mk.length}건</span><span style="flex:1"></span><button type="button" class="btn sm primary" data-srgo="mk">결석+보강으로 이동</button></div>`;
-    body += mk.slice(0, this.LIMIT).map(o => {
+    body += mk.slice(0, this.LIMIT).map((o, i) => {
       const m = o.mk || {};
       const stt = o.status === 'plan'
         ? `<span class="badge orange">예정${isYmd(m.date) ? ' ' + fmtMD(m.date) + (m.time ? ' ' + esc(m.time) : '') : ' (보강일 없음)'}</span>`
         : '<span class="badge gray">미지정</span>';
-      return row(`<b>${esc(o.s.name)}</b><span class="tag">${esc(stTag(o.s))}</span><span class="badge red">결석 ${fmtMD(o.l.date)}</span>${stt}<span class="small soft">${esc(o.c ? o.c.name : '(삭제된 반)')}</span>`);
+      return row(`<b>${esc(o.s.name)}</b><span class="tag">${esc(stTag(o.s))}</span><span class="badge red">결석 ${fmtMD(o.l.date)}</span>${stt}<span class="small soft">${esc(o.c ? o.c.name : '(삭제된 반)')}</span><span style="flex:1"></span>${this.btns(o, i)}`);
     }).join('');
-    if (mk.length > this.LIMIT) body += `<div class="small soft" style="margin-top:4px">외 ${mk.length - this.LIMIT}건</div>`;
-    body += '<p class="small muted" style="margin:12px 0 0">할일 목록에 없는 보강 건입니다. 보강 상태를 안내 완료 · 보강 완료 · 보강 안 함으로 정리하기 전까지는 접속할 때마다 알려줍니다.</p>';
+    if (mk.length > this.LIMIT) body += `<div class="small soft" style="margin-top:4px">외 ${mk.length - this.LIMIT}건 (결석+보강 화면에서 확인)</div>`;
+    body += '<p class="small muted" style="margin:12px 0 0">할일 목록에 없는 보강 건입니다. 안내 완료: 진도·숙제 안내만 함(출석부 결) · 보강 완료: 따로 불러 보강함(출석부 결✓) · 보강 안 함: 보강 목록에서 삭제.<br>정리하기 전까지는 접속할 때마다 알려줍니다.</p>';
+    return body;
+  },
+  // 보강 안 함 = 보강 목록에서 삭제 (결석+보강 화면과 같은 확인)
+  async apply(o, st) {
+    if (st === 'skip' && !await confirmDlg(`${o.s.name} ${fmtMD(o.l.date)} 결석을 보강 목록에서 삭제할까요?\n출석부의 결석 기록은 그대로 남습니다.\n삭제하면 되돌릴 수 없습니다.`, '삭제', true)) return false;
+    Makeups.setStatus(o, st);
+    toast(st === 'info' ? '안내 완료로 정리했습니다' : st === 'done' ? '보강 완료로 정리했습니다' : '보강 목록에서 삭제했습니다');
+    return true;
+  },
+
+  show() {
+    let mk = this.makeups();
+    if (!mk.length) return;
     Modal.open({
-      title: '확인할 일', size: 'md', autofocus: false, body,
+      title: '확인할 일', size: 'md', autofocus: false, body: this.html(mk),
       onMount: (b, m) => {
-        b.addEventListener('click', (e) => {
-          if (!e.target.closest('[data-srgo]')) return;
-          m.close();
-          Makeups.tab = 'open'; Makeups.q = '';
-          App.go('makeups', {});
+        b.addEventListener('click', async (e) => {
+          if (e.target.closest('[data-srgo]')) {
+            m.close();
+            Makeups.tab = 'open'; Makeups.q = '';
+            App.go('makeups', {});
+            return;
+          }
+          const x = e.target.closest('[data-srset]');
+          if (!x || x.disabled) return;
+          const [i, st] = x.dataset.srset.split('|'), o = mk[+i];
+          if (!o) return;
+          x.disabled = true;
+          const ok = await this.apply(o, st);
+          if (m.closed) return;
+          if (!ok) { x.disabled = false; return; }
+          mk = this.makeups();                                   // 정리한 뒤 다시 계산
+          if (!mk.length) { m.close(); toast('처리 필요가 모두 정리되었습니다'); }
+          else b.innerHTML = this.html(mk);
+          App.render();
         });
       },
       buttons: [{ text: '닫기', cls: 'primary', primary: true }],
     });
   },
+
+  /* ---------- 결석 후 첫 등원 할일을 체크하면: 보강을 어떻게 했는지 묻기 (PC · 할일 체크 버튼 · 밀어서 완료) ----------
+     첫 등원 할일은 체크의 뜻이 여러 가지라 자동으로 정하지 않는다
+     [안내 완료] 진도·숙제 안내만 함 → 출석부 결 그대로 / [보강 날짜 잡기] 결석+보강 화면으로 (그 학생만)
+     [보강 안 함] 보강 목록에서 삭제 / [나중에] 그대로 둠 → 다음 접속 때 '확인할 일'에 나옴
+     그 학생·결석일의 결석 중 '미지정'인 것에만 적용 (반이 여럿이면 함께) */
+  retAsk(k) {
+    const list = Makeups.collect().filter(o => !o.fut && o.status === 'none' && Makeups.retKey(o.s.id, o.l.date) === k);
+    if (!list.length) return;
+    const o0 = list[0], cls = list.map(o => o.c ? o.c.name : '(삭제된 반)').join(', ');
+    const all = async (st) => {
+      if (st === 'skip' && !await confirmDlg(`${o0.s.name} ${fmtMD(o0.l.date)} 결석을 보강 목록에서 삭제할까요?\n출석부의 결석 기록은 그대로 남습니다.\n삭제하면 되돌릴 수 없습니다.`, '삭제', true)) return false;
+      list.forEach(o => Makeups.setStatus(o, st));
+      toast(st === 'info' ? '안내 완료로 정리했습니다' : '보강 목록에서 삭제했습니다');
+      App.render();
+      return true;
+    };
+    Modal.open({
+      title: '결석 보강 정리', size: 'md', autofocus: false,
+      body: `<p style="margin:0 0 8px"><b>${esc(o0.s.name)}</b> <span class="badge red">결석 ${fmtMD(o0.l.date)}</span> <span class="small soft">${esc(cls)}</span></p>
+        <p class="small" style="margin:0">첫 등원 할일을 완료했습니다. 이 결석의 보강은 어떻게 했나요?</p>
+        <p class="small muted" style="margin:6px 0 0">안내 완료: 진도·숙제 안내만 함 (출석부 결) · 보강 날짜 잡기: 결석+보강 화면에서 보강일을 정함<br>나중에: 그대로 두고, 다음 접속 때 '확인할 일'로 다시 알려줍니다.</p>`,
+      buttons: [
+        { text: '나중에', left: true },
+        { text: '보강 안 함', cls: 'danger', onClick: () => all('skip') },
+        { text: '보강 날짜 잡기', onClick: () => { Makeups.tab = 'open'; Makeups.q = o0.s.name; App.go('makeups', {}); } },
+        { text: '안내 완료', cls: 'primary', primary: true, onClick: () => all('info') },
+      ],
+    });
+  },
 };
+
+// 할일 완료 체크(TodoX.toggle: 체크 버튼 · 밀어서 완료)에서 첫 등원 할일(TDR_)을 완료로 바꾸면 묻는다 (PC 전용 · app.js)
+(() => {
+  if (typeof TodoX === 'undefined' || typeof TodoX.toggle !== 'function') return;
+  const t0 = TodoX.toggle;
+  TodoX.toggle = function (k, ...rest) {
+    let id = null;
+    try { const it = this.resolve(k); if (it && !it.rem && !it.repeat && !it.done && it.rec && /^TDR_/.test(it.rec.id)) id = it.rec.id; } catch (e) { id = null; }
+    const out = t0.call(this, k, ...rest);
+    if (id) {
+      const t = Store.get('todos', id);
+      if (t && t.done) setTimeout(() => { try { StartRemind.retAsk(id.slice(4)); } catch (e) { console.warn('[mg77] 보강 정리 창 실패', e); } }, 350);   // 완료 폭죽 뒤에
+    }
+    return out;
+  };
+})();
 
 /* =========================================================
    시작

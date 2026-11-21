@@ -2670,6 +2670,18 @@ const Makeups = {
       ${early ? '<span class="badge green" title="결석일 전에 보강함 → 그 날 수업일지 출결이 선보강으로 들어갑니다">선보강</span>' : ''}
       <input type="text" data-mf="memo" value="${esc(mk.memo || '')}" placeholder="보강 메모"></div>`;
   },
+  // 보강 상태 바꾸기 (결석+보강 화면의 상태 고르기와 같은 규칙 · app.js 접속 팝업 · 첫 등원 할일 묻는 창에서 씀)
+  //   o: collect()의 한 항목 · st: 'info' 안내 완료 / 'done' 보강 완료 / 'skip' 보강 안 함
+  setStatus(o, st) {
+    const key = this.id(o.l.id, o.s.id);
+    const cur = Store.get('makeups', key) || { id: key, lessonId: o.l.id, studentId: o.s.id, classId: o.l.classId, absentDate: o.l.date, date: '', time: '', status: 'none', memo: '' };
+    const rec = Object.assign({}, cur, { status: st });
+    delete rec.byTodo;
+    if (st === 'done' && !rec.date) rec.date = todayStr();
+    Store.put('makeups', rec);
+    if (Store.firstPullDone) this.mkSync();
+    return rec;
+  },
   // 결석일 전에 보강을 끝낸 결석 예정 (= 선보강)
   isPreMk(mk) { return !!mk && mk.status === 'done' && isYmd(mk.date) && isYmd(mk.absentDate) && mk.date < mk.absentDate; },
   // 그 반·날짜에서 선보강으로 들어갈 학생 { 학생ID: 보강한 날 } (수업일지 새로 쓸 때 기본값)
@@ -2765,7 +2777,12 @@ const Makeups = {
      할일 id TDM_보강ID · 기록 meta MT_보강ID { kind:'mk_todo', mkId }
      · 보강일·시간이 바뀌면 할일도 옮김 (아직 안 한 할일만) · 보강 완료 → 할일 완료(mkAuto) / 다시 예정 → 자동 완료한 것만 되돌림
      · 미지정·안내 완료·보강 안 함 → 할일 삭제 · 결석이 없어짐(결석 예정 취소·선보강·출석) → 아직 안 한 할일만 삭제
-     · 직접 지운 할일은 다시 만들지 않음 (예정을 풀었다 다시 걸면 새로 만듦) */
+     · 직접 지운 할일은 다시 만들지 않음 (예정을 풀었다 다시 걸면 새로 만듦)
+     · 할일 → 보강 상태 (어디서 체크하든: 오늘·날짜 화면, 할일 알림창, 모바일, 다른 기기)
+       예정 + 보강일이 오늘이나 지난 날 + 할일을 직접 완료 → 보강 완료 (보강 기록 byTodo = 그 할일의 doneAt)
+         → 출석부: 보강일이 결석일 뒤면 결✓, 결석일 전(결석 예정)이면 선보강(보) — 보강 완료와 같은 규칙
+       할일 체크를 풀면 → 다시 예정 (할일로 바뀐 것만)
+       결석+보강 화면에서 직접 예정으로 되돌리면 → 할일 체크도 풀림 (같은 완료를 다시 적용하지 않음) */
   mkText(s, date) { const d = parseYmd(date); return `${s.name} ${d.getMonth() + 1}/${d.getDate()} 결석 보강`; },
   mkSync() {
     const iso = new Date().toISOString();
@@ -2782,6 +2799,11 @@ const Makeups = {
       const want = (mk.status === 'plan' || mk.status === 'done') && isYmd(mk.date);
       if (!want) { if (meta || t) drop(id); return; }
       if (mk.status === 'done') {                                     // 보강 완료 → 할일 완료 체크 (만든 할일이 있을 때만)
+        if (mk.byTodo && t && !t.done) {                              // 할일 완료로 보강 완료가 된 것 → 할일 체크를 풀면 다시 예정
+          const b = Object.assign({}, mk, { status: 'plan' }); delete b.byTodo;
+          Store.put('makeups', b); chg++;
+          return;
+        }
         if (t && !t.done) { Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, mkAuto: true })); chg++; }
         return;
       }
@@ -2800,6 +2822,20 @@ const Makeups = {
         const b = Object.assign({}, t, { done: false, doneAt: '' }); delete b.mkAuto;
         Store.put('todos', b); chg++;
         return;
+      }
+      if (t.done) {
+        if (mk.byTodo && mk.byTodo === (t.doneAt || '1')) {         // 할일로 보강 완료됐다가 화면에서 직접 예정으로 되돌림 → 할일 체크도 풀기
+          const b = Object.assign({}, t, { done: false, doneAt: '' });
+          Store.put('todos', b);
+          const m2 = Object.assign({}, mk); delete m2.byTodo; Store.put('makeups', m2);
+          chg++;
+          return;
+        }
+        if (mk.date <= todayStr()) {                                  // 보강 할일을 직접 완료 → 보강 완료 (보강일이 아직 안 왔으면 그 날 반영)
+          Store.put('makeups', Object.assign({}, mk, { status: 'done', byTodo: t.doneAt || '1' }));
+          chg++;
+          return;
+        }
       }
       if (!t.done && (t.date !== mk.date || (t.time || '') !== time || t.text !== text)) {
         Store.put('todos', Object.assign({}, t, { date: mk.date, time, text, remindDone: false }, t.date !== mk.date ? { order: TodoX.maxOrder(mk.date) + 1 } : {}));
@@ -3008,7 +3044,13 @@ const Makeups = {
 // 이 기기에서 수업일지(출결)·보강 기록·학생·수강반을 고치면 결석 후 첫 등원 · 보강 예정 · 신규생 첫 등원 할일을 맞춘다 (서버에서 받아온 변경은 그 기기가 이미 맞춤)
 ['put', 'del'].forEach(fn => {
   const f0 = Store[fn];
-  Store[fn] = function (t, ...a) { const r = f0.call(this, t, ...a); if (t === 'lessons' || t === 'makeups' || t === 'students' || t === 'enrollments' || t === 'classes') Makeups.retSoon(); return r; };
+  Store[fn] = function (t, ...a) {
+    const r = f0.call(this, t, ...a);
+    if (t === 'lessons' || t === 'makeups' || t === 'students' || t === 'enrollments' || t === 'classes') Makeups.retSoon();
+    // 보강 할일(TDM_) · 첫 등원 할일(TDR_)을 체크하거나 지움 → 보강 상태에 반영
+    else if (t === 'todos' && /^TD[MR]_/.test(String(fn === 'put' ? (a[0] && a[0].id) : a[0]))) Makeups.retSoon();
+    return r;
+  };
 });
 
 /* =========================================================
