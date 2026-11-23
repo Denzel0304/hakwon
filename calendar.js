@@ -23,6 +23,7 @@ const EVENT_TYPES = {
 const EXAM_KIND = { mid: '중간', final: '기말' };
 const NEED_TIME = { pre: true };          // 직전 보강만 시간 필수
 const ONE_DAY = { weekend: true };        // 영어 시험은 하루짜리 (기간 없음)
+const NO_TITLE = { pre: true, weekend: true };   // 직전 보강·영어 시험: 제목 없음 (종류 + 학교·학년이 그 자체로 이름)
 
 // 시험정보(시험 범위 기록) 표시용
 function examTitle(ex) {
@@ -53,15 +54,16 @@ function eventTarget(ev) {
   return gradesLabel(gs, true);
 }
 function eventTitle(ev) {
-  const tg = eventTarget(ev);
-  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
+  const tg = eventTarget(ev), tt = NO_TITLE[evType(ev)] ? '' : ev.title;   // 직전 보강·영어 시험은 예전에 넣은 제목도 쓰지 않음
+  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (tt ? ' · ' + tt : '');
 }
 // 달력 띠·칸에 쓰는 짧은 이름: "금천고1·2 기말" / "영어 시험 금천고1"
 function eventShort(ev) {
   const tg = eventTarget(ev);
   if (evType(ev) === 'holiday') return ev.title || '공휴일';
   if (evType(ev) === 'exam') return (tg ? tg + ' ' : '') + (ev.title || '시험');
-  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (ev.title ? ' · ' + ev.title : '');
+  const tt = NO_TITLE[evType(ev)] ? '' : ev.title;                          // 직전 보강·영어 시험은 제목 없음
+  return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (tt ? ' · ' + tt : '');
 }
 function eventTime(ev) { return ev.start ? ev.start + (ev.end ? '~' + ev.end : '') : ''; }
 function evEnd(ev) { return isYmd(ev.endDate) && ev.endDate > ev.date ? ev.endDate : ev.date; }
@@ -301,7 +303,7 @@ const BigCal = {
       const t = evType(ev);
       if (t !== 'pre' && t !== 'weekend' && t !== 'etc') return eventShort(ev);
       const tg = eventTarget(ev);
-      return [tg, ev.title].filter(Boolean).join(' · ') || EVENT_TYPES[t].label;
+      return [tg, NO_TITLE[t] ? '' : ev.title].filter(Boolean).join(' · ') || EVENT_TYPES[t].label;   // 직전 보강·영어 시험은 제목 없음
     };
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
@@ -438,9 +440,18 @@ const DayPage = {
       if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
       return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
     };
-    // 종류 배지: 시험 → '시험', 기타 일정 → '기타' (기타는 글자 앞의 '기타 일정'을 빼고 배지로)
-    const evTag = (ev) => evType(ev) === 'exam' ? '<span class="badge red">시험</span> ' : evType(ev) === 'etc' ? '<span class="badge purple">기타</span> ' : '';
-    const evText = (ev) => { const t = eventShort(ev), lb = EVENT_TYPES.etc.label; return evType(ev) === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t; };
+    // 종류 배지: 시험 → '시험', 기타 일정 → '기타', 영어 시험 → '영어', 직전 보강 → '직보'
+    //   (기타·영어·직보는 글자 앞의 종류 이름을 빼고 배지로. 직전 보강·영어 시험은 학교·학년만 → 글자가 두 번 나오지 않게)
+    const EV_TAG = { exam: ['red', '시험'], etc: ['purple', '기타'], weekend: ['orange', '영어'], pre: ['green', '직보'] };
+    const evTag = (ev) => { const g = EV_TAG[evType(ev)]; return g ? `<span class="badge ${g[0]}">${g[1]}</span> ` : ''; };
+    const evText = (ev) => {
+      const ty = evType(ev);
+      if (NO_TITLE[ty]) return eventTarget(ev) || EVENT_TYPES[ty].label;
+      // 제목 없는 시험 일정: '시험' 배지가 있으므로 '금천고2 시험' 대신 '금천고2 기말'
+      if (ty === 'exam' && !ev.title) return [eventTarget(ev), EXAM_KIND[ev.kind] || ''].filter(Boolean).join(' ') || EVENT_TYPES.exam.label;
+      const t = eventShort(ev), lb = EVENT_TYPES.etc.label;
+      return ty === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t;
+    };
     const evRow = (ev, dl) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
       <div class="what">${evTag(ev)}<b>${esc(evText(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
 
@@ -907,7 +918,7 @@ const EventModal = {
         <select name="exSem"><option value="1" ${exS === 1 ? 'selected' : ''}>1학기</option><option value="2" ${exS === 2 ? 'selected' : ''}>2학기</option></select>
         <select name="exKind"><option value="" ${exK ? '' : 'selected'}>선택 안 함</option><option value="mid" ${exK === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${exK === 'final' ? 'selected' : ''}>기말고사</option></select>
         <span class="hint">시험+교재의 같은 시험에 기간이 자동으로 들어갑니다</span></div>
-      <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)">
+      <label>제목</label><input type="text" name="title" value="${esc(v.title)}" placeholder="선택 (예: 기말, 3과 집중)" data-ttl>
       <label class="top">메모</label><textarea name="memo" rows="4">${esc(v.memo)}</textarea>
     </div>`;
     Modal.open({
@@ -938,6 +949,12 @@ const EventModal = {
           rw.style.display = one ? 'none' : '';
           if (one && chk.checked) { chk.checked = false; sync(); }
           wrap.style.display = one ? 'none' : '';
+          // 직전 보강·영어 시험: 제목 칸 비활성 (종류 + 학교·학년이 그 자체로 이름)
+          const nt = !!(t && NO_TITLE[t.value]), ti = $('[data-ttl]', b);
+          if (nt && !ti.disabled) { ti.dataset.keep = ti.value; ti.value = ''; }               // 비활성 칸에는 글자를 비워 두고
+          else if (!nt && ti.disabled) { ti.value = ti.dataset.keep || ''; }                  // 다른 종류로 바꾸면 되살린다
+          ti.disabled = nt;
+          ti.placeholder = nt ? '제목 없음 (종류 + 학교·학년이 이름이 됩니다)' : '선택 (예: 기말, 3과 집중)';
         };
         b.addEventListener('change', (e) => { if (e.target.name === 'type') typeSync(); });
         typeSync();
@@ -1012,6 +1029,7 @@ const EventModal = {
             memo: stripZws($('[name=memo]', b).value),
           });
           delete rec.grade;                                   // 예전 학년 하나 필드는 grades로 대체
+          if (NO_TITLE[rec.type]) rec.title = '';             // 직전 보강·영어 시험은 제목 없음
           if (rec.type === 'exam') {                          // 시험 일정: 학교·학년·연도·학기·중간/기말 필수
             rec.year = +$('[name=exYear]', b).value; rec.semester = +$('[name=exSem]', b).value; rec.kind = $('[name=exKind]', b).value;
             if (!rec.school) { toast('시험 일정은 학교를 입력하세요'); return false; }
