@@ -528,6 +528,7 @@ const Prints = (() => {
     grammar: { name: '문법 시험지', sections: [{ title: '개념 시험', ratio: 7, lined: false }, { title: '어구 시험', ratio: 3, lined: false }] },
     lineNote: { name: '줄 노트', sections: [{ title: '', ratio: 1, lined: true }] },
     gridNote: { name: '모눈 노트', sections: [{ title: '', ratio: 1, grid: true }] },
+    blankNote: { name: '빈 노트', sections: [{ title: '', ratio: 1 }] },
   };
 
   let pn = null;
@@ -637,7 +638,8 @@ const Prints = (() => {
   }
 
   // 종이만 담은 숨은 iframe 을 인쇄 (출석부·단어 인쇄와 같은 방식)
-  function printPaper(bodyHtml, title) {
+  // extraCss: 다른 화면(서술형 노트)이 쓰는 종이 CSS를 더할 때만
+  function printPaper(bodyHtml, title, extraCss = '') {
     const fr = document.createElement('iframe');
     fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
@@ -646,7 +648,7 @@ const Prints = (() => {
     doc.open();
     doc.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(title)}</title>
       <link rel="stylesheet" href="${FONT_URL}">
-      <style>${PAPER_CSS}
+      <style>${PAPER_CSS}${extraCss}
         @page { size: A4 portrait; margin: 0; }
         html, body { margin: 0; padding: 0; background: #fff; }
         body > * { break-after: page; page-break-after: always; }
@@ -685,6 +687,18 @@ const Prints = (() => {
 
   return {
     tab: 'cover',            // cover(내신 표지) | general(일반 표지) | note(시험지·노트)
+
+    // 다른 화면(시험+교재 › 서술형 인쇄)이 같은 종이·머리글·학생 목록·인쇄 방식을 쓰도록 꺼내 둔 것
+    kit: {
+      ensureAssets: () => ensureAssets(),
+      printPaper: (html, title, css) => printPaper(html, title, css),
+      academy: () => { loadCv(); return pnAcademy(); },
+      setAcademy: (v) => { loadCv(); setAcademy(v); },
+      dateText: (d) => pnDateText(d),
+      classes: () => pkClasses(),
+      roster: (classId) => pkRoster(classId),
+      MM_PER_PX, PAGE_W, PAGE_H,
+    },
 
     render(main) {
       ensureAssets();
