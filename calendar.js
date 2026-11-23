@@ -1,7 +1,8 @@
 /* =========================================================
    calendar.js — 일정(시험 일정·직전 보강·영어 시험·기타) / 미니 달력 / 큰 달력 / 날짜 요약 / 일정 탭
    event: { type:'exam'|'pre'|'weekend'|'etc', date(시작일), endDate(기간일 때 끝날, 아니면 ''),
-            start, end(시간, 선택), school, grades:[학년…](선택, 여러 개), title, memo,
+            start, end(시간, 선택), school, grades:[학년…](여러 개), classId(기타 일정의 대상이 반일 때), title, memo,
+            ※ 대상 필수: 시험 일정·직전 보강·영어 시험 = 학교 + 학년 / 기타 일정 = 학교 + 학년 또는 반 (둘 중 하나)
             year, semester, kind:'mid'|'final' }  ← 시험 일정만 (학교·학년과 함께 필수) — 시험+교재의 시험 기간이 이것으로 자동 연동
    ※ 예전 기록의 grade(학년 하나)도 그대로 읽는다 (evGrades)
    ※ 영어 시험의 저장 키는 예전 이름 'weekend'를 그대로 쓴다 (하루짜리 일정)
@@ -49,6 +50,7 @@ function gradesLabel(gs, withLevel) {
   return gs.map((g, i) => (i && pre(g) === pre(gs[i - 1]) ? gradeNum(g) : gradeLabel(g))).join('·');
 }
 function eventTarget(ev) {
+  if (ev.classId) { const c = Store.get('classes', ev.classId); return c ? c.name : '(삭제된 반)'; }   // 기타 일정: 반이 대상
   const gs = evGrades(ev);
   if (ev.school) return schoolShort(ev.school) + gradesLabel(gs, false);
   return gradesLabel(gs, true);
@@ -92,7 +94,7 @@ function eventRangeLabel(ev) { return isRange(ev) ? fmtMD(ev.date) + ' ~ ' + fmt
 
 // 기간 띠 색: 같은 학교·학년의 같은 종류(·제목)는 같은 색
 const BAR_COLORS = ['#DC5359', '#2B7FC1', '#2A9468', '#8A6CCB', '#D68A1C', '#1F98A6', '#C2537C', '#5C7F2C', '#3E5FBF', '#A0662B'];
-function barKey(ev) { return evType(ev) + '|' + (ev.school || '') + '|' + evGrades(ev).join(',') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id); }
+function barKey(ev) { return evType(ev) + '|' + (ev.classId || '') + '|' + (ev.school || '') + '|' + evGrades(ev).join(',') + '|' + (ev.title || '') + (evType(ev) === 'exam' ? '' : '|' + ev.id); }
 // 화면에 보이는 기간 일정들에 색을 차례로 배정 → 서로 다른 일정은 다른 색
 function barColorMap(list) {
   const map = {};
@@ -909,7 +911,9 @@ const EventModal = {
         <label class="chk" data-rangedwrap><input type="checkbox" name="ranged" ${ranged ? 'checked' : ''}>기간</label>
         <span data-endwrap ${ranged ? '' : 'class="off"'}>~ <input type="date" name="endDate" value="${esc(ranged ? v.endDate : '')}" ${ranged ? '' : 'disabled'} style="width:148px"></span></div>
       <label data-timelabel>시간</label><div class="row"><input type="time" name="start" step="300" value="${esc(v.start)}"> ~ <input type="time" name="end" step="300" value="${esc(v.end)}"></div>
-      <label data-schlabel>학교</label><div class="row"><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
+      <label class="req" data-tgrow>대상</label><div class="row" data-tgrow><label class="chk"><input type="radio" name="tgt" value="sg" ${v.classId ? '' : 'checked'}>학교·학년</label><label class="chk"><input type="radio" name="tgt" value="cls" ${v.classId ? 'checked' : ''}>반</label></div>
+      <label class="req" data-clsrow>반</label><div class="row" data-clsrow><select name="classId" style="min-width:180px"><option value="">반을 고르세요</option>${Classes.sorted(Store.all('classes').filter(c => c.active !== false || c.id === v.classId)).map(c => `<option value="${esc(c.id)}" ${c.id === v.classId ? 'selected' : ''}>${esc(c.name)}${c.active === false ? ' (종료)' : ''}</option>`).join('')}</select></div>
+      <label data-schlabel data-sgrow>학교·학년</label><div class="row" data-sgrow><input type="text" name="school" class="combo-input" autocomplete="off" value="${esc(v.school)}" placeholder="예: 금천고" style="width:180px"><button type="button" class="msel" data-gsel></button></div>
       <label class="req" data-exrow>시험</label><div class="row" data-exrow><input type="number" name="exYear" min="2000" max="2100" value="${esc(exY)}" style="width:90px">년
         <select name="exSem"><option value="1" ${exS === 1 ? 'selected' : ''}>1학기</option><option value="2" ${exS === 2 ? 'selected' : ''}>2학기</option></select>
         <select name="exKind"><option value="" ${exK ? '' : 'selected'}>선택 안 함</option><option value="mid" ${exK === 'mid' ? 'selected' : ''}>중간고사</option><option value="final" ${exK === 'final' ? 'selected' : ''}>기말고사</option></select>
@@ -936,9 +940,15 @@ const EventModal = {
         dIn.addEventListener('change', () => { if (exTouched) return; const t = evTerm(dIn.value); $('[name=exYear]', b).value = t.year; $('[name=exSem]', b).value = t.sem; });
         const typeSync = () => {
           const t = $('[name=type]:checked', b);
-          const isEx = !!(t && t.value === 'exam');      // 시험 일정만 학교·학년·연도·학기·중간/기말 필수
+          const isEx = !!(t && t.value === 'exam');      // 시험 일정만 연도·학기·중간/기말 필수
           $$('[data-exrow]', b).forEach(x => { x.style.display = isEx ? '' : 'none'; });
-          $('[data-schlabel]', b).classList.toggle('req', isEx);
+          // 대상: 기타 일정만 학교·학년 / 반 중에서 고른다. 나머지는 학교·학년 필수
+          const isEtc = !!(t && t.value === 'etc');
+          const byCls = isEtc && $('[name=tgt]:checked', b).value === 'cls';
+          $$('[data-tgrow]', b).forEach(x => { x.style.display = isEtc ? '' : 'none'; });
+          $$('[data-clsrow]', b).forEach(x => { x.style.display = byCls ? '' : 'none'; });
+          $$('[data-sgrow]', b).forEach(x => { x.style.display = byCls ? 'none' : ''; });
+          $('[data-schlabel]', b).classList.toggle('req', !!t);
           tl.classList.toggle('req', !!(t && NEED_TIME[t.value]));
           // 영어 시험은 하루짜리: 기간 끄고 숨김
           const one = !!(t && ONE_DAY[t.value]);
@@ -952,12 +962,12 @@ const EventModal = {
           ti.disabled = nt;
           ti.placeholder = nt ? '제목 없음 (종류 + 학교·학년이 이름이 됩니다)' : '선택 (예: 기말, 3과 집중)';
         };
-        b.addEventListener('change', (e) => { if (e.target.name === 'type') typeSync(); });
+        b.addEventListener('change', (e) => { if (e.target.name === 'type' || e.target.name === 'tgt') typeSync(); });
         typeSync();
 
         // 학년 여러 개 고르기 (누르면 펼쳐지는 체크 목록, 선택 안 해도 됨)
         const gBtn = $('[data-gsel]', b), schIn = $('[name=school]', b);
-        const drawBtn = () => { gBtn.textContent = grades.length ? gradesLabel(grades, true) : '학년 선택 안 함'; gBtn.classList.toggle('empty', !grades.length); };
+        const drawBtn = () => { gBtn.textContent = grades.length ? gradesLabel(grades, true) : '학년 선택'; gBtn.classList.toggle('empty', !grades.length); };
         // 학교 이름으로 학교급을 짐작해 그 학년만 보여 준다 (이미 고른 학년은 항상 보임)
         const gradeList = () => {
           const sc = schoolShort(schIn.value);
@@ -1025,11 +1035,19 @@ const EventModal = {
             memo: stripZws($('[name=memo]', b).value),
           });
           delete rec.grade;                                   // 예전 학년 하나 필드는 grades로 대체
+          // 대상: 기타 일정이고 '반'을 고르면 반 필수 (학교·학년은 비움) / 그 밖에는 학교·학년 필수
+          if (rec.type === 'etc' && $('[name=tgt]:checked', b).value === 'cls') {
+            rec.classId = $('[name=classId]', b).value;
+            if (!rec.classId) { toast('반을 고르세요'); return false; }
+            rec.school = ''; rec.grades = [];
+          } else {
+            delete rec.classId;
+            if (!rec.school) { toast('학교를 입력하세요'); return false; }
+            if (!rec.grades.length) { toast('학년을 고르세요'); return false; }
+          }
           if (NO_TITLE[rec.type]) rec.title = '';             // 직전 보강·영어 시험은 제목 없음
           if (rec.type === 'exam') {                          // 시험 일정: 학교·학년·연도·학기·중간/기말 필수
             rec.year = +$('[name=exYear]', b).value; rec.semester = +$('[name=exSem]', b).value; rec.kind = $('[name=exKind]', b).value;
-            if (!rec.school) { toast('시험 일정은 학교를 입력하세요'); return false; }
-            if (!rec.grades.length) { toast('시험 일정은 학년을 고르세요'); return false; }
             if (!rec.year || rec.year < 2000) { toast('시험 연도를 확인하세요'); return false; }
             if (!rec.kind) { toast('중간고사·기말고사를 고르세요'); return false; }
           } else { delete rec.year; delete rec.semester; delete rec.kind; }

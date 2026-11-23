@@ -737,11 +737,14 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .bc2-resize span { width: 48px; height: 4px; border-radius: 2px; background: var(--line-strong); }
 .bc2-resize:hover span { background: var(--accent); }
 body.resizing, body.resizing * { cursor: ns-resize !important; user-select: none; }
-.ev-form { grid-template-columns: 64px 1fr; }
+.ev-form { grid-template-columns: 82px 1fr; }   /* '학교·학년 *'이 한 줄에 들어가게 */
 [data-endwrap].off { opacity: .4; }
 /* 일정·공휴일 창 날짜 줄: '기간'은 줄어들지 않고 가로 한 줄로, 창이 좁으면 '~ 끝날'만 통째로 다음 줄로 */
 .ev-form .row:has(> [data-endwrap]) { flex-wrap: wrap !important; row-gap: 8px; }
 .ev-form label.chk { flex: none; white-space: nowrap; }
+/* 일정 창: 쓸 수 없는 제목 칸(직전 보강·영어 시험)은 진한 회색으로 */
+.ev-form input:disabled[name=title] { background: color-mix(in srgb, var(--ink) 13%, var(--surface)); border-color: color-mix(in srgb, var(--ink) 22%, var(--surface)); color: var(--ink-mute); cursor: not-allowed; }
+.ev-form input:disabled[name=title]::placeholder { color: color-mix(in srgb, var(--ink) 55%, var(--surface)); }
 .ev-form [data-endwrap] { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
 .tbl tr.past td { color: var(--ink-mute); }
 
