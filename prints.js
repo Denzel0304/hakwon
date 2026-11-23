@@ -249,6 +249,12 @@ const Prints = (() => {
 .pn-sheet .ln{position:absolute;left:0;right:0;border-top:0.25mm solid var(--pn-line)}
 .pn-sheet .gv{position:absolute;top:0;bottom:0;border-left:0.2mm solid var(--pn-line)}
 .pn-sheet .gh{position:absolute;left:0;right:0;border-top:0.2mm solid var(--pn-line)}
+/* 서술형 노트 (시험+교재 › 서술형 인쇄의 노트 칸과 같은 크기·간격) */
+.pn-sheet .pn-secs.pn-essay{gap:7mm}
+.pn-sheet .pn-esh{flex-shrink:0;display:flex;align-items:flex-end;gap:2.5mm;margin-bottom:2.5mm}
+.pn-sheet .pn-eno{flex:none;width:6mm;height:6mm;border-radius:3mm;border:0.3mm solid var(--pn-ink-soft)}
+.pn-sheet .pn-eko{flex-shrink:0;display:flex;align-items:flex-end;gap:2mm;margin:0 1mm 3mm;font-size:10.5pt;color:var(--pn-ink-soft)}
+.pn-sheet .pn-eko .pn-blank{flex:1;height:7mm}
 `;
 
   const PAGE_W = 793.7, PAGE_H = 1122.5;       // A4 (CSS px)
@@ -528,7 +534,8 @@ const Prints = (() => {
     grammar: { name: '문법 시험지', sections: [{ title: '개념 시험', ratio: 7, lined: false }, { title: '어구 시험', ratio: 3, lined: false }] },
     lineNote: { name: '줄 노트', sections: [{ title: '', ratio: 1, lined: true }] },
     gridNote: { name: '모눈 노트', sections: [{ title: '', ratio: 1, grid: true }] },
-    blankNote: { name: '빈 노트', sections: [{ title: '', ratio: 1 }] },
+    // 서술형 노트: 시험+교재 › 서술형 인쇄의 따라쓰기 노트와 같은 모양 (위·아래 두 칸, 번호·해석을 손으로 쓰는 칸 + 줄)
+    essayNote: { name: '서술형 노트', essay: true, sections: [{ title: '', ratio: 1, lined: true, essay: true }, { title: '', ratio: 1, lined: true, essay: true }] },
   };
 
   let pn = null;
@@ -561,10 +568,11 @@ const Prints = (() => {
           <span class="pn-field">날짜<span class="pn-blank${dt ? ' pn-val' : ''}" data-pn-dt style="width:30mm">${esc(dt)}</span></span>
           <span class="pn-field">이름<span class="pn-blank${nm ? ' pn-val' : ''}" data-pn-nm style="width:38mm">${esc(nm)}</span></span>
         </div>
-      </div><div class="pn-secs">`;
+      </div><div class="pn-secs${tpl.essay ? ' pn-essay' : ''}">`;
     tpl.sections.forEach(sec => {
       h += `<section class="pn-sec" style="flex:${sec.ratio}">` +
         (sec.title ? `<div class="pn-tagrow"><span class="pn-tag">${esc(sec.title)}</span></div>` : '') +
+        (sec.essay ? '<div class="pn-esh"><span class="pn-eno"></span><span class="pn-tag">번호</span><span class="pn-blank" style="width:52mm"></span></div><div class="pn-eko"><span class="pn-ekl">해석</span><span class="pn-blank"></span></div>' : '') +
         `<div class="pn-box${sec.lined ? ' lined' : ''}${sec.grid ? ' grid' : ''}"></div></section>`;
     });
     return h + '</div></div>';

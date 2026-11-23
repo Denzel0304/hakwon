@@ -98,10 +98,10 @@ const Essays = {
     let h = `<div class="panel"><div class="wx-bar"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span><b class="wx-mname">${esc(NP.matName(m))}</b>
       <span class="small soft">${groups.length}개 항목 · ${this.nSents(groups)}문장</span><span style="flex:1"></span>`;
     if (this.isMock(m)) {
-      h += `<input type="number" data-wrnum min="${NP.MOCK_MIN}" max="${NP.MOCK_MAX}" placeholder="번호" style="width:84px"><button class="btn sm primary" data-wa="addnum">+ 문항</button></div>`;
+      h += `<input type="number" data-wrnum min="${NP.MOCK_MIN}" max="${NP.MOCK_MAX}" placeholder="번호" style="width:84px"><button class="btn sm primary" data-wa="addnum" title="없는 번호는 새로 만들고, 있는 번호는 그 번호에 문장을 이어서 추가합니다">+ 문장</button></div>`;
       const gs = this.ordered(m, groups);
       h += gs.length ? gs.map((g, i) => this.grpHtml(m, g, i, gs.length)).join('')
-        : `<div class="empty">문항이 없습니다. 번호(${NP.MOCK_MIN}~${NP.MOCK_MAX})를 넣고 “+ 문항”을 누르세요.</div>`;
+        : `<div class="empty">문항이 없습니다. 번호(${NP.MOCK_MIN}~${NP.MOCK_MAX})를 넣고 “+ 문장”을 누르세요. 같은 번호를 다시 넣으면 그 번호에 문장이 이어서 추가됩니다.</div>`;
       return h + '</div>';
     }
     // 교과서·부교재: 과·강 고르기 → 하위 항목
@@ -188,31 +188,30 @@ const Essays = {
     }
   },
 
-  // 모의고사 문항 추가 → 바로 문장 넣기
+  // 모의고사: 번호에 문장 추가 (없는 번호면 새로 만들고, 있는 번호면 그 번호의 맨 아래에 이어서)
   addNum(main) {
     const m = NP.mat(this.matId); if (!m) return;
     const inp = $('[data-wrnum]', main);
     const v = String(inp.value || '').trim(), n = +v;
     if (!/^\d+$/.test(v) || n < NP.MOCK_MIN || n > NP.MOCK_MAX) { toast(`번호는 ${NP.MOCK_MIN}~${NP.MOCK_MAX} 사이로 넣으세요`); inp.focus(); return; }
     const ex = this.groupsOf(m.id).find(g => +g.num === n);
-    if (ex) {
-      toast(`${n}번은 이미 있습니다`);
-      const el = $(`[data-g="${ex.id}"]`, main); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      return;
-    }
+    inp.value = '';
+    if (ex) { this.openSent(m.id, ex.id, null); return; }
     const id = uid('WG');
     this.edit(m.id, (gs) => { gs.push({ id, num: n, sents: [] }); });
     this.openSent(m.id, id, null);
   },
 
-  // 교과서·부교재 하위 항목 추가 (기본 이름: 본문 (그 과의 마지막 번호 + 1))
+  // 교과서·부교재 하위 항목 추가 (기본 이름: 본문 (그 과의 마지막 번호 + 1)). 이미 있는 이름이면 그 항목에 문장을 이어서 추가
   async addGroup(m) {
     const unitId = this.unitOf[m.id];
     if (!unitId || unitId === '__gone') return;
     const same = this.groupsOf(m.id).filter(g => g.unitId === unitId);
     const max = same.reduce((x, g) => { const r = String(g.name || '').match(/(\d+)\s*$/); return r ? Math.max(x, +r[1]) : x; }, 0);
-    const name = await this.nameDlg(`하위 항목 추가 — ${NP.unitName(m, unitId)}`, `본문 ${max + 1}`, same.map(g => g.name));
+    const name = await this.nameDlg(`하위 항목 추가 — ${NP.unitName(m, unitId)}`, `본문 ${max + 1}`, null);
     if (!name) return;
+    const ex = this.groupsOf(m.id).find(g => g.unitId === unitId && g.name === name);
+    if (ex) { this.openSent(m.id, ex.id, null); return; }
     const id = uid('WG');
     this.edit(m.id, (gs) => { gs.push({ id, unitId, name, sents: [] }); });
     this.openSent(m.id, id, null);
@@ -618,11 +617,10 @@ const Essays = {
     const pg = await this.paginate(items);
     if (tok !== this._tok || md.closed) return;
     const nm = this.pick.mode === 'class' ? ((this.pickStudents()[0] || {}).name || '') : this.pr.name;
-    const pages = this.copyPages(pg, nm);
-    const nb = pages.filter(p => p.blank).length;
-    sm.textContent = `고른 문장 ${items.length}개 → 한 부 ${pages.length}쪽 (요약 ${pg.sum.length} + 노트 ${pg.note.length}${nb ? ` + 빈 면 ${nb}` : ''})`;
+    const pages = this.copyPages(pg, nm).filter(p => !p.blank);      // 빈 면은 인쇄할 때만 넣고 미리보기에는 보이지 않음
+    sm.textContent = `고른 문장 ${items.length}개 → 요약 ${pg.sum.length}쪽 + 노트 ${pg.note.length}쪽`;
     const K = Prints.kit, s = 0.36;
-    pv.innerHTML = `<div class="wx-pv-h">미리보기 · 한 부${nm ? ` (${esc(nm)})` : ''}</div><div class="wx-pv-grid">${pages.map(p => `<figure class="wx-th${p.blank ? ' blank' : ''}">
+    pv.innerHTML = `<div class="wx-pv-h">미리보기 · 한 부${nm ? ` (${esc(nm)})` : ''}</div><div class="wx-pv-grid">${pages.map(p => `<figure class="wx-th">
         <div class="wx-thb" style="width:${(K.PAGE_W * s).toFixed(1)}px;height:${(K.PAGE_H * s).toFixed(1)}px"><div style="transform:scale(${s});transform-origin:0 0;width:${K.PAGE_W}px;height:${K.PAGE_H}px">${p.html}</div></div>
         <figcaption>${esc(p.cap)}</figcaption></figure>`).join('')}</div>`;
   },
@@ -714,7 +712,6 @@ const Essays = {
 .wx-pv-empty { padding: 40px 10px; text-align: center; color: var(--ink-mute); }
 .wx-th { margin: 0; }
 .wx-thb { overflow: hidden; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18); border-radius: 2px; }
-.wx-th.blank .wx-thb { box-shadow: none; outline: 1px dashed var(--line-strong); opacity: .7; }
 .wx-th figcaption { text-align: center; font-size: 12.5px; color: var(--ink-soft); margin-top: 5px; }
 @media (max-width: 1100px) {
   .wx-pmodal .mg-modal-body { height: auto; overflow-y: auto; }
