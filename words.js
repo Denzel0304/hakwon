@@ -481,7 +481,7 @@ const WordBook = {
         <label>결과</label><div class="wt-res">${Object.keys(WT_RES).map(k => `<button type="button" data-tres="${i}|${k}" class="r-${k}${t.res === k ? ' on' : ''}">${WT_RES[k]}</button>`).join('')}
           ${WT_RES[t.res] ? `<button type="button" class="wt-clr" data-tclr="${i}" title="결과를 지우고 예정으로">결과 지우기</button>` : ''}</div>
         ${t.res === 'abs' ? '' : `<label class="req">범위</label><div class="wt-line"><input type="number" data-f="from" data-i="${i}" value="${esc(sv(t.from))}" min="1" style="width:76px" ${N ? '' : 'disabled'}>
-          ~ <input type="number" data-f="to" data-i="${i}" value="${esc(sv(t.to))}" min="2" style="width:76px" ${!N ? 'disabled' : toLock(t.from) ? 'readonly tabindex="-1"' : ''}>${N ? `<span class="hint">시작만 넣으면 끝은 자동 (시작이 1이면 끝 2~${Math.min(7, N)} 직접) · 마지막 Day ${N}</span>` : `<span class="wt-bad">${esc(noN)}</span>`}</div>
+          ~ <input type="number" data-f="to" data-i="${i}" value="${esc(sv(t.to))}" min="2" style="width:76px" ${!N ? 'disabled' : toLock(t.from) ? 'readonly tabindex="-1"' : ''}>${N ? `<span class="hint">마지막 Day ${N}</span>` : `<span class="wt-bad">${esc(noN)}</span>`}</div>
         <label>틀린 개수</label><div class="wt-line"><input type="number" data-f="wrong" data-i="${i}" value="${esc(sv(t.wrong))}" min="0" style="width:76px">
           <span class="wt-sc" data-sc="${i}">${scTxt(t)}</span><span class="wt-tot">만점 <input type="number" data-f="total" data-i="${i}" value="${esc(sv(t.total))}" min="1" style="width:62px"></span></div>`}
         <label class="top">메모</label><textarea data-f="memo" data-i="${i}" rows="1">${esc(t.memo || '')}</textarea>

@@ -908,7 +908,7 @@ const Exams = {
       <label class="req" data-mc="gen">분류</label><div class="row" data-mc="gen">${BOOK_CATS.map(k => `<label class="chk"><input type="radio" name="bkcat" value="${k}" ${m && m.cat === k ? 'checked' : ''}>${BOOK_CAT[k]}</label>`).join('')}
         <span class="hint">학생 › 교재에서 이 분류 칸에 나옵니다</span></div>
       <label class="req" data-mw>Day 수</label><div class="row" data-mw><input type="text" name="mdayn" value="${esc(m && m.dayN ? String(m.dayN) : '')}" inputmode="numeric" autocomplete="off" style="width:80px" placeholder="예: 40">
-        <span class="hint">단어장의 Day 개수(= 마지막 Day 번호). 단어 기록에서 시험 범위의 시작만 넣으면 끝이 시험지 책 규칙대로 채워집니다</span></div>
+        <span class="hint" title="단어 기록에서 시험 범위의 시작만 넣으면 끝이 시험지 책 규칙대로 채워집니다">마지막 Day 번호 · 단어 시험 범위 자동 채우기에 사용</span></div>
       <label class="req" data-mc="exam">종류</label><div class="row" data-mc="exam">${Object.keys(MAT_TYPE).map(k => `<label class="chk"><input type="radio" name="mtype" value="${k}" ${type === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${MAT_TYPE[k]}</label>`).join('')}</div>
       <label class="req" data-mk="mock">모의고사</label><div class="row" data-mk="mock"><input type="number" name="year" min="2000" max="2100" value="${esc(m && m.type === 'mock' ? m.year : now.getFullYear())}" style="width:90px">년
         <select name="month">${Array.from({ length: 12 }, (_, i) => i + 1).map(i => `<option value="${i}" ${(m && m.type === 'mock' ? +m.month : 3) === i ? 'selected' : ''}>${i}월</option>`).join('')}</select>
