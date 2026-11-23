@@ -197,9 +197,7 @@ const Essays = {
     const ex = this.groupsOf(m.id).find(g => +g.num === n);
     inp.value = '';
     if (ex) { this.openSent(m.id, ex.id, null); return; }
-    const id = uid('WG');
-    this.edit(m.id, (gs) => { gs.push({ id, num: n, sents: [] }); });
-    this.openSent(m.id, id, null);
+    this.openSent(m.id, null, null, { num: n });          // 번호는 문장을 저장할 때 만든다
   },
 
   // 교과서·부교재 하위 항목 추가 (기본 이름: 본문 (그 과의 마지막 번호 + 1)). 이미 있는 이름이면 그 항목에 문장을 이어서 추가
@@ -212,9 +210,7 @@ const Essays = {
     if (!name) return;
     const ex = this.groupsOf(m.id).find(g => g.unitId === unitId && g.name === name);
     if (ex) { this.openSent(m.id, ex.id, null); return; }
-    const id = uid('WG');
-    this.edit(m.id, (gs) => { gs.push({ id, unitId, name, sents: [] }); });
-    this.openSent(m.id, id, null);
+    this.openSent(m.id, null, null, { unitId, name });    // 하위 항목은 문장을 저장할 때 만든다
   },
   async renameGroup(m, gid) {
     const gs0 = this.groupsOf(m.id), g = gs0.find(x => x.id === gid); if (!g) return;
@@ -254,9 +250,11 @@ const Essays = {
   },
 
   // 문장 추가·수정 창. 추가는 “저장 후 다음 문장”으로 이어서 넣을 수 있음
-  openSent(matId, gid, sid) {
+  // newG: 아직 없는 번호·하위 항목 ({ num } 또는 { unitId, name }) → 저장 버튼을 눌러 문장이 저장될 때 함께 만든다
+  //       (창을 닫거나 바깥을 누르면 아무것도 저장되지 않음)
+  openSent(matId, gid, sid, newG) {
     const m = NP.mat(matId);
-    const g0 = this.groupsOf(matId).find(x => x.id === gid);
+    const g0 = newG ? Object.assign({ sents: [] }, newG) : this.groupsOf(matId).find(x => x.id === gid);
     if (!m || !g0) return;
     const s0 = sid ? (g0.sents || []).find(x => x.id === sid) : null;
     if (sid && !s0) return;
@@ -264,7 +262,7 @@ const Essays = {
     const body = `<div class="form">
         <label class="top req">영어 문장</label><textarea data-wen rows="3" placeholder="예: The more you practice, the better you become.">${esc(s0 ? s0.en : '')}</textarea>
         <label class="top req">한글 해석</label><textarea data-wko rows="3" placeholder="예: 연습을 많이 할수록 더 잘하게 된다.">${esc(s0 ? s0.ko : '')}</textarea>
-      </div><div class="hint" style="margin-top:8px" data-whint>영어 칸에서 Enter → 한글 칸으로 · 한글 칸에서 Enter → ${s0 ? '저장' : '저장 후 다음 문장'} (줄바꿈은 한 칸 띄어쓰기로 저장됩니다)</div>`;
+      </div><div class="hint" style="margin-top:8px" data-whint>영어 칸에서 Enter → 한글 칸으로 · 두 칸을 모두 채우고 저장 버튼을 눌러야 저장됩니다</div>`;
     const norm = (v) => stripZws(v || '').replace(/\s+/g, ' ').trim();
     // 저장 → true / 실패 → false
     const save = (md) => {
@@ -273,7 +271,13 @@ const Essays = {
       if (!ko) { toast('한글 해석을 입력하세요'); $('[data-wko]', md.body).focus(); return false; }
       let ok = true;
       this.edit(matId, (gs) => {
-        const g = gs.find(x => x.id === gid);
+        let g = gid ? gs.find(x => x.id === gid) : null;
+        if (!g && !gid && newG) {
+          // 그사이 다른 기기에서 같은 번호·항목이 생겼으면 거기에 넣는다
+          g = gs.find(x => newG.num != null ? +x.num === +newG.num : (x.unitId === newG.unitId && x.name === newG.name));
+          if (!g) { g = Object.assign({ id: uid('WG') }, newG, { sents: [] }); gs.push(g); }
+          gid = g.id;                                      // “저장 후 다음 문장”은 같은 항목에 이어서
+        }
         if (!g) { ok = false; return false; }
         g.sents = g.sents || [];
         if (s0) { const s = g.sents.find(x => x.id === s0.id); if (!s) { ok = false; return false; } s.en = en; s.ko = ko; }
@@ -297,7 +301,7 @@ const Essays = {
         b.addEventListener('keydown', (e) => {
           if (e.key !== 'Enter' || e.isComposing || e.shiftKey) return;
           if (e.target.matches('[data-wen]')) { e.preventDefault(); $('[data-wko]', b).focus(); }
-          else if (e.target.matches('[data-wko]')) { e.preventDefault(); if (s0) { if (save(md)) md.close(); } else saveNext(md); }
+          else if (e.target.matches('[data-wko]')) e.preventDefault();      // 저장은 버튼으로만
         });
       },
       buttons: s0 ? [
