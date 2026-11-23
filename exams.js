@@ -54,6 +54,15 @@ const Exams = {
   },
   dateText(start, end) { return start ? fmtMD(start) + (end && end !== start ? ' ~ ' + fmtMD(end) : '') : ''; },
 
+  /* ---------- 탭 줄 고정: 스크롤해도 제목줄 바로 아래에 탭 줄이 남게 ---------- */
+  // 제목줄(.page-head)은 style.css에서 위로 26px 끌어올려 고정되므로, 화면에 보이는 높이 = offsetHeight - 26
+  stickTabs(main) {
+    if (App.page !== 'exams' || !main) return;
+    const h = $(':scope > .page-head', main);
+    if (h) main.style.setProperty('--x7tabs', Math.max(0, h.offsetHeight - 26) + 'px');
+    if (!this._stickOn) { this._stickOn = true; window.addEventListener('resize', debounce(() => this.stickTabs($('#main')), 100)); }
+  },
+
   /* ---------- 공통 머리 · 탭 · 일괄 처리 줄 ---------- */
   headHtml() {
     return `<div class="page-head"><h1>시험+교재</h1><button class="btn primary" data-a="add">+ 시험 등록</button><button class="btn" data-a="addmat">+ 교재 등록</button></div>`;
@@ -110,6 +119,7 @@ const Exams = {
   /* ---------- 시험 목록 (진행중 / 완료) ---------- */
   render(main) {
     this.syncDates();                   // 다른 기기에서 바뀐 시험 일정도 반영
+    queueMicrotask(() => this.stickTabs(main));   // 어느 탭을 그려도 다 그린 뒤 탭 줄 고정 위치를 맞춘다
     if (this.tab === 'lu') { this.renderLineup(main); return; }
     if (this.tab === 'wr') { Essays.render(main); return; }
     if (this.tab === 'mat' || this.tab === 'gen') { this.renderMats(main); return; }
@@ -1096,6 +1106,8 @@ const Exams = {
 (function () {
   const st = document.createElement('style');
   st.textContent = `
+/* 시험+교재: 탭 줄을 제목줄 아래에 고정 (--x7tabs = Exams.stickTabs가 넣는 제목줄 높이) */
+#main[data-page="exams"] > .tabs { position: sticky; top: var(--x7tabs, 54px); z-index: 19; background: var(--bg); margin-top: -10px; padding-top: 10px; }
 .x7-cnt { display: inline-block; min-width: 5.2em; font-variant-numeric: tabular-nums; }
 .x7-prepcell { min-width: 150px; cursor: pointer; }
 .x7-prepcell:hover, .x7-prepcell.on { background: var(--accent-soft); }
