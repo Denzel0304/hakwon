@@ -7,7 +7,8 @@
    wtest: { id 'WT_학생ID_날짜', kind:'wtest', studentId, date, classId(기록한 반), matId, matName(교재 이름 사본),
             tries:[ { kind:'new'|'re', of(다른 날 시험의 재시험이면 그 날짜), from, to, res:'pass'|'fail'|'abs'|''(예정), score, total, memo,
                       fu(결과를 고른 뒤 이어 잡은 시험: 날짜 | 'same' 당일) } ], createdAt, updatedAt }
-   학생별 기억값: WS_학생ID { kind:'wset', total(만점), mode('direct'|'rule') } · 단어 시험 안 하는 반: WCFG { kind:'wcfg', off:[반ID] }
+   학생별 기억값: WS_학생ID { kind:'wset', total(만점) } (예전 기록의 mode는 쓰지 않음)
+   범위: 학생 › 교재의 단어장(일반 교재 dayN = Day 수)으로 시험지 책 규칙에 맞춰 시작만 넣으면 끝이 정해짐 (아래 '범위 규칙') · 단어 시험 안 하는 반: WCFG { kind:'wcfg', off:[반ID] }
    ========================================================= */
 const WT_RES = { pass: '합격', fail: '불합격', abs: '결시' };
 const WT_MARK = { pass: '○', fail: '✕', abs: '결시' };
@@ -333,28 +334,34 @@ const WordBook = {
   // 만점은 비워 두면 창에서 학생 기억값(처음 50)으로 채운다
   newTry(kind, r) { return { kind, of: (r && r.of) || '', from: r ? r.from : '', to: r ? r.to : '', res: '', score: '', total: '', memo: '' }; },
 
-  /* ---------- 학생별 기억값 (meta WS_학생ID { kind:'wset', studentId, total, mode }) ----------
-     total: 만점 (처음 50, 이후 마지막에 쓴 값) / mode: 다음 시험 범위 'direct' 직접 입력 · 'rule' 규칙
-     규칙: 'n개씩' — 이번 범위를 n개만큼 뒤로 민다 (앞을 n개 자르고 뒤에 n개 붙임: 3-9, 2개씩 → 5-11).
-           n은 매번 달라서 기억하지 않고, 그때그때 넣는다 */
+  /* ---------- 학생별 기억값 (meta WS_학생ID { kind:'wset', studentId, total }) ----------
+     total: 만점 (처음 50, 이후 마지막에 쓴 값) */
   setId(sid) { return 'WS_' + sid; },
   setOf(sid) {
     const r = Store.get('meta', this.setId(sid));
     const ok = !!(r && r.kind === 'wset');
     const num = (v, def) => (ok && v !== '' && v != null && !isNaN(+v) ? +v : def);
-    return { total: num(r && r.total, 50) > 0 ? num(r && r.total, 50) : 50, mode: ok && r.mode === 'rule' ? 'rule' : 'direct' };
+    return { total: num(r && r.total, 50) > 0 ? num(r && r.total, 50) : 50 };
   },
   saveSet(sid, v) {
     const now = new Date().toISOString();
     const cur = Store.get('meta', this.setId(sid));
     Store.put('meta', Object.assign({}, cur && cur.kind === 'wset' ? cur : { id: this.setId(sid), kind: 'wset', studentId: sid, createdAt: now },
-      { total: v.total, mode: v.mode, updatedAt: now }));
+      { total: v.total, updatedAt: now }));
   },
-  ruleRange(base, cut, add) {
-    const f = +base.from, t = +base.to || f;
-    if (!(f > 0)) return null;
-    const nf = f + (+cut || 0), nt = t + (+add || 0);
-    return nf >= 1 && nt >= nf ? { from: nf, to: nt } : null;
+  /* ---------- 범위 규칙 (학생 › 단어 › 시험지 책과 같음) ----------
+     N = 단어장의 Day 수 (시험+교재 › 일반 교재, 분류 '단어'의 dayN)
+     시작 1 → 끝은 2~7 중 직접 (1-2 … 1-7, N을 넘지 않음)
+     시작 2 이상 → 끝은 자동 = 시작+6, 마지막 Day N을 넘지 않음 (2-8, 3-9 … 34-40, 35-40 … 39-40) · 손으로 못 바꿈
+     시작은 N-1까지 · 한 Day만 보는 시험은 없음 */
+  dayNOf(matId) { const m = matId ? NP.mat(matId) : null; return m && m.type === 'gen' && +m.dayN >= 2 ? +m.dayN : 0; },
+  autoTo(from, N) { return from >= 2 && from <= N - 1 ? Math.min(from + 6, N) : ''; },
+  // 범위 검사 → 틀리면 안내 문구, 맞으면 ''
+  rangeErr(from, to, N) {
+    if (!(from >= 1)) return '범위 시작을 1 이상의 숫자로 넣으세요';
+    if (from > N - 1) return `범위 시작은 ${N - 1} 이하여야 합니다 (마지막 Day ${N})`;
+    if (from === 1) return to >= 2 && to <= Math.min(7, N) ? '' : `시작이 1이면 끝은 2~${Math.min(7, N)} 중에서 넣으세요`;
+    return to === this.autoTo(from, N) ? '' : `범위는 ${from}-${this.autoTo(from, N)} 이어야 합니다`;
   },
   // 그 날 이 학생이 오는 단어 시험 반 (시간 순 첫 반)
   classOn(sid, ds) {
@@ -399,7 +406,12 @@ const WordBook = {
     const bk = r ? null : this.bookOn(sid, d);
     const matId = r ? (r.matId || '') : (bk ? bk.matId : '');
     const matName = r ? (r.matName || '') : (bk ? Books.nameOf(bk) : '');
-    const st = this.setOf(sid);                  // 이 학생의 만점 · 범위 규칙 (마지막에 쓴 값)
+    const st = this.setOf(sid);                  // 이 학생의 만점 (마지막에 쓴 값)
+    // 범위 규칙의 기준 단어장: 기록에 남은 단어장 → 없으면 그 날 쓰던 단어장 (Day 수가 없으면 범위를 넣을 수 없음)
+    const wbk = this.bookOn(sid, d);
+    const N = this.dayNOf(matId || (wbk ? wbk.matId : ''));
+    const noN = N ? '' : (matId || wbk ? '단어장에 Day 수가 없습니다. 시험+교재 › 일반 교재에서 이 단어장의 Day 수를 넣으세요'
+      : '학생 › 교재에 진행 중인 단어장이 없습니다. 단어장을 연결해야 범위를 넣을 수 있습니다');
     const st0 = JSON.stringify(st);
     const sv = (v) => (v === null || v === undefined ? '' : String(v));
     const isInt = (v) => /^\d+$/.test(v);
@@ -413,21 +425,21 @@ const WordBook = {
     tries.forEach(t => { t._r0 = t.res || ''; });
     const mk = (kind, rg) => { const t = fill(this.newTry(kind, rg)); t._r0 = ''; return t; };
     const baseOf = (t) => (+t.from > 0 ? { from: +t.from, to: +t.to || +t.from } : null);
-    // 규칙(n개씩): 이번 범위를 n개만큼 민 범위 (n이 비면 null)
-    const ruleOf = (b, n) => (st.mode === 'rule' && b && isInt(sv(n).trim()) ? this.ruleRange(b, +n, +n) : null);
+    // 시작을 넣으면 끝을 규칙대로 (시작 1: 끝은 직접 · 그 밖: 자동) → 끝 값
+    const toFor = (fromV, toV) => { const f = +fromV; if (!isInt(sv(fromV).trim())) return ''; return f === 1 ? (+toV >= 2 && +toV <= Math.min(7, N) ? toV : '') : this.autoTo(f, N); };
+    const toLock = (fromV) => !N || sv(fromV).trim() !== '1';   // 끝 칸은 시작이 1일 때만 직접 넣음
     if (preset) tries.push(mk('re', preset));
     else if (!tries.length) tries.push(mk('new', null));          // 범위는 빈칸으로 시작 (직접 입력)
     const nx = this.nextClass(sid, d);
 
     /* 결과를 고르면 그 시험 아래에 '다음 시험' 칸이 나온다 (이번에 결과를 바꾼 시험만, 이미 이어 잡은 시험은 제외)
-       t._f = { tgt: 'next'|'other'|'none'|'', date(다른 날), withNew(불합격·결시: 새 시험도 함께), n(규칙: 몇 개씩), nf, nt(새 시험 범위) }
+       t._f = { tgt: 'next'|'other'|'none'|'', date(다른 날), withNew(불합격·결시: 새 시험도 함께), nf, nt(새 시험 범위) }
        t.fu (저장): 이어 잡은 날짜 · 'same'(당일) */
     const showF = (t) => !!WT_RES[t.res] && t.res !== t._r0 && !t.fu;
-    const fillRule = (t) => { const g = t._f && ruleOf(baseOf(t), t._f.n); if (g) { t._f.nf = g.from; t._f.nt = g.to; } };
-    const initF = (t) => { t._f = { tgt: t.res === 'pass' && nx ? 'next' : '', date: '', withNew: false, n: '', nf: '', nt: '' }; };
+    const initF = (t) => { t._f = { tgt: t.res === 'pass' && nx ? 'next' : '', date: '', withNew: false, nf: '', nt: '' }; };
     // 당일에 이어서: 합격 → 새 시험 / 불합격·결시 → 같은 범위 재시험 (이 창에 바로 추가)
     const sameDay = (t) => {
-      const nt = t.res === 'pass' ? mk('new', ruleOf(baseOf(t), t._f && t._f.n)) : mk('re', Object.assign({ of: '' }, baseOf(t) || { from: '', to: '' }));
+      const nt = t.res === 'pass' ? mk('new', null) : mk('re', Object.assign({ of: '' }, baseOf(t) || { from: '', to: '' }));
       nt._src = t;
       t.fu = 'same'; t._f = null;
       tries.push(nt);
@@ -444,9 +456,8 @@ const WordBook = {
       else if (isInt(w) && isInt(tt) && +tt >= 1 && +w <= +tt) t.score = +tt - +w;
     };
     const ofTxt = (t) => (t.kind === 're' && isYmd(t.of) && t.of !== d ? `<span class="wt-of">${fmtMD(t.of)} 시험의 재시험</span>` : '');
-    const rngHtml = (i, f) => `<span class="wt-seg sm">${['direct', 'rule'].map(k => `<button type="button" data-fum="${i}|${k}" class="${st.mode === k ? 'on' : ''}">${k === 'direct' ? '직접 입력' : '규칙'}</button>`).join('')}</span>
-      ${st.mode === 'rule' ? `<span class="wt-rule" title="이번 범위를 몇 개씩 밀지 (예: 3-9를 2개씩 → 5-11)"><input type="number" data-fun="n" data-i="${i}" value="${esc(sv(f.n))}" min="0">개씩</span>` : ''}
-      <span class="wt-rng"><input type="number" data-fun="nf" data-i="${i}" value="${esc(sv(f.nf))}" min="1" placeholder="시작"> ~ <input type="number" data-fun="nt" data-i="${i}" value="${esc(sv(f.nt))}" min="1" placeholder="끝"></span>`;
+    const rngHtml = (i, f) => N ? `<span class="wt-rng"><input type="number" data-fun="nf" data-i="${i}" value="${esc(sv(f.nf))}" min="1" max="${N - 1}" placeholder="시작"> ~ <input type="number" data-fun="nt" data-i="${i}" value="${esc(sv(f.nt))}" min="2" placeholder="끝" ${toLock(f.nf) ? 'readonly tabindex="-1"' : ''}></span>`
+      : `<span class="wt-bad">${esc(noN)}</span>`;
     const fuHtml = (t, i) => {
       if (t.fu) return `<div class="wt-fu-done">↳ ${t.fu === 'same' ? '당일 시험을 아래에 추가했습니다' : `${fmtMD(t.fu)} 시험으로 이어서 잡았습니다`}</div>`;
       if (!showF(t)) return '';
@@ -458,7 +469,7 @@ const WordBook = {
         <div class="wt-seg">${b('same', pass ? '당일 새 시험' : '당일 재시험')}${b('next', nx ? `다음 수업 <small>${fmtMD(nx.date)}</small>` : '다음 수업 없음', !nx)}${b('other', f.tgt === 'other' && f.date ? `다른 날 <small>${fmtMD(f.date)}</small>` : '다른 날')}${b('none', pass ? '안 함' : '나중에')}</div></div>`;
       if (go && !pass) h += `<div class="wt-fu-row"><span class="wt-fu-h"></span><span class="wt-chip re">재 ${esc(this.rangeLabel(baseOf(t) || {}) || '범위 없음')}</span><label class="chk"><input type="checkbox" data-fuw="${i}" ${f.withNew ? 'checked' : ''}>새 시험도 함께</label></div>`;
       if (go && (pass || f.withNew)) h += `<div class="wt-fu-row"><span class="wt-fu-h">${pass ? '범위' : '새 시험'}</span>${rngHtml(i, f)}</div>`;
-      if (go) h += `<div class="wt-fu-note">저장하면 ${fmtMD(f.tgt === 'next' ? nx.date : f.date)} 칸에 예정으로 들어갑니다${pass || f.withNew ? ' (범위를 비우면 새 시험은 넣지 않음)' : ''}</div>`;
+      if (go) h += `<div class="wt-fu-note">저장하면 ${fmtMD(f.tgt === 'next' ? nx.date : f.date)} 칸에 예정으로 들어갑니다${pass || f.withNew ? ' (시작만 넣으면 끝은 규칙대로 채워짐 · 비우면 새 시험은 넣지 않음)' : ''}</div>`;
       return h + '</div>';
     };
     const tryHtml = (t, i) => `<div class="wt-try${t.kind === 're' ? ' re' : ''}" data-i="${i}">
@@ -469,8 +480,8 @@ const WordBook = {
       <div class="wt-grid">
         <label>결과</label><div class="wt-res">${Object.keys(WT_RES).map(k => `<button type="button" data-tres="${i}|${k}" class="r-${k}${t.res === k ? ' on' : ''}">${WT_RES[k]}</button>`).join('')}
           ${WT_RES[t.res] ? `<button type="button" class="wt-clr" data-tclr="${i}" title="결과를 지우고 예정으로">결과 지우기</button>` : ''}</div>
-        ${t.res === 'abs' ? '' : `<label class="req">범위</label><div class="wt-line"><input type="number" data-f="from" data-i="${i}" value="${esc(sv(t.from))}" min="1" style="width:76px">
-          ~ <input type="number" data-f="to" data-i="${i}" value="${esc(sv(t.to))}" min="1" style="width:76px"><span class="hint">한 강이면 뒤 칸은 비워도 됩니다</span></div>
+        ${t.res === 'abs' ? '' : `<label class="req">범위</label><div class="wt-line"><input type="number" data-f="from" data-i="${i}" value="${esc(sv(t.from))}" min="1" style="width:76px" ${N ? '' : 'disabled'}>
+          ~ <input type="number" data-f="to" data-i="${i}" value="${esc(sv(t.to))}" min="2" style="width:76px" ${!N ? 'disabled' : toLock(t.from) ? 'readonly tabindex="-1"' : ''}>${N ? `<span class="hint">시작만 넣으면 끝은 자동 (시작이 1이면 끝 2~${Math.min(7, N)} 직접) · 마지막 Day ${N}</span>` : `<span class="wt-bad">${esc(noN)}</span>`}</div>
         <label>틀린 개수</label><div class="wt-line"><input type="number" data-f="wrong" data-i="${i}" value="${esc(sv(t.wrong))}" min="0" style="width:76px">
           <span class="wt-sc" data-sc="${i}">${scTxt(t)}</span><span class="wt-tot">만점 <input type="number" data-f="total" data-i="${i}" value="${esc(sv(t.total))}" min="1" style="width:62px"></span></div>`}
         <label class="top">메모</label><textarea data-f="memo" data-i="${i}" rows="1">${esc(t.memo || '')}</textarea>
@@ -486,6 +497,12 @@ const WordBook = {
         const fu = t.fu || '';
         if (t.res === 'abs') { out.push({ kind, of, from: '', to: '', res: 'abs', score: '', total: '', memo, fu }); continue; }
         const fs = sv(t.from).trim(), ts = sv(t.to).trim();
+        if (t._typed) {         // 이 창에서 범위를 넣은 시험: 단어장 Day 수로 규칙 검사 (불러온·이어 받은 범위는 그대로 둠)
+          if (!N) { toast(`${no}: ${noN}`); return null; }
+          const er = this.rangeErr(isInt(fs) ? +fs : 0, isInt(ts) ? +ts : 0, N);
+          if (er) { toast(`${no}: ${er}`); return null; }
+        }
+        if (fs === '' && !N) { toast(`${no}: ${noN}`); return null; }
         if (!isInt(fs) || +fs < 1) { toast(`${no}: 범위 시작을 1 이상의 숫자로 넣으세요`); return null; }
         if (ts !== '' && (!isInt(ts) || +ts < 1)) { toast(`${no}: 범위 끝을 숫자로 넣으세요`); return null; }
         const from = +fs, to = ts === '' ? from : +ts;
@@ -507,11 +524,11 @@ const WordBook = {
         if (!showF(t) || !f) continue;
         const date = f.tgt === 'next' ? (nx && nx.date) : f.tgt === 'other' ? f.date : '';
         if (!isYmd(date)) continue;
-        const nr = () => {
+        const nr = () => {      // 새 시험 범위: 비우면 '' (안 넣음) · 규칙에 어긋나면 { err }
           const a = sv(f.nf).trim(), z = sv(f.nt).trim();
-          if (a === '' && z === '') return '';
-          if (!isInt(a) || +a < 1 || (z !== '' && (!isInt(z) || +z < +a))) return null;
-          return { from: +a, to: z === '' ? +a : +z };
+          if (a === '' || !N) return '';
+          const er = this.rangeErr(isInt(a) ? +a : 0, isInt(z) ? +z : 0, N);
+          return er ? { err: er } : { from: +a, to: +z };
         };
         const list = [];
         const nt = (kind, g) => ({ kind, of: g.of || '', from: g.from, to: g.to, res: '', score: '', total: st.total, memo: '' });
@@ -522,7 +539,7 @@ const WordBook = {
         }
         if (t.res === 'pass' || f.withNew) {
           const g = nr();
-          if (g === null) { toast(`${i + 1}번째 시험: 새 시험 범위를 확인하세요`); return null; }
+          if (g && g.err) { toast(`${i + 1}번째 시험: 새 시험 범위 — ${g.err}`); return null; }
           if (g) list.push(nt('new', g));
         }
         if (list.length) ops.push({ i, date, cid: nx && date === nx.date ? nx.cid : (this.classOn(sid, date) || cid), list });
@@ -561,10 +578,6 @@ const WordBook = {
       onMount: (b, m) => {
         const box = $('[data-tries]', b);
         const draw = () => { box.innerHTML = tries.map(tryHtml).join(''); };
-        const setRng = (j) => {
-          const t = tries[j]; if (!t || !t._f) return;
-          $$(`[data-fun][data-i="${j}"]`, box).forEach(x => { if (x !== document.activeElement) x.value = sv(t._f[x.dataset.fun]); });
-        };
         draw();
         // 아래 줄 왼쪽: 시험 추가 · 기록 삭제 / 오른쪽: 취소 · 저장
         const fl = document.createElement('div');
@@ -592,21 +605,28 @@ const WordBook = {
         });
         b.addEventListener('change', (e) => {
           const w = e.target.closest('[data-fuw]');
-          if (w) { const t = tries[+w.dataset.fuw]; t._f.withNew = w.checked; if (w.checked && sv(t._f.nf) === '') fillRule(t); draw(); }
+          if (w) { const t = tries[+w.dataset.fuw]; t._f.withNew = w.checked; draw(); }
         });
         b.addEventListener('input', (e) => {
           const el = e.target, i = +el.dataset.i, t = tries[i];
           if (!t) return;
           const f = el.dataset.f;
+          // 시작을 넣으면 끝을 규칙대로 채우고, 시작이 1일 때만 끝 칸을 풀어 줌
+          const setTo = (toEl, fromV, curTo) => {
+            const v = toFor(fromV, curTo);
+            if (toEl) { toEl.value = sv(v); toEl.readOnly = toLock(fromV); toEl.tabIndex = toEl.readOnly ? -1 : 0; }
+            return v;
+          };
           if (f) {
             t[f] = el.value;
             if (f === 'wrong' || f === 'total') { calc(t); const sc = $(`[data-sc="${i}"]`, box); if (sc) sc.innerHTML = scTxt(t); }
-            if ((f === 'from' || f === 'to') && t._f && st.mode === 'rule') { fillRule(t); setRng(i); }
+            if (f === 'from' || f === 'to') t._typed = true;
+            if (f === 'from' && N) t.to = setTo($(`[data-f="to"][data-i="${i}"]`, box), el.value, t.to);
             return;
           }
           if (el.dataset.fun && t._f) {
             t._f[el.dataset.fun] = el.value;
-            if (el.dataset.fun === 'n') { fillRule(t); setRng(i); }       // 몇 개씩을 넣으면 범위가 바로 채워짐
+            if (el.dataset.fun === 'nf' && N) t._f.nt = setTo($(`[data-fun="nt"][data-i="${i}"]`, box), el.value, t._f.nt);
           }
         });
         b.addEventListener('click', async (e) => {
@@ -631,12 +651,6 @@ const WordBook = {
             const [t] = tries.splice(+del.dataset.tdel, 1);
             if (t && t._src && t._src.fu === 'same') t._src.fu = '';       // 당일로 이어 잡은 시험을 지우면 다시 고를 수 있게
             draw(); return;
-          }
-          const fm = e.target.closest('[data-fum]');
-          if (fm) {
-            const k = fm.dataset.fum.split('|')[1];
-            if (st.mode !== k) { st.mode = k; if (k === 'rule') tries.forEach(x => { if (x._f) fillRule(x); }); draw(); }
-            return;
           }
           const fb = e.target.closest('[data-fut]');
           if (fb) {
@@ -893,6 +907,7 @@ const WordBook = {
 .wt-rule input { width: 52px; }
 .wt-rng { display: inline-flex; align-items: center; gap: 4px; }
 .wt-rng input { width: 70px; }
+.wt-modal input[readonly] { background: var(--tint); color: var(--ink-soft); cursor: default; }
 .wt-chip { font-size: 12.5px; font-weight: 700; border-radius: 6px; padding: 1px 8px; }
 .wt-chip.re { color: #A9650B; background: #FFF4E5; border: 1px solid #E3C9A0; }
 /* 아래 줄: 왼쪽 시험 추가 · 오른쪽 취소/저장 */

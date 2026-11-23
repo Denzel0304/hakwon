@@ -868,7 +868,7 @@ const Exams = {
     } else if (gen) {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>분류</th><th>이름</th><th>단위</th><th>사용하는 반</th></tr></thead><tbody>${list.map(m => `
       <tr class="click" data-mat="${m.id}">${this.chkTd(m.id)}<td class="nowrap">${Books.catTag(m.cat)}</td><td class="nowrap"><b>${esc(m.name)}</b></td>
-      <td class="small">${m.cat === 'listen' || m.cat === 'word' ? '<span class="muted">-</span>' : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
+      <td class="small">${m.cat === 'word' ? (m.dayN ? `Day 1~${m.dayN}` : '<span class="wt-bad">Day 수 없음</span>') : m.cat === 'listen' ? '<span class="muted">-</span>' : esc((m.units || []).map(u => u.name).join(', ')) || '<span class="muted">-</span>'}</td>
       <td class="small">${clsOf(m).map(c => `<span class="nowrap">${Classes.dot(c)}${esc(c.name)}</span>`).join(', ') || (m.noCls ? '<span class="badge gray">반 미지정</span>' : '<span class="muted">연결된 반 없음</span>')}</td></tr>`).join('')}</tbody></table></div>`;
     } else {
       h += `<div class="tbl-wrap"><table class="tbl compact"><thead><tr>${this.chkTh(ids)}<th>종류</th><th>이름</th><th>단위</th><th>쓰는 학교</th><th class="num">쓰는 시험</th></tr></thead><tbody>${list.map(m => `
@@ -907,6 +907,8 @@ const Exams = {
         <span class="hint">${m ? '등록한 뒤에는 바꿀 수 없습니다' : '시험 교재는 시험 범위·내신, 일반 교재는 비내신 수업에 씁니다'}</span></div>
       <label class="req" data-mc="gen">분류</label><div class="row" data-mc="gen">${BOOK_CATS.map(k => `<label class="chk"><input type="radio" name="bkcat" value="${k}" ${m && m.cat === k ? 'checked' : ''}>${BOOK_CAT[k]}</label>`).join('')}
         <span class="hint">학생 › 교재에서 이 분류 칸에 나옵니다</span></div>
+      <label class="req" data-mw>Day 수</label><div class="row" data-mw><input type="text" name="mdayn" value="${esc(m && m.dayN ? String(m.dayN) : '')}" inputmode="numeric" autocomplete="off" style="width:80px" placeholder="예: 40">
+        <span class="hint">단어장의 Day 개수(= 마지막 Day 번호). 단어 기록에서 시험 범위의 시작만 넣으면 끝이 시험지 책 규칙대로 채워집니다</span></div>
       <label class="req" data-mc="exam">종류</label><div class="row" data-mc="exam">${Object.keys(MAT_TYPE).map(k => `<label class="chk"><input type="radio" name="mtype" value="${k}" ${type === k ? 'checked' : ''} ${m ? 'disabled' : ''}>${MAT_TYPE[k]}</label>`).join('')}</div>
       <label class="req" data-mk="mock">모의고사</label><div class="row" data-mk="mock"><input type="number" name="year" min="2000" max="2100" value="${esc(m && m.type === 'mock' ? m.year : now.getFullYear())}" style="width:90px">년
         <select name="month">${Array.from({ length: 12 }, (_, i) => i + 1).map(i => `<option value="${i}" ${(m && m.type === 'mock' ? +m.month : 3) === i ? 'selected' : ''}>${i}월</option>`).join('')}</select>
@@ -948,6 +950,7 @@ const Exams = {
           const bk = ($('[name=bkcat]:checked', b) || {}).value;
           const noUnit = cat === 'gen' && (bk === 'listen' || bk === 'word');
           $$('[data-mu]', b).forEach(x => { if (noUnit) x.style.display = 'none'; });
+          $$('[data-mw]', b).forEach(x => { x.style.display = cat === 'gen' && bk === 'word' ? '' : 'none'; });   // 단어 교재만 Day 수
           $('[data-clshint]', b).textContent = noUnit
             ? '듣기·단어 교재는 수업일지에 나오지 않습니다. 고른 반 학생은 학생 › 교재에서 이 교재를 고를 때 먼저 추천됩니다.'
             : '고른 반의 수업일지에서 “비내신”을 체크하면 이 교재가 나옵니다. “반 미지정” 교재는 수업일지에 나오지 않고 학생 › 교재에서만 씁니다.'
@@ -1036,6 +1039,11 @@ const Exams = {
             if (!rec.name) { toast('교재 이름을 입력하세요'); return false; }
             const bc = rec.type === 'gen' ? ($('[name=bkcat]:checked', b) || {}).value : '';
             if (rec.type === 'gen' && !bc) { toast('분류(독해·문법·듣기·단어)를 고르세요'); return false; }
+            if (rec.type === 'gen' && bc === 'word') {     // 단어 교재: Day 수 필수 (2 이상)
+              const dn = stripZws($('[name=mdayn]', b).value || '').trim();
+              if (!/^\d+$/.test(dn) || +dn < 2) { toast('Day 수를 2 이상의 숫자로 넣으세요'); return false; }
+              rec.dayN = +dn;
+            } else delete rec.dayN;
             const noUnit = rec.type === 'gen' && (bc === 'listen' || bc === 'word');   // 듣기·단어: 단위 없음
             if (noUnit) us = JSON.parse(JSON.stringify((m && m.units) || []));   // 다른 분류에서 바꾼 교재의 기존 단위는 건드리지 않음 (새 교재는 없음)
             else if (!us.length) { toast('단위(과·강)를 하나 이상 넣으세요'); return false; }
