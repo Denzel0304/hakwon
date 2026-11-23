@@ -20,7 +20,7 @@ const Essays = {
   pick: { mode: 'manual', classId: '', sel: [] },   // 학생 이름: 직접 입력 / 반에서 선택
   pr: { name: '', date: '', copies: '' },
   set: null,              // { gap(줄 간격 mm), duplex(양면 프린터) } — 이 기기에 저장
-  LS: 'mg77_wr_settings',
+  LS: 'mg77_wr_settings2',   // 줄 간격 기본값을 10 → 8mm로 바꾸면서 새 키 (예전 저장값 10mm가 남지 않게)
   _tok: 0,
   _cache: null,           // 쪽 나누기 결과 { key, sum:[본문 HTML], note:[본문 HTML] }
 
@@ -325,11 +325,11 @@ const Essays = {
      ========================================================= */
   loadSet() {
     if (this.set) return;
-    this.set = { gap: 10, duplex: true };
+    this.set = { gap: 8, duplex: true };
     let s = null;
     try { s = JSON.parse(localStorage.getItem(this.LS) || 'null'); } catch (e) { s = null; }
     if (s) {
-      if (typeof s.gap === 'number' && s.gap >= 8 && s.gap <= 12) this.set.gap = s.gap;
+      if (typeof s.gap === 'number' && s.gap >= 7 && s.gap <= 12) this.set.gap = s.gap;
       if (typeof s.duplex === 'boolean') this.set.duplex = s.duplex;
     }
   },
@@ -339,12 +339,13 @@ const Essays = {
   printMats() {
     return NP.sortMats(NP.examMats()).map(m => ({ m, gs: this.ordered(m, this.groupsOf(m.id)).filter(g => (g.sents || []).length) })).filter(x => x.gs.length);
   },
-  // 고른 하위 항목의 문장 (교재 순서 → 항목 순서 → 문장 순서), 번호는 처음부터 이어서
+  // 고른 하위 항목의 문장 (교재 순서 → 항목 순서 → 문장 순서)
+  // no: 한 항목(18번·본문 4 등) 안에 문장이 2개 이상일 때만 그 항목 안의 번호 1, 2, … (1개면 번호 없음)
   items() {
     const out = [];
     this.printMats().forEach(({ m, gs }) => gs.forEach(g => {
       if (!this.sel.has(g.id)) return;
-      g.sents.forEach(s => out.push({ key: s.id, m, g, no: out.length + 1, label: this.gLabel(m, g), en: s.en, ko: s.ko }));
+      g.sents.forEach((s, j) => out.push({ key: s.id, m, g, no: g.sents.length > 1 ? j + 1 : 0, label: this.gLabel(m, g), en: s.en, ko: s.ko }));
     }));
     return out;
   },
@@ -378,7 +379,7 @@ const Essays = {
           <div data-wp-nmbody>${this.nmBodyHtml()}</div></div>
         <div class="pr-sec"><h2>노트</h2>
           <div class="pr-fld"><span>줄 간격</span>
-            <div class="pr-range"><input type="range" data-wp-gap min="8" max="12" step="0.5" value="${this.set.gap}" aria-label="줄 간격"><output data-wp-gapout>${this.set.gap.toFixed(1)}mm</output></div></div>
+            <div class="pr-range"><input type="range" data-wp-gap min="7" max="12" step="0.5" value="${this.set.gap}" aria-label="줄 간격"><output data-wp-gapout>${this.set.gap.toFixed(1)}mm</output></div></div>
           <p class="pr-hint">한 장에 2문장. 한글 해석 아래 첫 줄에 영어 문장이 연하게, 나머지는 따라 쓰는 빈 줄이에요.</p></div>
         <div class="pr-sec"><h2>출력</h2>
           <label class="chk pr-chk"><input type="checkbox" data-wp-duplex ${this.set.duplex ? 'checked' : ''}>양면 프린터 사용</label>
@@ -542,7 +543,7 @@ const Essays = {
   // 쪽 나누기 (화면 밖에 실제 크기로 그려서 잰다) → { sum:[요약 본문], note:[노트 본문] }
   async paginate(items) {
     const gap = this.set.gap;
-    const key = items.map(it => `${it.key}:${it.en}:${it.ko}:${it.label}`).join('|') + '#' + gap;
+    const key = items.map(it => `${it.key}:${it.no}:${it.en}:${it.ko}:${it.label}`).join('|') + '#' + gap;
     if (this._cache && this._cache.key === key) return this._cache;
     await this.fontsReady();
     const K = Prints.kit, MM = K.MM_PER_PX;
@@ -562,7 +563,7 @@ const Essays = {
       // 마지막 블록의 아래 끝이 본문 칸을 넘는지 (scrollHeight는 칸 높이보다 작아지지 않아 쓰지 않음)
       const over = () => { const l = body.lastElementChild; return !!l && l.getBoundingClientRect().bottom > body.getBoundingClientRect().bottom - 6; };
       const blk = (it) => `<div class="wr-blk">${it.m.id !== curM ? `<div class="wr-mt">${esc(NP.matName(it.m))}</div>` : ''}${it.g.id !== curG ? `<div class="wr-gl">${esc(it.label)}</div>` : ''}
-        <div class="wr-it"><span class="wr-no">${it.no}</span><div class="wr-tx"><div class="wr-en">${esc(it.en)}</div><div class="wr-ko">${esc(it.ko)}</div></div></div></div>`;
+        <div class="wr-it">${it.no ? `<span class="wr-no">${it.no}</span>` : ''}<div class="wr-tx"><div class="wr-en">${esc(it.en)}</div><div class="wr-ko">${esc(it.ko)}</div></div></div></div>`;
       newPage();
       items.forEach(it => {
         body.insertAdjacentHTML('beforeend', blk(it));
@@ -572,7 +573,7 @@ const Essays = {
       sum.push(body.outerHTML);
       // 2) 노트: 한 장에 2문장 (위·아래). 문장 수가 홀수면 마지막 장 아래는 빈 줄 노트
       const note = [];
-      const half = (it) => it ? `<section class="wr-half"><div class="wr-nh"><span class="wr-no">${it.no}</span><span class="pn-tag">${esc(NP.shortName(it.m) + ' · ' + it.label)}</span></div>
+      const half = (it) => it ? `<section class="wr-half"><div class="wr-nh">${it.no ? `<span class="wr-no">${it.no}</span>` : ''}<span class="pn-tag">${esc(NP.shortName(it.m) + ' · ' + it.label)}</span></div>
           <div class="wr-ko2">${esc(it.ko)}</div><div class="pn-box wr-lines"><div class="wr-trace">${esc(it.en)}</div></div></section>`
         : '<section class="wr-half"><div class="pn-box wr-lines"></div></section>';
       for (let i = 0; i < items.length; i += 2) {
@@ -586,7 +587,7 @@ const Essays = {
           // 영어 문장: 첫 줄(길면 이어지는 줄)에 연하게, 글자 아래가 줄에 닿도록
           const tr = box.querySelector('.wr-trace');
           if (tr) {
-            const f = Math.min(5, g * 0.46);
+            const f = 11.5 * 25.4 / 72;                     // 요약의 영어 문장과 같은 11.5pt (mm)
             tr.style.top = (g / 2 - 1 - 0.375 * f).toFixed(2) + 'mm';
             tr.style.lineHeight = g.toFixed(3) + 'mm';
             tr.style.fontSize = f.toFixed(2) + 'mm';
@@ -666,8 +667,8 @@ const Essays = {
 .pn-sheet .wr-halves{flex:1;min-height:0;display:flex;flex-direction:column;gap:7mm}
 .pn-sheet .wr-half{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
 .pn-sheet .wr-nh{flex-shrink:0;display:flex;align-items:center;gap:2.5mm;margin-bottom:2.5mm}
-.pn-sheet .wr-ko2{flex-shrink:0;font-size:12.5pt;font-weight:700;line-height:1.55;color:var(--pn-ink);margin:0 1mm 3mm;word-break:keep-all;overflow-wrap:anywhere}
-.pn-sheet .wr-trace{position:absolute;left:4mm;right:4mm;font-family:"IBM Plex Sans KR",sans-serif;font-weight:400;color:#97a2ab;overflow-wrap:anywhere}
+.pn-sheet .wr-ko2{flex-shrink:0;font-size:10.5pt;font-weight:700;line-height:1.55;color:var(--pn-ink);margin:0 1mm 3mm;word-break:keep-all;overflow-wrap:anywhere}
+.pn-sheet .wr-trace{position:absolute;left:4mm;right:4mm;font-family:"IBM Plex Sans KR",sans-serif;font-weight:500;color:#97a2ab;overflow-wrap:anywhere}
 `,
   ensureCss() {
     if (document.getElementById('wr-paper-css')) return;
