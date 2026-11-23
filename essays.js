@@ -29,7 +29,8 @@ const Essays = {
   rec(matId) { const r = Store.get('meta', this.rid(matId)); return r && r.kind === 'wrset' ? r : null; },
   groupsOf(matId) { const r = this.rec(matId); return (r && Array.isArray(r.groups)) ? r.groups : []; },
   nSents(groups) { return groups.reduce((n, g) => n + (g.sents || []).length, 0); },
-  count() { return Store.where('meta', r => r.kind === 'wrset' && NP.mat(r.matId)).reduce((n, r) => n + this.nSents(r.groups || []), 0); },
+  // 탭 옆 숫자: 서술형 문장이 등록된 교재 수
+  count() { return Store.where('meta', r => r.kind === 'wrset' && NP.mat(r.matId) && this.nSents(r.groups || []) > 0).length; },
   // 사본을 고쳐서 저장 (하위 항목이 하나도 없으면 기록을 지움)
   edit(matId, fn) {
     const groups = JSON.parse(JSON.stringify(this.groupsOf(matId)));
