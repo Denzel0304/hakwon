@@ -11,7 +11,7 @@
    결석 예정 할일 템플릿(meta): id ABT_…, { kind:'abs_tpl', text, off(결석일 기준 며칠 뒤), importance, memo, remind, checklist, time, createdAt }
    결석 예정 할일의 날짜는 결석일 기준 (숙제 안내 = 결석일 당일, 그 날 수업이 끝나는 시각)
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
-   결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, date(처음 정한 할일 날짜), auto(자동 완료함), createdAt }
+   결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, date(처음 정한 할일 날짜), time(자동으로 정한 시각), auto(자동 완료함), createdAt }
    결석 예정 할일 자동 완료 기록(meta): id = PA_결석예정키, { kind:'pre_auto', absKey, todoIds, createdAt } — 출석·선보강 등으로 바뀌면 완료, 다시 결석이면 되돌림
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴', M: '선보강' };
@@ -2697,7 +2697,10 @@ const Makeups = {
      "홍길동 결석(11/12 수) 후 첫 등원(숙제검사 및 자료배부 등 처리 요망)"(중요도 높음)을 한 번만 만든다.
      · 만든 기록(meta RT_…)이 있으면 다시 만들지 않음 (직접 삭제·날짜 변경해도 그대로) · id가 정해져 있어 PC·모바일 중복 없음
      · 그 날 결석이 모두 보강 완료 → 할일 완료 / 결석이 없어짐(결석 예정 취소·출석으로 바꿈·보강 안 함) → 미완료 할일 삭제 + 기록 삭제
-     · 첫 등원일: 결석 다음 날부터. 공휴일, 그 날 모든 수업이 결석(출석부 결석·결석 예정)인 날은 건너뜀 */
+     · 첫 등원일: 결석 다음 날부터. 공휴일, 그 날 모든 수업이 결석(출석부 결석·결석 예정)인 날은 건너뜀
+       보강 '예정'·'완료'로 보강일을 잡은 날도 오는 날로 본다 (그 학생의 어느 결석 보강이든 · 공휴일이어도) → 시각은 보강 시간(없으면 그 반 정규 시간)
+     · 아직 안 한 할일은 늘 가장 빠른 등원일·시각으로 맞춤 (보강을 잡으면 앞으로, 취소하면 정규 수업일로) · 지난 날짜로 당기지는 않음
+       직접 날짜를 바꾼 할일은 그대로 · 직접 시각을 바꾼 할일은 날짜만 맞춤 (meta.time = 자동으로 정한 시각) */
   RET_DAYS: 120,                  // 첫 등원일을 찾는 범위 (결석 뒤 며칠까지)
   _rtT: null,
   retKey(sid, date) { return sid + '_' + compactDate(date); },
@@ -2710,15 +2713,29 @@ const Makeups = {
       return a ? a !== 'A' && a !== 'M' : !this.preRec(c.id, d, sid);     // 선보강인 날은 그 수업에 오지 않음
     });
   },
-  // 첫 등원일 { date, time(그 날 가장 빠른 수업 시작) } (찾지 못하면 null)
-  retDay(sid, date, hol, today) {
+  // 보강으로 오는 날 { 학생ID: { 날짜: [시각…] } } — 보강 '예정'·'완료' + 보강일 (all: collect() 결과, 보강 안 함은 이미 빠짐)
+  mkVisits(all) {
+    const out = {};
+    all.forEach(o => {
+      const mk = o.mk;
+      if (!mk || (mk.status !== 'plan' && mk.status !== 'done') || !isYmd(mk.date)) return;
+      const t = mk.time || (o.c ? Classes.stuTimeOn(o.c, o.s.id, dowOf(o.l.date)).start : '') || '';   // 보강 시간이 없으면 그 반 정규 시간
+      const m = out[o.s.id] = out[o.s.id] || {};
+      (m[mk.date] = m[mk.date] || []).push(t);
+    });
+    return out;
+  },
+  // 첫 등원일 { date, time(그 날 가장 빠른 수업 시작·보강 시간) } (찾지 못하면 null) · mv: mkVisits() · min: 이 날짜 전은 건너뜀
+  retDay(sid, date, hol, today, mv, min) {
+    const mm = (mv && mv[sid]) || {};
     for (let i = 1; i <= this.RET_DAYS; i++) {
       const d = addDaysStr(date, i);
-      if (Holidays.has(d, hol)) continue;
-      const come = this.comeOn(sid, d, today);
-      if (!come.length) continue;
+      if (min && d < min) continue;
+      const come = Holidays.has(d, hol) ? [] : this.comeOn(sid, d, today);
+      const mt = mm[d] || [];
+      if (!come.length && !mt.length) continue;
       const dw = dowOf(d);
-      return { date: d, time: come.map(c => Classes.stuTimeOn(c, sid, dw).start || '').filter(Boolean).sort()[0] || '' };   // 금요일 개인 시간 반영
+      return { date: d, time: come.map(c => Classes.stuTimeOn(c, sid, dw).start || '').concat(mt).filter(Boolean).sort()[0] || '' };   // 금요일 개인 시간 반영
     }
     return null;
   },
@@ -2853,7 +2870,8 @@ const Makeups = {
     const ps = this.preSync();
     const today = todayStr(), hol = Holidays.map(), iso = new Date().toISOString();
     const groups = {};
-    this.collect().forEach(o => {
+    const all = this.collect(), mv = this.mkVisits(all);   // 보강으로 오는 날
+    all.forEach(o => {
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
@@ -2873,22 +2891,29 @@ const Makeups = {
           Store.put('meta', Object.assign({}, meta, { auto: false }));
           chg++;
         }
-        // 아직 안 한 할일인데 그 날 학생이 오지 않게 됨 → 다음 등원일로 (만들 때 정한 날짜 그대로일 때만)
+        // 아직 안 한 할일 → 가장 빠른 등원일·시각으로 (만들 때·옮길 때 정한 날짜 그대로일 때만 = 직접 날짜를 바꾸지 않음)
+        //   그 날 학생이 오지 않게 됨 → 다음 등원일 / 더 빠른 보강일이 생김 → 그 날로 / 보강 취소 → 정규 수업일로
         const t2 = Store.get('todos', 'TDR_' + k);
-        if (t2 && !t2.done && meta.date && t2.date === meta.date && (Holidays.has(t2.date, hol) || !this.comeOn(g.s.id, t2.date, today).length)) {
-          const r = this.retDay(g.s.id, g.date, hol, today);
-          if (r && r.date !== t2.date) {
-            Store.put('todos', Object.assign({}, t2, { date: r.date, order: TodoX.maxOrder(r.date) + 1, remindDone: false }, TodoX.detailVals(Object.assign({}, t2, { time: r.time }))));
-            Store.put('meta', Object.assign({}, Store.get('meta', mid), { date: r.date }));
-            chg++;
+        if (t2 && !t2.done && meta.date && t2.date === meta.date) {
+          let r = this.retDay(g.s.id, g.date, hol, today, mv);
+          if (r && r.date < today && r.date < t2.date) r = this.retDay(g.s.id, g.date, hol, today, mv, t2.date < today ? t2.date : today);   // 지난 날짜로 당기지는 않음
+          const m2 = Store.get('meta', mid);
+          if (r) {
+            const autoT = !('time' in m2) || (t2.time || '') === (m2.time || '');     // 직접 시각을 바꾸지 않았으면 시각도 맞춤
+            const nt = autoT ? r.time : (t2.time || '');
+            if (r.date !== t2.date || nt !== (t2.time || '')) {
+              Store.put('todos', Object.assign({}, t2, { date: r.date, remindDone: false }, r.date !== t2.date ? { order: TodoX.maxOrder(r.date) + 1 } : {}, TodoX.detailVals(Object.assign({}, t2, { time: nt }))));
+              Store.put('meta', Object.assign({}, m2, { date: r.date, time: nt }));
+              chg++;
+            } else if (!('time' in m2)) Store.put('meta', Object.assign({}, m2, { time: nt }));   // 예전 기록: 자동 시각 기록만 남김
           }
         }
         return;
       }
       if (!g.st.includes('none')) return;
-      const r = this.retDay(g.s.id, g.date, hol, today);
+      const r = this.retDay(g.s.id, g.date, hol, today, mv);
       if (!r) return;
-      Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, date: r.date, createdAt: iso });
+      Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, date: r.date, time: r.time, createdAt: iso });
       if (!t) {
         Store.put('todos', Object.assign({ id: 'TDR_' + k, lessonId: '', classId: '', date: r.date, text: this.retText(g.s, g.date), done: false, createdAt: iso,
           order: TodoX.maxOrder(r.date) + 1, doneAt: '', remindDone: false, retKey: k }, TodoX.detailVals({ importance: 3, time: r.time })));
