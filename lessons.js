@@ -2159,8 +2159,8 @@ const ProgressSum = {
     });
     const r = this.range();
     const wl = (w) => { const a = w.mon < r.from ? r.from : w.mon, z0 = addDaysStr(w.mon, 6), z = z0 > r.to ? r.to : z0; return Classes.md(a) + (a === z ? '' : '~' + Classes.md(z)); };
-    return `<div class="psw-grid" style="--cc:${cc};grid-template-columns:repeat(${Math.max(4, weeks.length)}, minmax(0, 1fr))">${weeks.map((w, k) => `<div class="psw">
-      <div class="psw-h"><b>${k + 1}주차</b><span>${wl(w)}</span><em>${w.items.length}회</em></div>${w.items.join('')}</div>`).join('')}</div>`;
+    return `<div class="psw-scroll"><div class="psw-grid" style="--cc:${cc};--wn:${Math.max(4, weeks.length)};grid-template-columns:repeat(${Math.max(4, weeks.length)}, minmax(0, 1fr))">${weeks.map((w, k) => `<div class="psw">
+      <div class="psw-h"><b>${k + 1}주차</b><span>${wl(w)}</span><em>${w.items.length}회</em></div>${w.items.join('')}</div>`).join('')}</div></div>`;
   },
 
   render(main) {
@@ -2304,6 +2304,9 @@ const ProgressSum = {
 .psc-none { font-size: 13px; color: var(--ink-mute); }
 /* 월별: 주차 상자 (가로로 4~6개) — 안에 그 주 회차 카드가 세로로 */
 .psw-grid { display: grid; gap: 10px; align-items: stretch; }
+/* 좁은 화면: 주차 상자가 너무 좁아지지 않게 (한 주 170px 아래로는 줄이지 않고 가로 스크롤) */
+#main .psw-scroll { overflow-x: auto; padding-bottom: 2px; }
+#main .psw-grid { min-width: calc(var(--wn, 4) * 170px + (var(--wn, 4) - 1) * 10px); }
 .psw { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--tint-strong); border: 1px solid var(--line); }
 .psw-h { display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 0; font-size: 13.5px; }
 .psw-h b { font-weight: 800; color: var(--ink); }

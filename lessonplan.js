@@ -519,8 +519,10 @@ const LessonPlan = {
 .lp-cls.on .lp-has { background: #fff; }
 .lp-ended { display: flex; margin: 10px 4px 0; }
 .lp-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+#main .lp-body { min-width: 500px; }     /* 좁은 화면: 이 폭 아래로는 줄이지 않고 가로 스크롤 */
 .lp-body > .panel, .lp-areas > .panel { margin: 0; }
-.lp-info .lp-ttl { display: flex; align-items: center; gap: 8px; font-size: 18px; margin-bottom: 10px; }
+.lp-info .lp-ttl { display: flex; align-items: center; gap: 8px; font-size: 18px; margin-bottom: 10px; flex-wrap: wrap; }
+.lp-info .lp-ttl > b, .lp-info .lp-ttl > .soft { white-space: nowrap; }
 .lp-info .lp-ttl .soft { font-size: 14px; }
 .lp-books { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
 .lp-books > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

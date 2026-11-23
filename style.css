@@ -323,6 +323,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl.compact td.small, .tbl.compact .small { font-size: 13.5px; }
 .tbl.compact .tag { font-size: 13px; }
 .tbl.compact .badge { font-size: 12.5px; }
+/* 좁은 화면(브라우저를 화면 절반 등으로 줄였을 때): 표 칸이 한두 글자 폭으로 좁아져 세로로 길게 늘어지지 않게
+   글은 낱말 단위로 줄바꿈하고, 긴 글 칸은 일정 폭 아래로 줄이지 않는다 → 표가 넘치면 .tbl-wrap 안에서 가로 스크롤 */
+#main .tbl td { word-break: keep-all; overflow-wrap: break-word; }
+#main .tbl-wrap .tbl td.small:not(.nowrap):not(.num) { min-width: 8em; }
+#main .tbl-wrap .tbl td.pre:not(.nowrap):not(.num) { min-width: 15em; }
 /* 반 관리 표: 학생 칸을 줄이고 앞 칸 사이 간격을 넓힘 */
 .tbl.cls-tbl th:nth-child(1) { width: 22%; }
 .tbl.cls-tbl th:nth-child(2) { width: 25%; }

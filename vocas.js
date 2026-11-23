@@ -63,11 +63,11 @@ const Vocas = (() => {
 .vc-sec{margin-top:3mm}
 .vc-sec table{width:100%;border-collapse:collapse;table-layout:fixed}
 .vc-sec td,.vc-sec th{border:.25mm solid #000;padding:0 1.2mm;white-space:nowrap;overflow:hidden;vertical-align:middle}
-.vc-sec .rt th{height:6mm;font-size:11pt;font-weight:700;background:#e6e6e6;text-align:center}
-.vc-sec .ch th{height:5.5mm;font-size:9.5pt;font-weight:700;background:#f3f3f3;text-align:center}
+.vc-sec .rt th{height:6mm;font-size:11pt;font-weight:700;background:#d6d6d6;text-align:center}
+.vc-sec .ch th{height:5.5mm;font-size:9.5pt;font-weight:700;background:#e2e2e2;text-align:center}
 .vc-sec table,.vc-tinfo{border:.5mm solid #000}
 .vc-sec .mid{border-left:.5mm solid #000}
-.vc-sec td.no{text-align:center}
+.vc-sec td.no{text-align:center;background:#ececec}
 .vc-sec .ch th.no{font-size:8.5pt;padding:0 .4mm}
 .vc-sec td.gap,.vc-sec th.gap{border:none;background:none}
 .vc-sec td.w{font-weight:600}
@@ -76,13 +76,13 @@ const Vocas = (() => {
 .vc-sec .c.two{white-space:normal;word-break:keep-all;overflow-wrap:anywhere;line-height:calc((var(--rh) - .35mm) / 2)}
 .vc-tinfo{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}
 .vc-tinfo th,.vc-tinfo td{border:.25mm solid #000;height:8mm;padding:0 2mm;font-size:11pt;white-space:nowrap;overflow:hidden}
-.vc-tinfo th{background:#eeeeee;font-weight:700;text-align:center}
+.vc-tinfo th{background:#dedede;font-weight:700;text-align:center}
 .vc-tinfo td.sc{text-align:right}
 .vc-tsec .ch th{height:6.5mm;font-size:10.5pt}
 .vc-tsec td.q{font-weight:600}
 .vc-tsec td.a{color:#000}
 .vc-page.vc-key .vc-tsec td.a{font-weight:700}
-.vc-sec .rt th,.vc-sec .ch th,.vc-tinfo th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.vc-sec .rt th,.vc-sec .ch th,.vc-sec td.no,.vc-tinfo th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 `;
   function ensureCss() {
     if (document.getElementById('vc-paper-css')) return;

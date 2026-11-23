@@ -1296,7 +1296,7 @@ document.addEventListener('change', (e) => {
 /* 윗줄: 전체 인원·학년별·등록 예정·이번 달 퇴원·반이동 4개 (같은 높이 = 가장 긴 카드에 맞춤, 아주 길 때만 카드 안 스크롤)
    아랫줄: 학교별 막대 그래프 (가로 전체) */
 .cls-sum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-@media (max-width: 900px) { .cls-sum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1250px) { .cls-sum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .cls-sum-card { display: flex; flex-direction: column; min-height: 230px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(30, 70, 105, .04); }
 .cls-sum-card > .lbl { flex: none; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 10px; }
 .cls-sum-card > .lbl .cnt { color: var(--accent-ink); margin-left: 2px; }
