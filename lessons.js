@@ -1971,6 +1971,24 @@ const ProgressBook = {
   npSel: {},            // 반별로 고른 시험 { 반ID: [시험ID] } (없으면 오늘 기준 자동)
   gpOn: false,          // 비내신 요약 보기
 
+  /* 메뉴로 열 때 고를 반 = 지금 시각 기준 (오늘 수업하는 진행 중인 반만 · 공휴일·일지 건너뛰기(휴강)한 반은 뺌)
+     수업 중 → 그 반 (겹치면 늦게 시작한 반 = 붙어 있는 두 반의 경계 시각엔 뒷반) / 쉬는 시간 → 다음 반
+     첫 수업 전 · 마지막 수업 후 · 수업 없는 날 → '' (선택 안 함)
+     classes: 고를 반 목록 (없으면 전체 반 · 단어 기록은 단어 시험 보는 반만 넘김) */
+  nowClass(classes) {
+    const d = new Date(), today = todayStr(), dow = dowOf(today), m = d.getHours() * 60 + d.getMinutes();
+    if (Holidays.has(today)) return '';
+    const list = (classes || Store.all('classes')).filter(c => c.active !== false && (c.days || []).includes(dow) && !(Classes.startOf(c) > today) && !Lessons.isSkipped(c.id, today))
+      .map(c => { const t = Classes.timeOn(c, dow); const s = t.start ? toMin(t.start) : NaN; return { id: c.id, s, e: s + (+t.duration || 0) }; })
+      .filter(o => !isNaN(o.s));
+    if (!list.length) return '';
+    const cur = list.filter(o => o.s <= m && m < o.e).sort((a, b) => b.s - a.s)[0];
+    if (cur) return cur.id;
+    if (m < Math.min(...list.map(o => o.s)) || m >= Math.max(...list.map(o => o.e))) return '';
+    const next = list.filter(o => o.s > m).sort((a, b) => a.s - b.s)[0];          // 쉬는 시간 → 다음 반
+    return next ? next.id : '';
+  },
+
   render(main, p) {
     if (typeof Exams !== 'undefined') Exams.syncDates();   // 시험 기간을 일정 탭의 시험 일정에 맞춤 (내신 요약 D-day·자동 선택용)
     // 진도 탭은 진행 중인 반만 (종료된 반은 어떤 경로로 와도 보이지 않음 → '선택 안 함')

@@ -320,7 +320,7 @@ const StartRemind = {
     const p = b.dataset.page;
     if (p === 'lessons') App.go('lessons', { date: App.selDate });
     else {
-      if (p === 'progress') { ProgressBook.classId = ''; ProgressSum.classId = ''; }   // 메뉴로 열면 진도는 '선택 안 함'에서 시작 (진도 요약은 '전체')
+      if (p === 'progress') { ProgressBook.classId = ProgressBook.nowClass(); ProgressSum.classId = ''; }   // 메뉴로 열면 진도는 지금 시각의 반(없으면 '선택 안 함')에서 시작 (진도 요약은 '전체')
       App.go(p, {});
     }
   });

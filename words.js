@@ -190,19 +190,11 @@ const WordBook = {
 
   /* ---------- 반 고르기 ----------
      단어 시험을 보지 않는 반(설정 meta WCFG { kind:'wcfg', off:[반ID] })은 목록·PDF·다음 수업 계산에서 뺀다.
-     화면을 열면 지금 시각에 수업 중인 반을 자동으로 고른다 (시작 ≤ 지금 < 끝, 붙어 있는 두 반은 경계 시각에 뒷반). 없으면 '선택 안 함' */
+     화면을 열면 지금 시각의 반을 자동으로 고른다 — 진도 탭과 같은 규칙 (ProgressBook.nowClass):
+     수업 중 → 그 반 (붙어 있는 두 반은 경계 시각에 뒷반) / 쉬는 시간 → 다음 반 / 첫 수업 전·마지막 수업 후·수업 없는 날 → '선택 안 함' */
   cfg() { const r = Store.get('meta', 'WCFG'); return r && r.kind === 'wcfg' ? r : null; },
   isOff(cid) { const r = this.cfg(); return !!(r && (r.off || []).includes(cid)); },
-  autoClass(list) {
-    const now = new Date(), today = todayStr(), dow = dowOf(today), m = now.getHours() * 60 + now.getMinutes();
-    const hit = list.filter(c => c.active !== false && (c.days || []).includes(dow) && !(Classes.startOf(c) > today)).filter(c => {
-      const t = Classes.timeOn(c, dow);
-      if (!t.start) return false;
-      const s = toMin(t.start);
-      return s <= m && m < s + t.duration;
-    }).sort((a, b) => toMin(Classes.timeOn(b, dow).start) - toMin(Classes.timeOn(a, dow).start));    // 겹치면 늦게 시작한 반
-    return hit[0] ? hit[0].id : '';
-  },
+  autoClass(list) { return ProgressBook.nowClass(list); },     // list: 단어 시험 보는 반만
   // 고른 반들만 보이게: 학생은 고른 반 중 한 곳에 한 번만 (원래 표시 반이 골라져 있으면 그 반, 아니면 고른 반 중 앞선 반)
   pick(groups, ids) {
     const set = new Set(ids);
