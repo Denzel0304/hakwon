@@ -65,6 +65,19 @@ function eventShort(ev) {
   const tt = NO_TITLE[evType(ev)] ? '' : ev.title;                          // 직전 보강·영어 시험은 제목 없음
   return EVENT_TYPES[evType(ev)].label + (tg ? ' ' + tg : '') + (tt ? ' · ' + tt : '');
 }
+// 종류 라벨 + 글자 (날짜 요약의 다가오는 일정·일정 / 큰 달력이 같은 것을 씀)
+//   라벨: 시험 · 기타 · 영어(영어 시험) · 직보(직전 보강) / 공휴일은 라벨 없음
+//   글자: 라벨에 이미 있는 종류 이름은 빼서 같은 말이 두 번 나오지 않게
+const EV_TAG = { exam: ['red', '시험'], etc: ['purple', '기타'], weekend: ['orange', '영어'], pre: ['green', '직보'] };
+function evTagHtml(ev, extra) { const g = EV_TAG[evType(ev)]; return g ? `<span class="badge ${g[0]}${extra ? ' ' + extra : ''}">${g[1]}</span> ` : ''; }
+function evText(ev) {
+  const ty = evType(ev);
+  if (NO_TITLE[ty]) return eventTarget(ev) || EVENT_TYPES[ty].label;
+  // 제목 없는 시험 일정: '시험' 라벨이 있으므로 '금천고2 시험' 대신 '금천고2 기말'
+  if (ty === 'exam' && !ev.title) return [eventTarget(ev), EXAM_KIND[ev.kind] || ''].filter(Boolean).join(' ') || EVENT_TYPES.exam.label;
+  const t = eventShort(ev), lb = EVENT_TYPES.etc.label;
+  return ty === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t;
+}
 function eventTime(ev) { return ev.start ? ev.start + (ev.end ? '~' + ev.end : '') : ''; }
 function evEnd(ev) { return isYmd(ev.endDate) && ev.endDate > ev.date ? ev.endDate : ev.date; }
 function isRange(ev) { return evEnd(ev) !== ev.date; }
@@ -297,14 +310,8 @@ const BigCal = {
     const evs = Store.all('events').filter(ev => isYmd(ev.date) && f[evType(ev)]);
     const ranges = evs.filter(isRange).sort((a, b) => ko(a.date, b.date) || ko(evEnd(b), evEnd(a)));
     const singles = evs.filter(ev => !isRange(ev));
-    // 달력에 쓰는 이름: 직전 보강·영어 시험·기타 일정은 종류 이름('기타 일정' 등)을 빼고 대상·제목만 (색으로 구분)
-    //   대상·제목이 모두 없으면 종류 이름을 그대로 쓴다
-    const calText = (ev) => {
-      const t = evType(ev);
-      if (t !== 'pre' && t !== 'weekend' && t !== 'etc') return eventShort(ev);
-      const tg = eventTarget(ev);
-      return [tg, NO_TITLE[t] ? '' : ev.title].filter(Boolean).join(' · ') || EVENT_TYPES[t].label;   // 직전 보강·영어 시험은 제목 없음
-    };
+    // 달력에 쓰는 이름: 날짜 요약(다가오는 일정)과 같은 라벨(시험·기타·영어·직보) + 같은 글자 (evTagHtml · evText)
+    const calHtml = (ev) => evTagHtml(ev, 'bc-tag') + esc(evText(ev));
     const colors = barColorMap(ranges.filter(ev => evEnd(ev) >= ymd(start) && ev.date <= ymd(addDays(start, weeks * 7 - 1))));
 
     let h = `<div class="page-head">
@@ -339,18 +346,17 @@ const BigCal = {
         if (i === 6) cls.push('sat');
         if (k === today) cls.push('today');
         const items = singles.filter(ev => ev.date === k).sort((a, b) => ko(a.start, b.start)).map(ev => {
-          const txt = (ev.start ? ev.start + ' ' : '') + calText(ev);
           const tip = (ev.start ? ev.start + ' ' : '') + eventShort(ev);       // 마우스를 올리면 종류까지 전체 이름
-          return `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}" title="${esc(tip)}">${esc(txt)}</span>`;
+          return `<span class="bc-item ${evType(ev)}" data-ev="${ev.id}" title="${esc(tip)}">${ev.start ? esc(ev.start) + ' ' : ''}${calHtml(ev)}</span>`;
         }).join('');
         h += `<div class="${cls.join(' ')}" data-date="${k}"><span class="n">${d.getDate()}</span><div class="bc2-items">${items}</div></div>`;
       });
       segs.forEach(sg => {
         const col = colors[barKey(sg.ev)];
-        const label = (sg.contL ? '→ ' : '') + calText(sg.ev) + (sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : '');
+        const label = (sg.contL ? '→ ' : '') + calHtml(sg.ev) + esc((sg.ev.start && !sg.contL ? ' ' + sg.ev.start : '') + (sg.contR ? '  →' : ''));
         h += `<div class="bc2-bar ${sg.contL ? 'cont-l' : 'tl'} ${sg.contR ? 'cont-r' : 'tr'}" data-ev="${sg.ev.id}"
           style="left:calc(${sg.c0 / 7 * 100}% + 3px);width:calc(${(sg.c1 - sg.c0 + 1) / 7 * 100}% - 6px);top:calc(var(--bar-top) + ${sg.ln} * var(--bar-h));background:${col}"
-          title="${esc(eventShort(sg.ev) + ' (' + eventRangeLabel(sg.ev) + ')')}">${esc(label)}</div>`;
+          title="${esc(eventShort(sg.ev) + ' (' + eventRangeLabel(sg.ev) + ')')}">${label}</div>`;
       });
       h += '</div>';
     }
@@ -440,18 +446,8 @@ const DayPage = {
       if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
       return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
     };
-    // 종류 배지: 시험 → '시험', 기타 일정 → '기타', 영어 시험 → '영어', 직전 보강 → '직보'
-    //   (기타·영어·직보는 글자 앞의 종류 이름을 빼고 배지로. 직전 보강·영어 시험은 학교·학년만 → 글자가 두 번 나오지 않게)
-    const EV_TAG = { exam: ['red', '시험'], etc: ['purple', '기타'], weekend: ['orange', '영어'], pre: ['green', '직보'] };
-    const evTag = (ev) => { const g = EV_TAG[evType(ev)]; return g ? `<span class="badge ${g[0]}">${g[1]}</span> ` : ''; };
-    const evText = (ev) => {
-      const ty = evType(ev);
-      if (NO_TITLE[ty]) return eventTarget(ev) || EVENT_TYPES[ty].label;
-      // 제목 없는 시험 일정: '시험' 배지가 있으므로 '금천고2 시험' 대신 '금천고2 기말'
-      if (ty === 'exam' && !ev.title) return [eventTarget(ev), EXAM_KIND[ev.kind] || ''].filter(Boolean).join(' ') || EVENT_TYPES.exam.label;
-      const t = eventShort(ev), lb = EVENT_TYPES.etc.label;
-      return ty === 'etc' && t.startsWith(lb) ? t.slice(lb.length).replace(/^ (· )?/, '') || lb : t;
-    };
+    // 종류 배지 + 글자: 공용 함수 evTagHtml · evText (큰 달력과 같은 표기)
+    const evTag = (ev) => evTagHtml(ev);
     const evRow = (ev, dl) => `<div class="list-item click" data-ev="${ev.id}"><span class="when">${isRange(ev) ? esc(eventRangeLabel(ev)) : (esc(eventTime(ev)) || '시간 없음')}</span>
       <div class="what">${evTag(ev)}<b>${esc(evText(ev))}</b>${dl === true ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted">${esc(eventTime(ev))}</span>` : ''}${ev.memo ? `<div class="pre small soft">${esc(ev.memo)}</div>` : ''}</div></div>`;
 

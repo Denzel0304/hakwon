@@ -717,6 +717,9 @@ body.ttp-drag, body.ttp-drag * { cursor: var(--ttp-cur, move) !important; user-s
 .bc2 .bc2-items .bc-item.weekend { --c: var(--weekend); }
 .bc2 .bc2-items .bc-item.etc { --c: var(--etc); }
 .bc2 .bc2-items .bc-item.holiday { --c: var(--danger); }
+/* 큰 달력 종류 라벨 (시험·기타·영어·직보 — 날짜 요약의 다가오는 일정과 같은 배지를 작게) */
+.bc2 .bc-tag { font-size: 11px; padding: 0 5px; line-height: 16px; margin-right: 1px; vertical-align: 1px; text-shadow: none; }
+.bc2-bar .bc-tag { background: rgba(255, 255, 255, .92); }
 .bc2-bar {
   position: absolute; height: calc(var(--bar-h) - 4px); line-height: calc(var(--bar-h) - 4px);
   color: #fff; font-size: 12.5px; font-weight: 700; padding: 0 20px; border-radius: 5px; text-align: center;
