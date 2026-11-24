@@ -316,6 +316,7 @@ const MMakeups = {
    달력: PC 큰 달력처럼 기간 일정은 화살표 띠, 하루 일정은 글자로 표시 · 좌우 스와이프로 달 이동
    · 오른쪽 아래 + → 일정 추가 / 공휴일 추가 (달력: 고른 날짜, 목록: 오늘)
    · 달력 아래·목록의 일정을 누르면 수정 창 (삭제 포함, 공휴일은 공휴일 창)
+   · 달력 날짜: 일정 없는 날은 반응 없음 / 1개면 바로 일정 창 / 여러 개면 그날 일정 목록 창 → 누르면 일정 창
    · 목록: PC 일정 탭처럼 올해 / 이전 해
    ========================================================= */
 const MEvents = {
@@ -434,8 +435,7 @@ const MEvents = {
       h += '</div>';
     }
     h += '</div>';
-    const daysEv = evs.filter(ev => eventDates(ev).includes(this.sel))
-      .sort((a, b) => this.ORDER.indexOf(evType(a)) - this.ORDER.indexOf(evType(b)) || ko(a.start, b.start) || ko(eventShort(a), eventShort(b)));
+    const daysEv = this.dayEvents(this.sel);
     h += `<div class="m-sec-t">${esc(fmtDate(this.sel))}${this.sel === today ? ' <span class="badge">오늘</span>' : ''}</div>`;
     h += daysEv.length ? `<div class="m-evs">${daysEv.map(ev => this.evRow(ev, false)).join('')}</div>` : '<div class="panel"><div class="empty">이 날은 일정이 없습니다.</div></div>';
     return h;
@@ -486,11 +486,39 @@ const MEvents = {
     });
   },
 
+  // 그날 걸친 일정 (기간 일정 포함 · 종류 필터 적용) — 달력 아래 목록과 날짜 팝업이 같이 씀
+  dayEvents(d) {
+    return Store.all('events').filter(ev => isYmd(ev.date) && this.okType(ev) && eventDates(ev).includes(d))
+      .sort((a, b) => this.ORDER.indexOf(evType(a)) - this.ORDER.indexOf(evType(b)) || ko(a.start, b.start) || ko(eventShort(a), eventShort(b)));
+  },
+
   // 달력에서 날짜 고르기 (다른 달의 날짜면 그 달로 넘어감)
+  //   · 일정이 없는 날짜: 아무 반응 없음
+  //   · 일정 1개: 바로 그 일정 창 (보기·수정·삭제) / 여러 개: 그날 일정 목록 창 → 누르면 그 일정 창
   pickDay(d) {
+    const list = this.dayEvents(d);
+    if (!list.length) return;
     this.sel = d;
     if (this.sel.slice(0, 7) !== this.month) { this._dir = this.sel > this.month ? 1 : -1; this.month = this.sel.slice(0, 7); }
     App.render();
+    if (list.length === 1) EventModal.open(list[0].id);
+    else this.dayPop(d, list);
+  },
+  // 그날 일정 목록 창: 항목을 누르면 목록 창을 닫고 그 일정 창(EventModal · 공휴일은 공휴일 창)을 연다
+  dayPop(d, list) {
+    Modal.open({
+      title: `${fmtDate(d)} 일정 ${list.length}개`, size: 'sm', autofocus: false,
+      body: `<div class="m-evs">${list.map(ev => this.evRow(ev, false)).join('')}</div>`,
+      onMount: (b, m) => {
+        b.addEventListener('click', (e) => {
+          const r = e.target.closest('[data-evo]');
+          if (!r) return;
+          m.close();
+          EventModal.open(r.dataset.evo);
+        });
+      },
+      buttons: [{ text: '닫기' }],
+    });
   },
 
   bind(main) {
@@ -515,7 +543,7 @@ const MEvents = {
         this.sel = todayStr(); this.month = this.sel.slice(0, 7);
         App.render(); return;
       }
-      // 달력 안의 일정 글자·기간 띠를 누르면 그 날짜로 이동 → 달력 아래에 그날 일정이 보임 (상세 창 없음)
+      // 달력 안의 일정 글자·기간 띠를 누르면 그 날짜를 누른 것과 같음 (pickDay: 일정 창 또는 그날 일정 목록 창)
       const ev = e.target.closest('[data-ev]');
       if (ev) {
         let d = '';
@@ -550,7 +578,8 @@ const MEvents = {
 /* =========================================================
    할일 — PC 날짜 화면(DayPage)과 같은 내용 · 같은 기능
    위: 작은 달력 (할일 · 밀린 할일 · 일지 미작성 점, 공휴일은 빨간 날짜, 좌우 스와이프로 달 이동)
-   아래: 고른 날짜의 할일(+ 할일 검색) → (오늘이면) 밀린 할일 → 수업(일지 쓰기·건너뛰기) → 시험 일정 · 일정 · 다가오는 일정(2주)
+   아래: 고른 날짜의 할일(+ 할일 검색) → (오늘이면) 밀린 할일 → 시험 일정 · 일정 · 다가오는 일정(2주) → 수업(일지 쓰기·건너뛰기)
+   일정 표기(배지·글자·시간·남은 날·메모)는 PC 날짜 요약과 같음
    목록·추가 창·반복 계산은 PC와 같은 todo-ext.js(TodoX), 수업일지는 PC 수업일지 화면(Lessons), 일정은 PC 일정 창(EventModal)
    · PC의 '학교 입력이 필요한 학생'(진급 처리)은 PC 전용 자동 처리라 모바일에는 없음
    ========================================================= */
@@ -631,17 +660,24 @@ const MTodos = {
       if (n === 0) return ` <span class="badge orange">${isToday ? '오늘' : '당일'}</span>`;
       return evEnd(ev) >= date ? ' <span class="badge orange">진행 중</span>' : '';
     };
-    const evRow = (ev, when, dl) => `<div class="m-ev click ${evEnd(ev) < today ? 'past' : ''}" data-evo="${ev.id}">
-      <span class="badge ${MEvents.TCLS[evType(ev)]}">${MEvents.tagLabel(ev)}</span>
-      <span class="m-ev-b"><b>${esc(MEvents.rowText(ev))}${dl ? dLeft(ev) : ''}</b>
+    // 종류 배지 + 글자 + 시간 · 남은 날 · 메모: PC 날짜 요약(DayPage)과 같은 표기 (공용 함수 evTagHtml · evText)
+    //   memo: 시험 일정 · 일정은 메모 표시 / 다가오는 일정은 PC처럼 메모 없음
+    const evRow = (ev, when, dl, memo) => `<div class="m-ev click" data-evo="${ev.id}">
+      ${evTagHtml(ev)}<span class="m-ev-b"><b>${esc(evText(ev))}${dl ? dLeft(ev) : ''}${isRange(ev) && ev.start ? ` <span class="small muted" style="font-weight:400">${esc(eventTime(ev))}</span>` : ''}</b>
         <span class="small soft">${esc(when)}</span>
-        ${ev.memo ? `<span class="small muted pre">${esc(ev.memo)}</span>` : ''}</span></div>`;
-    const whenOf = (ev) => isRange(ev) ? eventRangeLabel(ev) + (ev.start ? ' ' + eventTime(ev) : '') : (eventTime(ev) || '시간 없음');
+        ${memo && ev.memo ? `<span class="small soft pre">${esc(ev.memo)}</span>` : ''}</span></div>`;
+    const whenOf = (ev) => isRange(ev) ? eventRangeLabel(ev) : (eventTime(ev) || '시간 없음');
+
+    // 순서: 시험 일정 → 일정 → 다가오는 일정 → 수업 (수업은 맨 아래)
+    let h = '';
+    if (o.exam.length) h += `<div class="m-sec-t">시험 일정</div><div class="m-evs">${o.exam.map(ev => evRow(ev, whenOf(ev), true, true)).join('')}</div>`;
+    if (evs.length) h += `<div class="m-sec-t">일정</div><div class="m-evs">${evs.map(ev => evRow(ev, whenOf(ev), false, true)).join('')}</div>`;
+    if (upcoming.length) h += `<div class="m-sec-t">다가오는 일정<span class="small soft">2주</span></div><div class="m-evs">${upcoming.map(ev => evRow(ev, isRange(ev) ? eventRangeLabel(ev) : `${fmtMD(ev.date)} ${ev.start || ''}`.trim(), true, false)).join('')}</div>`;
 
     // 수업 (PC와 같은 상태 표시 · 일지 건너뛰기 / 취소 · 남은 일지 모두 건너뛰기)
     const unwritten = classes.filter(c => !Lessons.isSaved(c.id, date) && !Lessons.isSkipped(c.id, date));
     const hol = Holidays.name(date);
-    let h = `<div class="m-sec-t">수업<span class="small soft">${DOW[dowOf(date)]}요일</span><span class="m-grow"></span>${!hol && unwritten.length > 1 ? '<button type="button" class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
+    h += `<div class="m-sec-t">수업<span class="small soft">${DOW[dowOf(date)]}요일</span><span class="m-grow"></span>${!hol && unwritten.length > 1 ? '<button type="button" class="btn sm ghost" data-skipall title="이 날 아직 쓰지 않은 수업 일지를 모두 건너뜁니다">남은 일지 모두 건너뛰기</button>' : ''}</div>`;
     h += '<div class="panel m-cls">';
     if (hol && classes.length) h += `<div class="hol-note">공휴일(${esc(hol)})입니다. 수업이 없어 일지를 쓰지 않아도 됩니다.</div>`;
     h += classes.length ? `<div class="${hol ? 'hol-dim' : ''}">` + classes.map(c => {
@@ -658,9 +694,6 @@ const MTodos = {
           <span class="m-grow"></span>${les || (hol && !sk) ? '' : sk ? `<button type="button" class="btn sm ghost" data-unskip="${c.id}">건너뛰기 취소</button>` : `<button type="button" class="btn sm ghost" data-skip="${c.id}">일지 건너뛰기</button>`}</div></div>`;
     }).join('') + '</div>' : '<div class="empty">이 요일에 정규 수업이 없습니다.</div>';
     h += '</div>';
-    if (o.exam.length) h += `<div class="m-sec-t">시험 일정</div><div class="m-evs">${o.exam.map(ev => evRow(ev, whenOf(ev), true)).join('')}</div>`;
-    if (evs.length) h += `<div class="m-sec-t">일정</div><div class="m-evs">${evs.map(ev => evRow(ev, whenOf(ev), false)).join('')}</div>`;
-    if (upcoming.length) h += `<div class="m-sec-t">다가오는 일정<span class="small soft">2주</span></div><div class="m-evs">${upcoming.map(ev => evRow(ev, isRange(ev) ? eventRangeLabel(ev) + (ev.start ? ' ' + eventTime(ev) : '') : `${fmtMD(ev.date)} ${ev.start || ''}`.trim(), true)).join('')}</div>`;
     return h;
   },
 

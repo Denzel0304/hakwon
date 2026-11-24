@@ -14,7 +14,7 @@
 <body class="m-body">
 
 <!-- 로그인 -->
-<div id="mg-login" class="login-overlay active">
+<div id="mg-login" class="login-overlay">
   <div class="login-box">
     <div class="login-title">학원 관리</div>
     <div class="login-sub">PIN 6자리를 입력하세요</div>
@@ -24,8 +24,10 @@
   </div>
 </div>
 <script>
-  // 저장된 접속 키가 있으면(자동 로그인) 로그인 화면을 그리기 전에 바로 앱 화면으로 시작한다. (config.js의 LS_AK 'mg77_ak'와 같아야 함)
-  try { if (localStorage.getItem('mg77_ak')) { document.getElementById('mg-login').classList.remove('active'); document.body.classList.add('app-on'); } } catch (e) {}
+  // 로그인 화면은 처음에 숨겨 둔 채로 시작한다 → 저장된 접속 키가 있으면(자동 로그인) 로그인 화면이 한 번도 그려지지 않고 바로 앱 화면
+  // 키가 없을 때만 로그인 화면을 켠다. (config.js의 LS_AK 'mg77_ak'와 같아야 함 / 키가 무효면 기존처럼 m-app.js가 로그인 화면으로 돌림)
+  try { if (localStorage.getItem('mg77_ak')) document.body.classList.add('app-on'); else document.getElementById('mg-login').classList.add('active'); }
+  catch (e) { document.getElementById('mg-login').classList.add('active'); }
 </script>
 
 <!-- 앱 -->

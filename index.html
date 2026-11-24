@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
   // 휴대폰으로 접속하면 모바일 전용 화면으로 이동 (PC·태블릿은 그대로)
-  if (/iPhone|iPod|Android.+Mobile|Windows Phone/i.test(navigator.userAgent)) location.replace('index-mobile.html');
+  // 이동하는 동안 이 PC용 화면(로그인 화면 포함)이 잠깐 비치지 않도록 화면을 숨겨 둔다 (휴대폰에서만)
+  if (/iPhone|iPod|Android.+Mobile|Windows Phone/i.test(navigator.userAgent)) { document.documentElement.style.visibility = 'hidden'; location.replace('index-mobile.html'); }
 </script>
 <title>학원 관리</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
