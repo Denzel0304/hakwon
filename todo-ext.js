@@ -659,7 +659,7 @@ const TodoX = {
         <div class="tx-r"><span class="tx-lb">중요도</span><div class="tx-imps">${TX_IMP.map((t, i) => `<button type="button" class="tx-impb imp-${i}${st.importance === i ? ' on' : ''}" data-imp="${i}">${t}</button>`).join('')}</div></div>
         <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
         <div class="tx-r"><span class="tx-lb">날짜</span>${occ ? `<span>${esc(fmtDate(it.date))} <span class="small muted">반복 회차</span></span>` : `<input type="date" data-f="date" value="${esc(st.date)}">`}</div>
-        <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span>
+        <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${+st.remind || ''}" placeholder="0" class="tx-num"><span class="small soft">일 전</span>
           ${lesson ? '' : `<button type="button" class="btn sm tx-repb${st.repeat ? ' on' : ''}" data-rep>🔁 <span data-replb>${esc(this.repLabel(st.repeat) || '반복')}</span></button>`}</div>
         <div class="tx-r"><span class="tx-lb">추가</span><label class="chk"><input type="checkbox" data-cltg ${st.useCl ? 'checked' : ''}>체크리스트</label><label class="chk"><input type="checkbox" data-timetg ${st.useTime ? 'checked' : ''}>시간</label></div>
         <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}>${pc ? `<input type="time" data-tt step="300" value="${pad(th)}:${pad(tm - tm % 5)}">` : `<select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
@@ -877,7 +877,7 @@ const TodoX = {
       <div class="tx-detail">
         <div class="tx-r"><span class="tx-lb">중요도</span><div class="tx-imps">${TX_IMP.map((t, i) => `<button type="button" class="tx-impb imp-${i}${st.importance === i ? ' on' : ''}" data-imp="${i}">${t}</button>`).join('')}</div></div>
         <div class="tx-r top"><span class="tx-lb">메모</span><div style="flex:1;min-width:0"><textarea data-f="memo" rows="3" placeholder="메모 (선택사항)">${esc(st.memo)}</textarea></div></div>
-        <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${st.remind}" class="tx-num"><span class="small soft">일 전</span></div>
+        <div class="tx-r"><span class="tx-lb">상기</span><input type="number" data-f="remind" min="0" max="30" value="${+st.remind || ''}" placeholder="0" class="tx-num"><span class="small soft">일 전</span></div>
         <div class="tx-r"><span class="tx-lb">추가</span><label class="chk"><input type="checkbox" data-cltg ${st.checklist.length ? 'checked' : ''}>체크리스트</label><label class="chk"><input type="checkbox" data-timetg ${st.useTime ? 'checked' : ''}>시간</label></div>
         <div class="tx-timebox" ${st.useTime ? '' : 'hidden'}>${typeof FieldPick !== 'undefined' && FieldPick.on() ? `<input type="time" data-tt step="300" value="${pad(th)}:${pad(tm - tm % 5)}">` : `<select data-th>${H.map(h => `<option value="${h}" ${h === th ? 'selected' : ''}>${h}</option>`).join('')}</select>시
           <select data-tm>${MI.map(x => `<option value="${x}" ${x === (tm - tm % 5) ? 'selected' : ''}>${pad(x)}</option>`).join('')}</select>분`}</div>
