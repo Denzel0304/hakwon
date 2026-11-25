@@ -25,7 +25,8 @@ const SmsPage = {
   del: new Set(),         // 삭제하려고 체크한 묶음(batch_id)
   deleting: false,
 
-  TOKENS: ['{이름}', '{성뺀이름}', '{반}', '{날짜}'],
+  TOKENS: ['{이름}', '{반}'],
+  SURNAME2: ['남궁', '황보', '제갈', '선우', '독고', '사공', '서문', '동방', '어금', '망절', '장곡', '소봉', '공손'],   // 두 글자 성 (이름이 4글자 이상일 때만 적용)
   PAGE: 1000,             // 기록 한 번에 불러오는 줄 수
   GAS_CHUNK: 200,         // GAS 한 번 호출에 보내는 건수
 
@@ -43,14 +44,33 @@ const SmsPage = {
     this.activeClasses().forEach(c => Classes.rosterAt(c.id, t).forEach(s => { (m[s.id] = m[s.id] || []).push(c); }));
     return m;
   },
-  givenName(n) { n = String(n || '').trim(); return n.length >= 3 ? n.slice(1) : n; },
-  todayLabel() { const d = new Date(); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; },
+  // 성 뺀 이름: 3글자 → 첫 글자 뺌 (홍길동 → 길동) · 4글자 이상 → 두 글자 성(남궁 등)이면 두 글자, 아니면 한 글자 뺌 (남궁민수 → 민수, 김고우리 → 고우리) · 2글자 이하 → 그대로
+  givenName(n) {
+    n = String(n || '').trim();
+    if (n.length >= 4 && this.SURNAME2.includes(n.slice(0, 2))) return n.slice(2);
+    return n.length >= 3 ? n.slice(1) : n;
+  },
+  // 이름 + 조사: 받침이 있으면 '이'를 붙여 부름 (윤성 → 윤성이를 · 윤성이에게 / 윤수 → 윤수를 · 윤수에게)
+  //  - 조사 없이 {이름}만 → 윤성이 / 윤수
+  //  - 부르는 말 아·야 → 윤성아 / 윤수야
+  //  - 받침에 따라 모양이 바뀌는 조사는 받침 없는 형태로 맞춤 (을→를, 은→는, 과→와, 으로→로, 에요→예요, 었→였 …)
+  //  - 직접 '이'를 붙여 쓴 경우({이름}이가, {이름}이랑)는 '이'가 두 번 붙지 않게 정리 · {이름}이 → 윤성이 / 윤수
+  //  - 마지막 글자가 한글이 아니면 쓴 그대로
+  nameWithJosa(name, rest) {
+    const last = name.slice(-1), code = last.charCodeAt(0);
+    if (!(code >= 0xAC00 && code <= 0xD7A3)) return name + rest;
+    const batchim = (code - 0xAC00) % 28 !== 0;
+    if (rest === '아' || rest === '야') return name + (batchim ? '아' : '야');
+    if (rest.startsWith('이')) rest = rest.slice(1);
+    const MAP = [['으로', '로'], ['에요', '예요'], ['을', '를'], ['은', '는'], ['과', '와'], ['었', '였']];
+    for (const [a, b] of MAP) if (rest.startsWith(a)) { rest = b + rest.slice(a.length); break; }
+    return name + (batchim ? '이' : '') + rest;
+  },
   fill(text, s, cmap) {
     const cls = (cmap[s.id] || []).map(c => c.name).join(', ');
-    return text.split('{이름}').join(s.name.trim())
-      .split('{성뺀이름}').join(this.givenName(s.name))
-      .split('{반}').join(cls)
-      .split('{날짜}').join(this.todayLabel());
+    const given = this.givenName(s.name);
+    return text.replace(/\{이름\}([가-힣]*)/g, (m, rest) => this.nameWithJosa(given, rest))
+      .split('{반}').join(cls);
   },
   // 한글 2byte, 영문·숫자 1byte 기준 / 한 통 약 90byte
   bytes(t) { let b = 0; for (const ch of String(t || '')) b += ch.charCodeAt(0) < 128 ? 1 : 2; return b; },
@@ -137,7 +157,7 @@ const SmsPage = {
         </div>
         <textarea data-text rows="9" placeholder="보낼 내용을 입력하세요. {이름} 등은 학생마다 바뀌어 들어갑니다.">${esc(this.text)}</textarea>
         <div class="small soft" id="sx7-cnt" style="margin-top:4px">${this.cntHtml()}</div>
-        <p class="small muted" style="margin:6px 0 0">{이름} 홍길동 · {성뺀이름} 길동 · {반} 다니는 반 이름 · {날짜} ${esc(this.todayLabel())}</p>
+        <p class="small muted" style="margin:6px 0 0">{이름} 성 뺀 이름 · 조사는 자동으로 맞춤 ({이름}를 → 윤성이를 / 윤수를) · {반} 다니는 반 이름</p>
         <div style="display:flex;justify-content:flex-end;margin-top:12px">
           <button class="btn primary" data-a="preview" ${this.sending ? 'disabled' : ''}>${this.sending ? '발송 요청 중…' : '미리보기 후 발송'}</button>
         </div>
