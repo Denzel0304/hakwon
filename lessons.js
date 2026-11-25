@@ -2362,7 +2362,8 @@ const Makeups = {
 
   // 결석 목록: 출석부의 결석 + 결석 예정(그 날 출결이 따로 기록되기 전까지). 보강 안 함(skip)은 지운 것으로 보고 뺀다
   // fut: 내일 이후 날짜 (결석 예정 탭에만 보임)
-  collect() {
+  // keepSkip: 보강 안 함도 넣는다 (첫 등원 할일용 — 보강 안 함이어도 첫 등원 할일은 남김)
+  collect(keepSkip) {
     const out = [], seen = new Set(), today = todayStr();
     Store.all('lessons').forEach(l => {
       Object.keys(l.att || {}).forEach(sid => {
@@ -2372,11 +2373,11 @@ const Makeups = {
         const key = this.id(l.id, sid);
         seen.add(key);
         const mk = Store.get('makeups', key);
-        if (mk && mk.status === 'skip') return;
+        if (mk && mk.status === 'skip' && !keepSkip) return;
         out.push({ l, s, c: Store.get('classes', l.classId), mk, status: (mk && mk.status) || 'none', fut: l.date > today });
       });
     });
-    Store.where('makeups', m => m.pre && m.status !== 'skip' && !seen.has(m.id)).forEach(mk => {
+    Store.where('makeups', m => m.pre && (keepSkip || m.status !== 'skip') && !seen.has(m.id)).forEach(mk => {
       const l0 = Store.get('lessons', mk.lessonId);
       if (l0 && l0.att && l0.att[mk.studentId]) return;          // 그 날 출결을 따로 기록함 (출석 등)
       const s = Store.get('students', mk.studentId);
@@ -2742,7 +2743,9 @@ const Makeups = {
      학생·결석일마다 하나. 그 날 결석 중 보강 '미지정'이 있으면, 결석 뒤 처음 오는 날의 가장 빠른 수업 시작 시각으로
      "홍길동 결석(11/12 수) 후 첫 등원(숙제검사 및 자료배부 등 처리 요망)"(중요도 높음)을 한 번만 만든다.
      · 만든 기록(meta RT_…)이 있으면 다시 만들지 않음 (직접 삭제·날짜 변경해도 그대로) · id가 정해져 있어 PC·모바일 중복 없음
-     · 그 날 결석이 모두 보강 완료 → 할일 완료 / 결석이 없어짐(결석 예정 취소·출석으로 바꿈·보강 안 함) → 미완료 할일 삭제 + 기록 삭제
+     · 자동 완료하지 않음 (보강 상태와 상관없이 첫 등원 날 직접 체크) · 보강 안 함이어도 남김
+     · 결석이 없어짐(결석 예정 취소·출석으로 바꿈) → 미완료 할일 삭제 + 기록 삭제 (출석으로 바꾸면 그 결석의 보강 기록도 지움)
+     · 보강 상태가 미지정이 아니어도 만든다 (첫 등원일이 이미 지난 예전 결석은 미지정일 때만)
      · 첫 등원일: 결석 다음 날부터. 공휴일, 그 날 모든 수업이 결석(출석부 결석·결석 예정)인 날은 건너뜀
        보강 '예정'·'완료'로 보강일을 잡은 날도 오는 날로 본다 (그 학생의 어느 결석 보강이든 · 공휴일이어도) → 시각은 보강 시간(없으면 그 반 정규 시간)
      · 아직 안 한 할일은 늘 가장 빠른 등원일·시각으로 맞춤 (보강을 잡으면 앞으로, 취소하면 정규 수업일로) · 지난 날짜로 당기지는 않음
@@ -2833,7 +2836,7 @@ const Makeups = {
   },
 
   // 결석 기록을 보고 할일을 만들기 · 완료 · 되돌리기 · 날짜 옮기기 · 삭제 (서버 내용을 처음 받은 뒤에만). 바뀐 개수를 돌려준다
-  // 첫 등원 할일: 그 날 결석이 모두 안내 완료·보강 완료 → 자동 완료(retAuto 표시, meta.auto) / 다시 미지정·예정이 되면 자동 완료한 것만 되돌림
+  // 첫 등원 할일: 자동 완료하지 않음 (첫 등원 날 직접 체크 · 예전 자동 완료(retAuto) 중 첫 등원일이 안 지난 것은 미완료로 되돌림)
   //              아직 안 한 할일인데 그 날 학생이 오지 않게 되면(결석·결석 예정·선보강) 다음 등원일로 옮김 (직접 날짜를 바꾼 할일은 그대로)
   /* ---------- 보강 예정 할일 ----------
      처리 필요의 보강 상태가 '예정'이고 보강일이 있으면 그 날(보강 시간)에 "홍길동 11/14 결석 보강"(중요도 높음)을 만든다.
@@ -2918,6 +2921,7 @@ const Makeups = {
      · 직접 지운 할일은 다시 만들지 않음
      · 결석이 없어짐(출석으로 바꿈·보강 안 함·일지 삭제) 또는 결석 예정으로 등록됨(결석 예정 할일이 맡음) → 아직 안 한 할일만 삭제 + 기록 삭제
      · 보강 상태가 안내 완료·보강 완료 → 할일 완료(hwAuto) / 다시 미지정·예정 → 자동 완료한 것만 되돌림
+     · 할일을 직접 완료하면 미지정 → 안내 완료 (보강 기록 byHw) / 체크를 풀면 할일로 바뀐 안내 완료만 미지정으로 (예정·보강 완료는 그대로)
        결석 예정으로 만든 '숙제 안내' 할일도 같은 규칙 */
   hwText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) — 숙제 안내`; },
   // 보강 처리 끝(on) → 자동 완료 / 다시 미처리 → 자동 완료한 것만 되돌림. 바뀌면 1
@@ -2936,20 +2940,41 @@ const Makeups = {
     Store.put('todos', b);
     return t.done ? 1 : 0;
   },
+  // 숙제 안내 할일 ↔ 보강 상태 (o: collect()의 한 항목 · t: 숙제 안내 할일). 바뀌면 1
+  //   할일을 직접 완료 + 미지정 → 안내 완료 (byHw 표시) / 할일 체크를 풀면 → 할일로 바뀐 안내 완료만 미지정으로
+  //   예정·보강 완료는 건드리지 않음 · 그 밖에는 보강 상태 → 할일 (hwAuto)
+  hwLink(o, t, iso) {
+    if (!t) return 0;
+    const key = this.id(o.l.id, o.s.id);
+    let mk = Store.get('makeups', key);
+    const st = (mk && mk.status) || 'none';
+    if (mk && mk.byHw && st !== 'info') { mk = Object.assign({}, mk); delete mk.byHw; Store.put('makeups', mk); }   // 직접 다른 상태로 바꿈 → 연결 끊기
+    if (t.done && !t.hwAuto && st === 'none') {
+      const cur = mk || { id: key, lessonId: o.l.id, studentId: o.s.id, classId: o.l.classId, absentDate: o.l.date, date: '', time: '', status: 'none', memo: '' };
+      Store.put('makeups', Object.assign({}, cur, { status: 'info', byHw: t.doneAt || '1' }));
+      return 1;
+    }
+    if (!t.done && mk && mk.byHw && st === 'info') {
+      const b = Object.assign({}, mk, { status: 'none' }); delete b.byHw;
+      Store.put('makeups', b);
+      return 1;
+    }
+    return this.hwAuto(t, mkDone(st), iso);
+  },
   hwSync(all) {
     const today = todayStr(), iso = new Date().toISOString();
     let add = 0, chg = 0;
     const live = {};
     all.forEach(o => { if (!(o.mk && o.mk.pre)) live[this.id(o.l.id, o.s.id)] = o; });
-    // 결석 예정 할일 중 '숙제 안내' → 보강 상태에 맞춰 자동 완료·되돌림
+    // 결석 예정 할일 중 '숙제 안내' → 보강 상태와 연결 (아래 TDH_와 같은 규칙)
     all.forEach(o => {
       if (!(o.mk && o.mk.pre && o.mk.absKey)) return;
       const txt = this.prefix(o.s, o.l.date) + '숙제 안내';
-      this.linkedTodos(o.mk.absKey).filter(t => t.text === txt).forEach(t => { chg += this.hwAuto(t, mkDone(o.status), iso); });
+      this.linkedTodos(o.mk.absKey).filter(t => t.text === txt).forEach(t => { chg += this.hwLink(o, t, iso); });
     });
     Object.keys(live).forEach(id => {
       const o = live[id], mid = 'HT_' + id, t = Store.get('todos', 'TDH_' + id);
-      if (Store.get('meta', mid)) { chg += this.hwAuto(t, mkDone(o.status), iso); return; }
+      if (Store.get('meta', mid)) { chg += this.hwLink(o, t, iso); return; }
       if (o.l.date < today) return;                                   // 오늘 이후 결석만 새로 만든다
       Store.put('meta', { id: mid, kind: 'hw_todo', mkId: id, createdAt: iso });
       if (t) return;
@@ -2975,28 +3000,27 @@ const Makeups = {
     if (!Store.firstPullDone || !Auth.key()) return 0;
     const ps = this.preSync();
     const today = todayStr(), hol = Holidays.map(), iso = new Date().toISOString();
+    // 결석을 출석으로 고침(출결 지움·일지 삭제 포함) → 그 결석의 보강 기록도 지워 아무 일도 없던 것으로 (결석 예정 기록은 preSync가 맡음)
+    let gone = 0;
+    Store.where('makeups', m => !m.pre).forEach(m => {
+      const l = Store.get('lessons', m.lessonId);
+      if (!(l && l.att && l.att[m.studentId] === 'A')) { Store.del('makeups', m.id); gone++; }
+    });
     const groups = {};
     const all = this.collect(), mv = this.mkVisits(all);   // 보강으로 오는 날
-    all.forEach(o => {
+    this.collect(true).forEach(o => {                       // 첫 등원 할일: 보강 안 함인 결석도 포함
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
-    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + this.hwSync(this.collect()) + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0)
+    let add = 0, chg = gone + ps.done + ps.undone + ps.del + this.mkSync() + this.hwSync(this.collect()) + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0)
       + (typeof NewStu !== 'undefined' ? NewStu.sync() : 0);   // 보강 예정 할일 · 첫 등원 할일 · 신규생 할일(sms.js)
     Object.keys(groups).forEach(k => {
       const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
       const meta = Store.get('meta', mid);
       if (meta) {
-        const allDone = g.st.every(mkDone);
-        if (allDone && !meta.auto) {                                  // 보강 처리 끝 → 자동 완료 (한 번만: 직접 다시 풀어도 또 체크하지 않음)
-          if (t && !t.done) Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, retAuto: true }));
-          Store.put('meta', Object.assign({}, meta, { auto: true }));
-          chg++;
-        } else if (!allDone && meta.auto) {                           // 다시 미지정·예정 → 자동 완료했던 것만 되돌림
-          if (t && t.done && t.retAuto) { const b = Object.assign({}, t, { done: false, doneAt: '' }); delete b.retAuto; Store.put('todos', b); }
-          Store.put('meta', Object.assign({}, meta, { auto: false }));
-          chg++;
-        }
+        // 첫 등원 할일은 자동 완료하지 않는다 (첫 등원 날 직접 체크) — 예전에 자동 완료된 것 중 첫 등원일이 아직 안 지난 할일은 다시 미완료로
+        if (t && t.done && t.retAuto && t.date >= today) { const b = Object.assign({}, t, { done: false, doneAt: '' }); delete b.retAuto; Store.put('todos', b); chg++; }
+        if (meta.auto) Store.put('meta', Object.assign({}, meta, { auto: false }));
         // 아직 안 한 할일 → 가장 빠른 등원일·시각으로 (만들 때·옮길 때 정한 날짜 그대로일 때만 = 직접 날짜를 바꾸지 않음)
         //   그 날 학생이 오지 않게 됨 → 다음 등원일 / 더 빠른 보강일이 생김 → 그 날로 / 보강 취소 → 정규 수업일로
         const t2 = Store.get('todos', 'TDR_' + k);
@@ -3016,9 +3040,9 @@ const Makeups = {
         }
         return;
       }
-      if (!g.st.includes('none')) return;
       const r = this.retDay(g.s.id, g.date, hol, today, mv);
       if (!r) return;
+      if (!g.st.includes('none') && r.date < today) return;           // 보강 상태와 상관없이 만든다 (단, 첫 등원일이 이미 지난 예전 결석은 '미지정'일 때만 — 예전처럼)
       Store.put('meta', { id: mid, kind: 'ret_todo', studentId: g.s.id, absentDate: g.date, date: r.date, time: r.time, createdAt: iso });
       if (!t) {
         Store.put('todos', Object.assign({ id: 'TDR_' + k, lessonId: '', classId: '', date: r.date, text: this.retText(g.s, g.date), done: false, createdAt: iso,
@@ -3026,7 +3050,7 @@ const Makeups = {
         add++;
       }
     });
-    // 결석이 없어진 것: 미완료 할일 삭제 + 만든 기록 삭제 (완료한 할일은 남김)
+    // 결석이 없어진 것(출석으로 고침 등 · 보강 안 함은 해당 없음): 미완료 할일 삭제 + 만든 기록 삭제 (완료한 할일은 남김)
     Store.where('meta', m => m.kind === 'ret_todo' && !groups[m.id.slice(3)]).forEach(m => {
       const t = Store.get('todos', 'TDR_' + m.id.slice(3));
       if (t && !t.done) { Store.del('todos', t.id); chg++; }
@@ -3178,8 +3202,8 @@ const Makeups = {
   Store[fn] = function (t, ...a) {
     const r = f0.call(this, t, ...a);
     if (t === 'lessons' || t === 'makeups' || t === 'students' || t === 'enrollments' || t === 'classes') Makeups.retSoon();
-    // 보강 할일(TDM_) · 첫 등원 할일(TDR_)을 체크하거나 지움 → 보강 상태에 반영
-    else if (t === 'todos' && /^TD[MR]_/.test(String(fn === 'put' ? (a[0] && a[0].id) : a[0]))) Makeups.retSoon();
+    // 보강 할일(TDM_) · 첫 등원 할일(TDR_) · 숙제 안내 할일을 체크하거나 지움 → 보강 상태에 반영
+    else if (t === 'todos' && (/^TD[MRH]_/.test(String(fn === 'put' ? (a[0] && a[0].id) : a[0])) || (fn === 'put' && a[0] && a[0].absKey))) Makeups.retSoon();   // + 숙제 안내 할일(TDH_ · 결석 예정 할일)
     return r;
   };
 });
