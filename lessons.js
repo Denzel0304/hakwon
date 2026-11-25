@@ -13,6 +13,7 @@
    일지 건너뛰기(meta 테이블): id = SK_반ID_YYYYMMDD, { kind:'lskip', classId, date, reason, createdAt }
    결석 후 첫 등원 할일: 일반 할일 id = TDR_학생ID_YYYYMMDD(결석일) + retKey · 만든 기록(meta) id = RT_학생ID_YYYYMMDD, { kind:'ret_todo', studentId, absentDate, date(처음 정한 할일 날짜), time(자동으로 정한 시각), auto(자동 완료함), createdAt }
    결석 예정 할일 자동 완료 기록(meta): id = PA_결석예정키, { kind:'pre_auto', absKey, todoIds, createdAt } — 출석·선보강 등으로 바뀌면 완료, 다시 결석이면 되돌림
+   숙제 안내 할일(결석 예정 없이 출석부·수업일지에서 결석, 오늘 이후만): 일반 할일 id = TDH_보강ID · 만든 기록(meta) id = HT_보강ID, { kind:'hw_todo', mkId, createdAt }
    ========================================================= */
 const ATT = { P: '출석', L: '지각', A: '결석', E: '조퇴', M: '선보강' };
 const ATT_SHORT = { P: '출', L: '지', A: '결', E: '조', M: '보' };
@@ -1234,7 +1235,18 @@ const Lessons = {
     const st = toMin(ft.start), n = new Date();
     return st > toMin(Classes.timeOn(c, Classes.FT_DOW).start) && st > n.getHours() * 60 + n.getMinutes();
   },
-  newForm(date, classId) { return { date, classId, att: this.defAtt(classId, date), mkpre: Makeups.preMkpre(classId, date), progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
+  newForm(date, classId) { const att = this.defAtt(classId, date); return { date, classId, att, att0: Object.assign({}, att), t0: new Date().toISOString(), mkpre: Makeups.preMkpre(classId, date), progress: '', homework: '', memo: '', todos: [{ text: '', date }], np: NP.newState() }; },
+  // 일지 창을 연 뒤에 (다른 화면·기기에서) 결석 예정이 등록된 학생: 출결을 손대지 않았으면 결석으로 맞춘다
+  latePre(f) {
+    if (!f || !f.classId || !f.att) return;
+    f.att0 = f.att0 || {};
+    Classes.rosterOn(f.classId, f.date).forEach(s => {
+      const pr = Makeups.preRec(f.classId, f.date, s.id);
+      if (!pr || !(String(pr.createdAt || '') > String(f.t0 || ''))) return;
+      const v = Makeups.isPreMk(pr) ? 'M' : 'A';
+      if (f.att[s.id] !== v && (f.att[s.id] || '') === (f.att0[s.id] || '')) { f.att[s.id] = v; f.att0[s.id] = v; }
+    });
+  },
   // 출석이 기본값(전원 출석) 그대로인지
   attIsDefault(f) {
     const d = this.defAtt(f.classId, f.date), a = f.att || {};
@@ -1340,7 +1352,7 @@ const Lessons = {
     todos.push({ text: '', date });
     const att = Object.assign({}, l.att || {});
     Classes.rosterOn(classId, date).forEach(s => { if (!att[s.id] && Makeups.preRec(classId, date, s.id)) att[s.id] = 'A'; });   // 결석 예정 학생
-    return { date, classId, editId: l.id, att, mkpre: Object.assign({}, l.mkpre || {}), progress: l.progress || '', homework: l.homework || '', memo: l.memo || '', todos, np: NP.fromLesson(l) };
+    return { date, classId, editId: l.id, att, att0: Object.assign({}, att), t0: new Date().toISOString(), mkpre: Object.assign({}, l.mkpre || {}), progress: l.progress || '', homework: l.homework || '', memo: l.memo || '', todos, np: NP.fromLesson(l) };
   },
 
   render(main, p) {
@@ -1361,6 +1373,7 @@ const Lessons = {
     if (!this.form || this.form.date !== date || this.form.classId !== classId || !!this.form.editId !== isEdit)
       this.form = isEdit ? this.editForm(date, classId) : this.newForm(date, classId);
     const f = this.form;
+    this.latePre(f);                            // 창을 연 뒤 등록된 결석 예정 반영
     // 학교·학년이 섞인 반 + 내신일 때만 학교별(개별) 숙제·배부 자료·할일을 나눠 입력
     //   내신을 끄면 나눠 쓴 숙제를 한 칸(공통 숙제)에 "[금천고2] …" 줄로 합쳐 보여 준다 (내용은 그대로 저장됨)
     const lbs0 = classId ? this.hwLabels(classId, date) : [];
@@ -1574,6 +1587,7 @@ const Lessons = {
   async save() {
     const f = this.form;
     if (!f || !f.classId) return;
+    this.latePre(f);                                                  // 창을 연 뒤 등록된 결석 예정 반영 (손대지 않은 출결만)
     $$('textarea[data-f]', $('#main')).forEach(ta => { f[ta.dataset.f] = ta.value; });
     f.mkpre = f.mkpre || {};
     $$('[data-mkpre]', $('#main')).forEach(i => { if (isYmd(i.value)) f.mkpre[i.dataset.mkpre] = i.value; else delete f.mkpre[i.dataset.mkpre]; });   // 선보강한 날
@@ -2426,9 +2440,10 @@ const Makeups = {
   tpls() { return Store.where('meta', m => m.kind === 'abs_tpl').sort((a, b) => (+a.off || 0) - (+b.off || 0) || ko(a.text, b.text)); },
 
   // 결석 예정 묶음 (학생·날짜마다 하나, 그 날 여러 반이면 함께)
+  // 오늘 결석 예정도 포함 (수업 중에 알게 된 결석 → 결석 예정 탭에서 수정·취소 · 처리 필요에도 함께 보임)
   preGroups(all) {
-    const g = {};
-    all.filter(o => o.fut).forEach(o => {
+    const g = {}, today = todayStr();
+    all.filter(o => o.fut || (o.mk && o.mk.pre && o.l.date === today)).forEach(o => {
       const k = this.absKey(o.s.id, o.l.date);
       (g[k] = g[k] || { key: k, s: o.s, date: o.l.date, items: [] }).items.push(o);
     });
@@ -2586,6 +2601,7 @@ const Makeups = {
             if (rows.some(r => !isYmd(r.date))) { toast('할일 날짜를 모두 고르세요'); return false; }
             const pre = this.prefix(s, st.date);
             const now = Date.now(), iso = new Date(now).toISOString();
+            let attN = 0;                                    // 출석 → 결석으로 바꾼 수업 수 (오늘 결석)
             const memos = {};                                // 결석일을 옮길 때 반별 메모 유지
             const carry = {};                                // 결석일을 옮길 때 반별 보강일·시간·상태 유지
             if (moved) {                                     // 이전 결석일의 결석 예정 기록 정리 (결석 예정 취소와 같은 방식)
@@ -2598,6 +2614,7 @@ const Makeups = {
                 const l = Store.get('lessons', o.l.id);
                 if (l && l.att && l.att[s.id] === 'A') {
                   const att = Object.assign({}, l.att); delete att[s.id];
+                  if (o.mk && o.mk.prevAtt) att[s.id] = o.mk.prevAtt;   // 결석 예정 때문에 결석으로 바꾼 출결 → 원래대로
                   const nl = Object.assign({}, l, { att });
                   if (Lessons.isEmpty(nl)) Store.del('lessons', nl.id); else Store.put('lessons', nl);
                 }
@@ -2609,8 +2626,14 @@ const Makeups = {
                 const old = Store.get('makeups', id) || {};
                 // 결석일을 옮김: 같은 반의 보강 일정 그대로 (반이 바뀌었고 이전 반이 하나뿐이면 그 일정을 첫 반에)
                 const cv = carry[c.id] || (moved && i === 0 && Object.keys(carry).length === 1 && g0.items.length === 1 ? Object.values(carry)[0] : null) || { date: '', time: '', status: 'none' };
-                Store.put('makeups', Object.assign({}, old, { id, lessonId: lid, studentId: s.id, classId: c.id, absentDate: st.date, date: cv.date, time: cv.time, status: cv.status, memo: old.memo || memos[c.id] || '',
-                  pre: true, absKey: k, createdAt: iso }));
+                // 오늘 결석: 그 수업 출결이 이미 출석·지각·조퇴로 기록돼 있으면 결석으로 바꾼다 (원래 출결은 prevAtt에 두고 취소하면 되돌림)
+                const l0 = st.date === today ? Store.get('lessons', lid) : null;
+                const pa = l0 && l0.att && ['P', 'L', 'E'].includes(l0.att[s.id]) ? l0.att[s.id] : '';
+                const mkRec = Object.assign({}, old, { id, lessonId: lid, studentId: s.id, classId: c.id, absentDate: st.date, date: cv.date, time: cv.time, status: cv.status, memo: old.memo || memos[c.id] || '',
+                  pre: true, absKey: k, createdAt: iso });
+                if (pa) mkRec.prevAtt = pa; else delete mkRec.prevAtt;
+                Store.put('makeups', mkRec);
+                if (pa) { Store.put('lessons', Object.assign({}, l0, { att: Object.assign({}, l0.att, { [s.id]: 'A' }) })); attN++; }
               });
             }
             if (edit) {
@@ -2632,7 +2655,8 @@ const Makeups = {
               Store.put('todos', rec);
               n++;
             });
-            toast(edit ? (moved ? `결석 예정을 ${fmtMD(st.date)}로 옮겼습니다` : '결석 예정을 저장했습니다') : `${s.name} ${fmtMD(st.date)} 결석 예정 등록` + (n ? ` · 할일 ${n}개` : ''));
+            toast((edit ? (moved ? `결석 예정을 ${fmtMD(st.date)}로 옮겼습니다` : '결석 예정을 저장했습니다') : `${s.name} ${fmtMD(st.date)} 결석 예정 등록` + (n ? ` · 할일 ${n}개` : ''))
+              + (attN ? ' · 출석으로 기록돼 있던 출결을 결석으로 바꿨습니다' : ''));
             App.render();
             res(true);
           } },
@@ -2651,6 +2675,7 @@ const Makeups = {
       const l = Store.get('lessons', o.l.id);
       if (l && l.att && l.att[g.s.id] === 'A') {           // 출석부에서 미리 결석으로 찍어 둔 경우
         const att = Object.assign({}, l.att); delete att[g.s.id];
+        if (o.mk && o.mk.prevAtt) att[g.s.id] = o.mk.prevAtt;   // 결석 예정 때문에 결석으로 바꾼 출결 → 원래대로
         const nl = Object.assign({}, l, { att });
         if (Lessons.isEmpty(nl)) Store.del('lessons', nl.id); else Store.put('lessons', nl);
       }
@@ -2886,6 +2911,66 @@ const Makeups = {
     return add + chg;
   },
 
+  /* ---------- 숙제 안내 할일 ----------
+     결석 예정 없이 출석부·수업일지에서 결석이 된 경우 (오늘 이후 결석만 새로 만듦):
+       그 수업이 끝나는 시각에 "홍길동 결석(11/25 수) — 숙제 안내"(중요도 높음)를 만든다
+       할일 id TDH_보강ID · 기록 meta HT_보강ID { kind:'hw_todo', mkId } (id가 정해져 있어 PC·모바일 중복 없음)
+     · 직접 지운 할일은 다시 만들지 않음
+     · 결석이 없어짐(출석으로 바꿈·보강 안 함·일지 삭제) 또는 결석 예정으로 등록됨(결석 예정 할일이 맡음) → 아직 안 한 할일만 삭제 + 기록 삭제
+     · 보강 상태가 안내 완료·보강 완료 → 할일 완료(hwAuto) / 다시 미지정·예정 → 자동 완료한 것만 되돌림
+       결석 예정으로 만든 '숙제 안내' 할일도 같은 규칙 */
+  hwText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) — 숙제 안내`; },
+  // 보강 처리 끝(on) → 자동 완료 / 다시 미처리 → 자동 완료한 것만 되돌림. 바뀌면 1
+  hwAuto(t, on, iso) {
+    if (!t) return 0;
+    if (on) {
+      if (t.done || t.hwAuto) return 0;                               // 이미 완료 · 자동 완료 뒤 직접 체크를 푼 할일은 그대로
+      const cl = Array.isArray(t.checklist) ? t.checklist : [];
+      Store.put('todos', Object.assign({}, t, { done: true, doneAt: iso, hwAuto: true, hwCl: JSON.parse(JSON.stringify(cl)) }, cl.length ? { checklist: cl.map(x => Object.assign({}, x, { d: true })) } : {}));
+      return 1;
+    }
+    if (!t.hwAuto) return 0;
+    const b = Object.assign({}, t);
+    if (t.done) { b.done = false; b.doneAt = ''; b.checklist = Array.isArray(t.hwCl) ? t.hwCl : (t.checklist || []); }
+    delete b.hwAuto; delete b.hwCl;
+    Store.put('todos', b);
+    return t.done ? 1 : 0;
+  },
+  hwSync(all) {
+    const today = todayStr(), iso = new Date().toISOString();
+    let add = 0, chg = 0;
+    const live = {};
+    all.forEach(o => { if (!(o.mk && o.mk.pre)) live[this.id(o.l.id, o.s.id)] = o; });
+    // 결석 예정 할일 중 '숙제 안내' → 보강 상태에 맞춰 자동 완료·되돌림
+    all.forEach(o => {
+      if (!(o.mk && o.mk.pre && o.mk.absKey)) return;
+      const txt = this.prefix(o.s, o.l.date) + '숙제 안내';
+      this.linkedTodos(o.mk.absKey).filter(t => t.text === txt).forEach(t => { chg += this.hwAuto(t, mkDone(o.status), iso); });
+    });
+    Object.keys(live).forEach(id => {
+      const o = live[id], mid = 'HT_' + id, t = Store.get('todos', 'TDH_' + id);
+      if (Store.get('meta', mid)) { chg += this.hwAuto(t, mkDone(o.status), iso); return; }
+      if (o.l.date < today) return;                                   // 오늘 이후 결석만 새로 만든다
+      Store.put('meta', { id: mid, kind: 'hw_todo', mkId: id, createdAt: iso });
+      if (t) return;
+      const tm = o.c ? Classes.stuTimeOn(o.c, o.s.id, dowOf(o.l.date)) : null;
+      const time = tm && tm.start ? fromMin(toMin(tm.start) + (+tm.duration || 0)) : '';   // 그 수업이 끝나는 시각 (금요일 개인 시간 반영)
+      const rec = Object.assign({ id: 'TDH_' + id, lessonId: '', classId: '', date: o.l.date, text: this.hwText(o.s, o.l.date), done: false, createdAt: iso,
+        order: TodoX.maxOrder(o.l.date) + 1, doneAt: '', remindDone: false, hwKey: id }, TodoX.detailVals({ importance: 3, time }));
+      Store.put('todos', rec);
+      add++;
+      chg += this.hwAuto(rec, mkDone(o.status), iso);
+    });
+    // 결석이 없어졌거나 결석 예정으로 넘어간 것: 아직 안 한 할일만 삭제 + 기록 삭제
+    Store.where('meta', m => m.kind === 'hw_todo' && !live[m.mkId]).forEach(m => {
+      const t = Store.get('todos', 'TDH_' + m.mkId);
+      if (t && !t.done) { Store.del('todos', t.id); chg++; }
+      Store.del('meta', m.id);
+    });
+    if (add) toast(`숙제 안내 할일 ${add}개를 추가했습니다`);
+    return add + chg;
+  },
+
   retSync() {
     if (!Store.firstPullDone || !Auth.key()) return 0;
     const ps = this.preSync();
@@ -2896,7 +2981,7 @@ const Makeups = {
       const k = this.retKey(o.s.id, o.l.date);
       (groups[k] = groups[k] || { s: o.s, date: o.l.date, st: [] }).st.push(o.status);
     });
-    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0)
+    let add = 0, chg = ps.done + ps.undone + ps.del + this.mkSync() + this.hwSync(this.collect()) + (typeof Students.firstSync === 'function' ? Students.firstSync() : 0)
       + (typeof NewStu !== 'undefined' ? NewStu.sync() : 0);   // 보강 예정 할일 · 첫 등원 할일 · 신규생 할일(sms.js)
     Object.keys(groups).forEach(k => {
       const g = groups[k], mid = 'RT_' + k, t = Store.get('todos', 'TDR_' + k);
