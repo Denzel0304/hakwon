@@ -172,6 +172,7 @@ const App = {
    - 공휴일 확인 · 진급 등 다른 창이 열려 있으면 모두 닫힌 뒤에 띄운다 (띄울 때 다시 계산)
    - 최대 LIMIT건, 나머지는 '외 N건' · 줄마다 [안내 완료] [보강 완료(예정 + 보강일 지남)] [보강 안 함]으로 바로 정리
    - 결석 후 첫 등원 할일을 PC에서 완료 체크하면 그 자리에서 보강을 어떻게 했는지 묻는다 (retAsk)
+   - 숙제 안내 할일(TDH_ · 결석 예정의 '숙제 안내')을 PC에서 완료 체크하면, 보강 상태가 미지정일 때 후보강을 할지 묻는다 (hwAsk)
    ========================================================= */
 const StartRemind = {
   LIMIT: 8,
@@ -194,7 +195,9 @@ const StartRemind = {
   // 이 결석에 걸린 아직 안 한 할일(첫 등원 · 보강)이 있는지
   hasTodo(o) {
     const open = (id) => { const t = Store.get('todos', id); return !!(t && !t.done); };
-    return open('TDR_' + Makeups.retKey(o.s.id, o.l.date)) || open('TDM_' + Makeups.id(o.l.id, o.s.id));
+    return open('TDR_' + Makeups.retKey(o.s.id, o.l.date)) || open('TDM_' + Makeups.id(o.l.id, o.s.id))
+      || open('TDH_' + Makeups.id(o.l.id, o.s.id))                                                      // 숙제 안내 할일
+      || !!(o.mk && o.mk.pre && o.mk.absKey && Makeups.linkedTodos(o.mk.absKey).some(t => !t.done));     // 결석 예정 할일
   },
   // 처리 필요 중 할일 목록에 없는 것 (처리 필요 탭과 같은 순서)
   makeups() {
@@ -265,6 +268,32 @@ const StartRemind = {
      [안내 완료] 진도·숙제 안내만 함 → 출석부 결 그대로 / [보강 날짜 잡기] 결석+보강 화면으로 (그 학생만)
      [보강 안 함] 보강 목록에서 삭제 / [나중에] 그대로 둠 → 다음 접속 때 '확인할 일'에 나옴
      그 학생·결석일의 결석 중 '미지정'인 것에만 적용 (반이 여럿이면 함께) */
+  /* ---------- 숙제 안내 할일을 체크하면: 후보강을 할지 묻기 (PC · 할일 체크 버튼 · 밀어서 완료) ----------
+     숙제 안내만 하고 끝낼지, 보강도 할지는 할일 체크만으로 알 수 없어 자동으로 정하지 않는다
+     [안내 완료] 숙제 안내만 함 (보강 안 함 → 완료 탭) / [보강 날짜 잡기] 결석+보강 화면으로 (그 학생만) / [나중에] 처리 필요에 그대로
+     그 결석의 보강 상태가 '미지정'일 때만 묻는다 (예정·완료면 묻지 않음)
+     id: 할일 id (TDH_보강ID 또는 결석 예정 할일) */
+  hwAsk(id) {
+    const t = Store.get('todos', id);
+    if (!t) return;
+    let list = [];
+    if (/^TDH_/.test(id)) list = Makeups.collect().filter(o => o.status === 'none' && !(o.mk && o.mk.pre) && Makeups.id(o.l.id, o.s.id) === id.slice(4));
+    else if (t.absKey) list = Makeups.collect().filter(o => o.status === 'none' && o.mk && o.mk.pre && o.mk.absKey === t.absKey && t.text === Makeups.prefix(o.s, o.l.date) + '숙제 안내');
+    if (!list.length) return;
+    const o0 = list[0], cls = list.map(o => o.c ? o.c.name : '(삭제된 반)').join(', ');
+    Modal.open({
+      title: '결석 보강 정리', size: 'md', autofocus: false,
+      body: `<p style="margin:0 0 8px"><b>${esc(o0.s.name)}</b> <span class="badge red">결석${o0.mk && o0.mk.pre ? ' 예정' : ''} ${fmtMD(o0.l.date)}</span> <span class="small soft">${esc(cls)}</span></p>
+        <p class="small" style="margin:0">숙제 안내 할일을 완료했습니다. 이 결석의 보강은 어떻게 할까요?</p>
+        <p class="small muted" style="margin:6px 0 0">안내 완료: 숙제 안내만 하고 보강은 안 함 (완료 탭으로) · 보강 날짜 잡기: 결석+보강 화면에서 보강일·시간을 정함<br>나중에: 처리 필요에 그대로 둡니다. 결석 후 첫 등원 할일을 체크할 때 다시 묻습니다.</p>`,
+      buttons: [
+        { text: '나중에', left: true },
+        { text: '보강 날짜 잡기', onClick: () => { Makeups.tab = list.some(o => o.fut) ? 'pre' : 'open'; Makeups.q = o0.s.name; App.go('makeups', {}); } },
+        { text: '안내 완료', cls: 'primary', primary: true, onClick: () => { list.forEach(o => Makeups.setStatus(o, 'info')); toast('안내 완료로 정리했습니다'); App.render(); return true; } },
+      ],
+    });
+  },
+
   retAsk(k) {
     const list = Makeups.collect().filter(o => !o.fut && o.status === 'none' && Makeups.retKey(o.s.id, o.l.date) === k);
     if (!list.length) return;
@@ -291,17 +320,27 @@ const StartRemind = {
   },
 };
 
-// 할일 완료 체크(TodoX.toggle: 체크 버튼 · 밀어서 완료)에서 첫 등원 할일(TDR_)을 완료로 바꾸면 묻는다 (PC 전용 · app.js)
+// 할일 완료 체크(TodoX.toggle: 체크 버튼 · 밀어서 완료)에서 첫 등원 할일(TDR_) · 숙제 안내 할일(TDH_ · 결석 예정 할일)을 완료로 바꾸면 묻는다 (PC 전용 · app.js)
 (() => {
   if (typeof TodoX === 'undefined' || typeof TodoX.toggle !== 'function') return;
   const t0 = TodoX.toggle;
   TodoX.toggle = function (k, ...rest) {
-    let id = null;
-    try { const it = this.resolve(k); if (it && !it.rem && !it.repeat && !it.done && it.rec && /^TDR_/.test(it.rec.id)) id = it.rec.id; } catch (e) { id = null; }
+    let id = null, hw = null;
+    try {
+      const it = this.resolve(k);
+      if (it && !it.rem && !it.repeat && !it.done && it.rec) {
+        if (/^TDR_/.test(it.rec.id)) id = it.rec.id;
+        else if (/^TDH_/.test(it.rec.id) || it.rec.absKey) hw = it.rec.id;     // 숙제 안내 할일 (결석 예정 할일은 hwAsk에서 '숙제 안내'인지 확인)
+      }
+    } catch (e) { id = null; hw = null; }
     const out = t0.call(this, k, ...rest);
     if (id) {
       const t = Store.get('todos', id);
       if (t && t.done) setTimeout(() => { try { StartRemind.retAsk(id.slice(4)); } catch (e) { console.warn('[mg77] 보강 정리 창 실패', e); } }, 350);   // 완료 폭죽 뒤에
+    }
+    if (hw) {
+      const t = Store.get('todos', hw);
+      if (t && t.done) setTimeout(() => { try { StartRemind.hwAsk(hw); } catch (e) { console.warn('[mg77] 보강 정리 창 실패', e); } }, 350);   // 완료 폭죽 뒤에
     }
     return out;
   };

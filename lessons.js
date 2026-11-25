@@ -2921,7 +2921,7 @@ const Makeups = {
      · 직접 지운 할일은 다시 만들지 않음
      · 결석이 없어짐(출석으로 바꿈·보강 안 함·일지 삭제) 또는 결석 예정으로 등록됨(결석 예정 할일이 맡음) → 아직 안 한 할일만 삭제 + 기록 삭제
      · 보강 상태가 안내 완료·보강 완료 → 할일 완료(hwAuto) / 다시 미지정·예정 → 자동 완료한 것만 되돌림
-     · 할일을 직접 완료하면 미지정 → 안내 완료 (보강 기록 byHw) / 체크를 풀면 할일로 바뀐 안내 완료만 미지정으로 (예정·보강 완료는 그대로)
+     · 할일을 직접 완료해도 보강 상태는 그대로 (PC: 상태가 미지정이면 [안내 완료]·[보강 날짜 잡기]·[나중에]를 묻는 창 — app.js hwAsk)
        결석 예정으로 만든 '숙제 안내' 할일도 같은 규칙 */
   hwText(s, date) { const d = parseYmd(date); return `${s.name} 결석(${d.getMonth() + 1}/${d.getDate()} ${DOW[d.getDay()]}) — 숙제 안내`; },
   // 보강 처리 끝(on) → 자동 완료 / 다시 미처리 → 자동 완료한 것만 되돌림. 바뀌면 1
@@ -2941,19 +2941,14 @@ const Makeups = {
     return t.done ? 1 : 0;
   },
   // 숙제 안내 할일 ↔ 보강 상태 (o: collect()의 한 항목 · t: 숙제 안내 할일). 바뀌면 1
-  //   할일을 직접 완료 + 미지정 → 안내 완료 (byHw 표시) / 할일 체크를 풀면 → 할일로 바뀐 안내 완료만 미지정으로
-  //   예정·보강 완료는 건드리지 않음 · 그 밖에는 보강 상태 → 할일 (hwAuto)
+  //   보강 상태 → 할일 (hwAuto). 할일을 직접 완료해도 상태는 자동으로 바꾸지 않는다 (PC에서는 보강을 어떻게 할지 묻는 창 — app.js hwAsk)
+  //   byHw: 예전 방식(할일 완료 → 안내 완료)으로 바뀐 기록 — 체크를 풀면 미지정으로 되돌리는 것만 남김
   hwLink(o, t, iso) {
     if (!t) return 0;
     const key = this.id(o.l.id, o.s.id);
     let mk = Store.get('makeups', key);
     const st = (mk && mk.status) || 'none';
     if (mk && mk.byHw && st !== 'info') { mk = Object.assign({}, mk); delete mk.byHw; Store.put('makeups', mk); }   // 직접 다른 상태로 바꿈 → 연결 끊기
-    if (t.done && !t.hwAuto && st === 'none') {
-      const cur = mk || { id: key, lessonId: o.l.id, studentId: o.s.id, classId: o.l.classId, absentDate: o.l.date, date: '', time: '', status: 'none', memo: '' };
-      Store.put('makeups', Object.assign({}, cur, { status: 'info', byHw: t.doneAt || '1' }));
-      return 1;
-    }
     if (!t.done && mk && mk.byHw && st === 'info') {
       const b = Object.assign({}, mk, { status: 'none' }); delete b.byHw;
       Store.put('makeups', b);
