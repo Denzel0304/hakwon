@@ -612,6 +612,39 @@ const NP = {
         + (e.text && e.text.trim() ? ' ' + e.text.trim() : '') + (e.done ? '(완결)' : '')).join(', ');
     }).join(' / ');
   },
+  // 진도 탭 표시용 내신 진도: text()와 같은 내용을 교재·과 모두 ' + '로 이음 (보강 문구 등은 text() 그대로)
+  textPlus(l) {
+    const groups = {}, list = l.np || [];
+    const bkMids = new Set(list.filter(en => en.bk).map(en => en.matId));
+    list.forEach(en => { const g = this.sid(en.matId, en.bk); (groups[g] = groups[g] || []).push(en); });
+    return Object.keys(groups).map(g => {
+      const ens = groups[g], m = this.mat(ens[0].matId), bk = ens[0].bk || '';
+      if (m && m.type === 'mock') return this.shortName(m) + ' ' + this.compress([].concat(...ens.map(e => e.nums || []))) + '번';
+      const nm = bk ? bk + (bkMids.size > 1 ? '(' + this.shortName(m) + ')' : '') : this.shortName(m);
+      return nm + ' ' + ens.map(e => this.unitName(m, e.unitId)
+        + (e.nums && e.nums.length ? ' ' + this.compress(e.nums) + '번' : '')
+        + (e.text && e.text.trim() ? ' ' + e.text.trim() : '') + (e.done ? '(완결)' : '')).join(' + ');
+    }).join(' + ');
+  },
+  // 진도 탭 표시용: 학교·학년별 줄 ["[금천중2] 교과서 1과 + 2과 + 백발백중 7과", "[동중2] …"]
+  //   교재 → 학교 나누기는 진도 요약(ProgressSum.progressOf)과 같은 기준 · 학교가 하나뿐이면 [ ] 없이 한 줄
+  textLines(l) {
+    const exs = (l.npExams || []).map(id => Store.get('exams', id)).filter(Boolean);
+    const lbOf = (e) => this.sch(e.school) + gradeNum(e.grade);
+    const by = {}, ord = {};
+    (l.np || []).forEach(en => {
+      let owners = exs.filter(e => (e.items || []).some(it => it.matId === en.matId));
+      if (!owners.length && exs.length && new Set(exs.map(lbOf)).size === 1) owners = exs;     // 학교·학년이 하나뿐이면 그쪽으로
+      const lbs = owners.length ? [...new Set(owners.map(lbOf))] : [''];                        // '' = 학교를 알 수 없음
+      lbs.forEach(lb => {
+        (by[lb] = by[lb] || []).push(en);
+        if (!(lb in ord)) { const e = owners.find(x => lbOf(x) === lb); ord[lb] = e ? (+e.grade || 99) * 1000 : -1; }
+      });
+    });
+    const lbs = Object.keys(by).sort((a, b) => ord[a] - ord[b] || ko(a, b));
+    if (lbs.filter(Boolean).length <= 1) return [this.textPlus(l)];
+    return lbs.map(lb => (lb ? '[' + lb + '] ' : '') + this.textPlus({ np: by[lb] }));
+  },
   // 비내신 진도 문장
   genText(l) {
     const groups = {};
@@ -1278,6 +1311,14 @@ const Lessons = {
     return out.join('\n');
   },
   hwOf(f) { return f.hw ? this.joinHw(f.hw) : f.homework; },
+  // 진도 탭 표시용 숙제: 학교·학년 숙제([금천중2])가 여러 줄이면 ' + '로 이어 한 줄로 (공통 숙제는 그대로)
+  hwPlus(text) {
+    const hw = this.parseHw(text, []);
+    const out = [];
+    if (hw.common.trim()) out.push(hw.common.replace(/\s+$/, ''));
+    hw.order.forEach(lb => { const t = (hw.by[lb] || '').split('\n').map(x => x.trim()).filter(Boolean).join(' + '); if (t) out.push('[' + lb + '] ' + t); });
+    return out.join('\n');
+  },
   // 이 학생에게 해당하는 숙제만: 공통 숙제 + 그 학생 학교·학년 숙제 (나눠 쓰지 않은 숙제는 그대로)
   // 학생의 학교·학년 이름(금천고2)이 목록에 있으면 그 이름
   stuLabel(labels, s) {
@@ -2049,7 +2090,7 @@ const ProgressBook = {
       const tds = todosOf(l.id);
       const lc = allCls ? Store.get('classes', l.classId) : null;
       return `<tr class="click ${p.date === l.date && l.classId === this.classId ? 'hl' : ''}" data-id="${l.id}"><td class="nowrap"><b>${fmtMD(l.date)}</b></td>${allCls ? `<td class="nowrap small">${lc ? Classes.dot(lc) + esc(lc.name) : '<span class="muted">-</span>'}</td>` : ''}<td class="nowrap small">${att}</td>
-        <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(l.homework || '', q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
+        <td class="pre">${highlight(l.progress || '', q)}${(l.np || []).length ? NP.textLines(l).map((t, i) => `<div class="np-line">${i ? '' : '내신 '}${highlight(t, q)}</div>`).join('') : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</td><td class="pre">${highlight(Lessons.hwPlus(l.homework || ''), q)}</td><td class="pre small soft">${highlight(l.memo || '', q)}</td>
         <td class="small">${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted">${fmtMD(t.date)}</span></div>`).join('')}</td></tr>`;
     }).join('')}</tbody></table></div>` : `<div class="panel"><div class="empty">${none ? '반을 선택하세요.' : allCls || Store.where('lessons', l => l.classId === this.classId && !Lessons.isEmpty(l)).length ? '조건에 맞는 기록이 없습니다.' : '이 반은 저장된 수업일지가 없습니다.'}</div></div>`;
     h += '</div>';

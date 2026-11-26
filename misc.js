@@ -45,7 +45,7 @@ const Counsels = {
   openModal(id, preset = {}, after) {
     const c = id ? Store.get('counsels', id) : null;
     const v = c || Object.assign({ studentId: '', date: todayStr(), content: '' }, preset);
-    const map = studentChoices();
+    const map = Books.stuChoicesSorted(s => (s.status || 'active') === 'active');   // 교재 등록과 같은 목록 (학생 탭 순서 · 재원생만) — 휴원·퇴원생 기록은 아래 저장 때 원래 학생 그대로
     Modal.open({
       title: c ? '상담 수정' : '상담 기록', size: 'lg',
       body: `<div class="form"><label class="req">학생</label>${studentInputHtml('dl-counsel-st', v.studentId ? labelOfStudent(v.studentId) : '')}

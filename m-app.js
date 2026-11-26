@@ -234,8 +234,8 @@ const MProgress = {
       const att = v.length ? `출${n('P')}${n('L') ? ' 지' + n('L') : ''}${n('A') ? ' <span style="color:var(--danger)">결' + n('A') + '</span>' : ''}${n('E') ? ' 조' + n('E') : ''}${n('M') ? ' 보' + n('M') : ''}` : '';
       const tds = this.todosOf(l.id);
       const pg = stripZws(l.progress || '').trim(), hw = stripZws(l.homework || '').trim(), mm = stripZws(l.memo || '').trim();
-      let f = `<span class="k">진도</span><div class="pre">${pg ? highlight(pg, q) : ((l.np || []).length || (l.gp || []).length || (l.dist || []).length ? '' : '<span class="muted">-</span>')}${(l.np || []).length ? `<div class="np-line">내신 ${highlight(NP.text(l), q)}</div>` : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</div>`;
-      f += `<span class="k">숙제</span><div class="pre">${hw ? highlight(hw, q) : '<span class="muted">-</span>'}</div>`;
+      let f = `<span class="k">진도</span><div class="pre">${pg ? highlight(pg, q) : ((l.np || []).length || (l.gp || []).length || (l.dist || []).length ? '' : '<span class="muted">-</span>')}${(l.np || []).length ? NP.textLines(l).map((t, i) => `<div class="np-line">${i ? '' : '내신 '}${highlight(t, q)}</div>`).join('') : ''}${(l.gp || []).length ? `<div class="np-line">비내신 ${highlight(NP.genText(l), q)}</div>` : ''}${(l.dist || []).map(d => `<div class="np-line dist">배부 ${highlight(NP.distText(d), q)}</div>`).join('')}</div>`;
+      f += `<span class="k">숙제</span><div class="pre">${hw ? highlight(Lessons.hwPlus(hw), q) : '<span class="muted">-</span>'}</div>`;
       if (mm) f += `<span class="k">메모</span><div class="pre soft">${highlight(mm, q)}</div>`;
       if (tds.length) f += `<span class="k">할일</span><div>${tds.map(t => `<div class="${t.done ? 'muted' : ''}">${t.done ? '☑' : '☐'} ${highlight(t.text, q)} <span class="muted small">${fmtMD(t.date)}</span></div>`).join('')}</div>`;
       const lc = allCls ? Store.get('classes', l.classId) : null;

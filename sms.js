@@ -26,6 +26,7 @@ const SmsPage = {
   deleting: false,
 
   TOKENS: ['{이름}', '{반}'],
+  ACADEMY: '씬디쌤 잉글리쉬 영어학원',   // {학원} 버튼: 바꿔 넣는 자리표시가 아니라 이 글자를 그대로 넣음
   SURNAME2: ['남궁', '황보', '제갈', '선우', '독고', '사공', '서문', '동방', '어금', '망절', '장곡', '소봉', '공손'],   // 두 글자 성 (이름이 4글자 이상일 때만 적용)
   PAGE: 1000,             // 기록 한 번에 불러오는 줄 수
   GAS_CHUNK: 200,         // GAS 한 번 호출에 보내는 건수
@@ -98,7 +99,7 @@ const SmsPage = {
 
   /* ---------- 화면 ---------- */
   render(main) {
-    let h = `<div class="page-head"><h1>SMS</h1>${this.tab === 'new' ? '<button type="button" class="btn sm" data-nwa="cfg" title="반마다 하지 않는 안내(교재 안내·첫 문자·첫 상담 안내)를 고릅니다">⚙ 설정</button>' : ''}</div>
+    let h = `<div class="page-head"><h1>SMS</h1>${this.tab === 'new' ? '<button type="button" class="btn sm" data-nwa="cfg" title="반마다 하지 않는 안내(교재 안내·첫 문자·첫 상담 안내·첫 상담)를 고릅니다">⚙ 설정</button>' : ''}</div>
       <div class="tabs sx7-tabs">${[['send', '보내기'], ['new', '신규생'], ['log', '발송 기록']].map(([k, t]) => `<button data-tab="${k}" class="${this.tab === k ? 'active' : ''}">${t}</button>`).join('')}</div>`;
     if (!CFG.GAS_SMS_URL) h += `<div class="panel notice small" style="margin-bottom:14px">문자 발송 주소(GAS_SMS_URL)가 config.js에 설정되지 않았습니다.</div>`;
     if (this.tab === 'new') NewStu.sync();          // 신규생: 등록일·수강반이 바뀐 것을 할일에 먼저 반영
@@ -153,7 +154,7 @@ const SmsPage = {
           <button class="btn sm danger" data-a="tpldel" ${this.tplId ? '' : 'disabled'}>삭제</button>
         </div>
         <div class="sx7-row"><span class="soft small sx7-lb">자동 넣기</span>
-          ${this.TOKENS.map(t => `<button class="btn sm" data-ins="${t}">${t}</button>`).join('')}
+          ${this.TOKENS.map(t => `<button class="btn sm" data-ins="${t}">${t}</button>` + (t === '{이름}' ? `<button class="btn sm" data-ins="${esc(this.ACADEMY)}" title="${esc(this.ACADEMY)}">{학원}</button>` : '')).join('')}
         </div>
         <textarea data-text rows="9" placeholder="보낼 내용을 입력하세요. {이름} 등은 학생마다 바뀌어 들어갑니다.">${esc(this.text)}</textarea>
         <div class="small soft" id="sx7-cnt" style="margin-top:4px">${this.cntHtml()}</div>
@@ -570,7 +571,7 @@ const SmsPage = {
    - 설정 meta NWCFG { kind:'nw_cfg', tplFirst, tplCns(보내기 탭 템플릿 id), bookDays(확인창 기본 N일),
                        off:{ book:[반ID], first:[…], cns:[…] }(⚙ 설정에서 그 단계를 하지 않는 반 → '제외') }
    - 필요없음: 선택바에서 처리 (아직 안 한 할일은 지움) · 칩을 누르면 미완료로 되돌림
-   - 전체 반 보기에서는 3종이 모두 끝난(완료·필요없음·제외) 반을 숨김
+   - 전체 반 보기에서는 4종이 모두 끝난(완료·필요없음·제외) 반을 숨김
    - 할일 id TDN_학생ID_book / _first / _cns (nwKey 학생ID, nwStep 단계) · 중요도 높음 · "[반 이름] 홍길동 교재 안내 문자 (12/2 등원예정)"
      · 교재 안내: 첫 수업일 N일 전 (이미 지났으면 오늘) — 수업이 이미 시작된 학생도 확인창에서 고르면 오늘로 만듦
      · 첫 문자: 첫 수업 다음날 (주말·공휴일이면 다음 평일 → 금요일 첫 수업은 월요일)
@@ -581,10 +582,12 @@ const SmsPage = {
    - 첫 등원 전에 등원 예정이 없어짐(수강반 삭제·퇴원 등) 또는 학생 완전 삭제 → 할일 모두 삭제
      (등원 예정이 없어진 경우 반을 다시 정하면 새로 만듦) · 첫 등원 뒤 퇴원·휴원 → 아직 안 한 할일만 삭제
    - 직접 지운 할일은 다시 만들지 않음
+   - 첫 상담(meet): 실제 상담을 마쳤는지 완료 체크만 (할일·예정 등록·필요없음·문자 없음) · ⚙ 설정에서 반 제외 가능
    ========================================================= */
 const NewStu = {
-  KEYS: ['book', 'first', 'cns'],
-  LABEL: { book: '교재 안내', first: '첫 문자', cns: '첫 상담 안내' },
+  KEYS: ['book', 'first', 'cns', 'meet'],
+  LABEL: { book: '교재 안내', first: '첫 문자', cns: '첫 상담 안내', meet: '첫 상담' },
+  CHECK_ONLY: ['meet'],     // 완료 체크만 하는 단계 (할일을 만들지 않음 · 예정 등록 · 필요없음 · 문자 없음)
   TODO_TXT: { book: '교재 안내 문자', first: '첫 수업 후 문자', cns: '첫 상담 안내 문자' },
   CFG_ID: 'NWCFG',
   COUNT_DAYS: 180,          // 상담 안내 날짜를 찾는 범위 (첫 수업 뒤 며칠까지)
@@ -602,10 +605,10 @@ const NewStu = {
   setCfg(o) { Store.put('meta', Object.assign({ id: this.CFG_ID, kind: 'nw_cfg', createdAt: new Date().toISOString() }, Store.get('meta', this.CFG_ID) || {}, o)); },
   rec(sid) {
     const m = Store.get('meta', this.mid(sid));
-    const z = () => ({ book: '', first: '', cns: '' });
+    const z = () => ({ book: '', first: '', cns: '', meet: '' });
     return Object.assign({ id: this.mid(sid), kind: 'nw', studentId: sid, plan: false, bookDays: null, first: '', cls: '', key: '', createdAt: new Date().toISOString() }, m || {},
-      { made: Object.assign({ book: false, first: false, cns: false }, (m && m.made) || {}), dates: Object.assign(z(), (m && m.dates) || {}),
-        done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false, first: false, cns: false }, (m && m.skip) || {}) });
+      { made: Object.assign({ book: false, first: false, cns: false, meet: false }, (m && m.made) || {}), dates: Object.assign(z(), (m && m.dates) || {}),
+        done: Object.assign(z(), (m && m.done) || {}), skip: Object.assign({ book: false, first: false, cns: false, meet: false }, (m && m.skip) || {}) });
   },
   // 단계 상태 { done, at(완료 시각), date(할일 날짜), skip(필요없음), ex(반 제외), todo }
   state(sid, k) {
@@ -705,14 +708,15 @@ const NewStu = {
         if (!p) {
           if (!isYmd(m.first) || m.first > today) {                // 첫 등원 전에 등원 예정이 없어짐 → 할일 모두 삭제, 처음 상태로
             delAll(false);
-            const z = () => ({ book: '', first: '', cns: '' });
-            Object.assign(m, { made: { book: false, first: false, cns: false }, dates: z(), done: z(), first: '', cls: '', key: '' });
+            const z = () => ({ book: '', first: '', cns: '', meet: '' });
+            Object.assign(m, { made: { book: false, first: false, cns: false, meet: false }, dates: z(), done: z(), first: '', cls: '', key: '' });
           } else delAll(true);                                    // 다니다가 퇴원·휴원 → 아직 안 한 할일만 삭제
         } else {
           const key = [p.first, p.bookRaw, p.firstMsg, p.cns].join('|');
           const changed = !!m.key && m.key !== key;              // 등원 예정일·수강반이 바뀌어 일정이 달라짐
           m.cls = p.c ? p.c.id : '';
           this.KEYS.forEach(k => {
+            if (this.CHECK_ONLY.includes(k)) return;              // 첫 상담: 할일을 만들지 않음 (완료 체크만)
             const id = this.tid(sid, k), t = Store.get('todos', id);
             const want = k === 'book' ? p.book : k === 'first' ? p.firstMsg : p.cns, text = this.textOf(k, p.c, s, p.first);
             if (p.c && this.isExCls(p.c.id, k)) {                 // ⚙ 설정에서 이 반은 하지 않는 단계 → 아직 안 한 할일 삭제 (다시 켜면 새로 만듦)
@@ -855,7 +859,7 @@ const NewStu = {
     else if (st.date === today) { cls = 'orange'; txt = '오늘'; }
     else if (st.date) { cls = 'blue'; txt = md(st.date) + ' 예정'; }
     else { cls = 'gray'; txt = '미완료'; }
-    const send = (k !== 'book' && !st.done) ? `<button type="button" class="btn sm nw-send" data-nwsend="${sid}|${k}" title="부모님께 ${this.LABEL[k]} 문자 보내기">보내기</button>` : '';
+    const send = (k !== 'book' && !this.CHECK_ONLY.includes(k) && !st.done) ? `<button type="button" class="btn sm nw-send" data-nwsend="${sid}|${k}" title="부모님께 ${this.LABEL[k]} 문자 보내기">보내기</button>` : '';
     return `<button type="button" class="nw-chip ${cls}" data-nwtg="${sid}|${k}" title="눌러서 ${st.done ? '미완료로' : '완료로'}">${txt}</button>${send}`;
   },
   html() {
@@ -884,7 +888,7 @@ const NewStu = {
   bodyHtml(gs) {
     const today = todayStr();
     gs = gs || this.groups();
-    const hide = (g) => !this.cls && g.fin;                   // 전체 반: 3종 안내가 모두 끝난 반은 숨김
+    const hide = (g) => !this.cls && g.fin;                   // 전체 반: 4종(첫 상담 포함)이 모두 끝난 반은 숨김
     const shown = gs.filter(g => g.list.length && !hide(g));
     let h = '';
     if (!shown.length) return h + `<div class="panel"><div class="empty">${gs.some(g => g.all.length) ? (gs.every(g => !g.all.length || hide(g)) ? '모든 반의 안내가 끝났습니다.' : this.todo ? '처리할 학생이 없습니다. (모두 완료)' : '해당하는 학생이 없습니다.') : '재원생이 없습니다.'}</div></div>`;
@@ -912,13 +916,14 @@ const NewStu = {
     // 늘 자리를 차지하는 버튼 줄 (선택이 없으면 흐리게 · 비활성) — 학생 목록의 bulk-bar와 같은 방식
     // 단계(교재 안내 · 첫 문자 · 첫 상담 안내)를 고른 뒤 → 날짜 → 예정 등록 · 완료 처리 · 필요없음 · 문자 보내기
     const n = this.sel.size, dis = n ? '' : 'disabled', k = this.step;
+    const co = this.CHECK_ONLY.includes(k), dis2 = n && !co ? '' : 'disabled';   // 첫 상담: 완료 처리만
     return `<div class="bulk-bar nw-selbar${n ? '' : ' off'}"><b>선택 ${n}명</b>
       <span class="att-seg nw-seg">${this.KEYS.map(x => `<button type="button" class="${x === k ? 'on' : ''}" data-nwstep="${x}">${this.LABEL[x]}</button>`).join('')}</span>
       <span class="soft small" style="margin-left:4px">날짜</span><input type="date" data-nwdate value="${esc(this.bdate || todayStr())}">
-      <button class="btn sm" data-nwbulk="plan" ${dis} title="고른 날짜를 예정일로 정하고 할일에 등록합니다">예정 등록</button>
+      <button class="btn sm" data-nwbulk="plan" ${dis2} title="${co ? this.LABEL[k] + '은 완료 처리만 합니다' : '고른 날짜를 예정일로 정하고 할일에 등록합니다'}">예정 등록</button>
       <button class="btn sm" data-nwbulk="done" ${dis} title="고른 날짜에 완료한 것으로 체크합니다">완료 처리</button>
-      <button class="btn sm" data-nwbulk="need" ${dis} title="안내할 필요가 없는 것으로 처리합니다 (날짜 없음)">필요없음</button>
-      <button class="btn sm primary" data-nwbulk="send" ${n && k !== 'book' && !SmsPage.sending ? '' : 'disabled'} title="${k === 'book' ? '교재 안내는 카톡으로 하므로 문자를 보내지 않습니다' : '부모님께 ' + this.LABEL[k] + ' 문자를 보냅니다 (오늘 완료)'}">문자 보내기</button>
+      <button class="btn sm" data-nwbulk="need" ${dis2} title="${co ? this.LABEL[k] + '은 완료 처리만 합니다' : '안내할 필요가 없는 것으로 처리합니다 (날짜 없음)'}">필요없음</button>
+      <button class="btn sm primary" data-nwbulk="send" ${n && k !== 'book' && !co && !SmsPage.sending ? '' : 'disabled'} title="${k === 'book' ? '교재 안내는 카톡으로 하므로 문자를 보내지 않습니다' : co ? this.LABEL[k] + '은 완료 처리만 합니다' : '부모님께 ' + this.LABEL[k] + ' 문자를 보냅니다 (오늘 완료)'}">문자 보내기</button>
       <span style="flex:1"></span><button class="btn sm ghost" data-nwbulk="clear" ${dis}>선택 해제</button></div>`;
   },
   parentOk(s) { return SmsPage.okPhone(SmsPage.digits(s.parentPhone)); },
@@ -970,6 +975,7 @@ const NewStu = {
   async bulk(act) {
     const sids = [...this.sel], k = this.step;
     if (!sids.length) return;
+    if (this.CHECK_ONLY.includes(k) && act !== 'done') return;   // 첫 상담: 완료 처리만
     if (act === 'send') { if (k !== 'book') this.preview(sids, k); return; }
     const day = this.bdate || todayStr();
     if ((act === 'plan' || act === 'done') && !isYmd(day)) { toast('날짜를 입력하세요'); return; }
@@ -1121,8 +1127,8 @@ body.m-body .nw-top { position: static; border-bottom: 0; padding: 0; margin-top
 .nw-cnt { margin-left: auto; color: var(--ink-soft); }
 .nw-cnt b.ok { color: var(--ok); }
 .nw-tbl td { vertical-align: middle; }
-.nw-tbl { table-layout: fixed; width: 100%; min-width: 760px; }                  /* 반마다 칸 위치를 같게 */
-.nw-tbl th:nth-child(2) { width: 20%; } .nw-tbl th:nth-child(3) { width: 15%; }
+.nw-tbl { table-layout: fixed; width: 100%; min-width: 860px; }                  /* 반마다 칸 위치를 같게 */
+.nw-tbl th:nth-child(2) { width: 18%; } .nw-tbl th:nth-child(3) { width: 12%; } .nw-tbl th:nth-child(7) { width: 11%; }   /* 7번째 = 첫 상담 (칩만 있어 좁게) */
 .nw-tbl td { overflow: hidden; text-overflow: ellipsis; }
 .nw-chip { border: 0; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .nw-chip.green { background: var(--ok-soft); color: var(--ok); }

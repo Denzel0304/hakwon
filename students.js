@@ -368,13 +368,18 @@ const Students = {
       name: $('[name=name]', b).value.trim(),
       school: $('[name=school]', b).value.trim(),
       grade: $('[name=grade]', b).value ? +$('[name=grade]', b).value : '',
-      phone: fmtPhone($('[name=phone]', b).value),
-      parentPhone: fmtPhone($('[name=parentPhone]', b).value),
+      phone: this.fmtPhone010($('[name=phone]', b).value),
+      parentPhone: this.fmtPhone010($('[name=parentPhone]', b).value),
       memo: stripZws($('[name=memo]', b).value),
     };
   },
+  // 학생 정보 창 연락처: 뒷 8자리만 입력하면 앞에 010을 붙임 (1234-5678 → 010-1234-5678)
+  fmtPhone010(v) {
+    const d = String(v || '').replace(/\D/g, '');
+    return fmtPhone(d.length === 8 ? '010' + d : v);
+  },
   bindPhones(b) {
-    $$('input[type=tel]', b).forEach(i => i.addEventListener('blur', () => { i.value = fmtPhone(i.value); }));
+    $$('input[type=tel]', b).forEach(i => i.addEventListener('blur', () => { i.value = this.fmtPhone010(i.value); }));
     const sch = $('[name=school]', b);
     if (sch) bindCombo(sch, schoolOptions);
   },
