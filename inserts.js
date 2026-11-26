@@ -41,8 +41,8 @@ const Inserts = {
     const m = this.matId ? NP.mat(this.matId) : null;
     const opt = (x) => { const n = this.nQs(this.recs(x.id)); return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
     let h = Exams.headHtml() + Exams.tabsHtml();
-    h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.map(opt).join('')}</select>
-      <span class="muted small">문장 삽입 문제 · Claude로 만든 파일을 올려 탑재</span><span style="flex:1"></span>
+    h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
+      <span class="muted small">모의고사 문장 삽입 문제 · Claude로 만든 파일을 올리면 같은 모의고사에 자동으로 붙음</span><span style="flex:1"></span>
       <button class="btn" data-ia="up">파일 올리기</button><button class="btn primary" data-ia="print">인쇄</button>
       <input type="file" data-infile accept=".json,application/json" hidden></div>`;
     h += m ? this.matHtml(m) : this.overviewHtml(mats);
@@ -56,21 +56,22 @@ const Inserts = {
     main.onkeydown = null;
   },
 
-  // 교재를 고르기 전: 삽입 문제가 있는 모의고사 목록
+  // 교재를 고르기 전: 삽입 문제가 있는 교재 목록 (서술형 탭 목록과 같은 모양)
   overviewHtml(mats) {
+    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다. “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리면 파일의 연도·월·학년으로 모의고사 교재가 만들어지고 문제가 붙습니다.</div></div>';
     const list = mats.filter(m => this.recs(m.id).length);
-    if (!list.length) return '<div class="panel"><div class="empty">올린 삽입 문제가 없습니다. “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리세요.<br>파일의 연도·월·학년과 같은 모의고사 교재에 자동으로 붙습니다.</div></div>';
-    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>이름</th><th class="num">지문</th><th class="num">문항</th><th>올린 날</th></tr></thead><tbody>${list.map(m => {
+    if (!list.length) return '<div class="panel"><div class="empty">올린 삽입 문제가 없습니다. “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리세요. 파일의 연도·월·학년과 같은 모의고사 교재에 자동으로 붙습니다.</div></div>';
+    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문항</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
       const rs = this.recs(m.id), up = rs.map(r => r.updatedAt || '').sort().pop() || '';
-      return `<tr class="click" data-ingo="${m.id}"><td class="nowrap"><span class="np-tag mock">${MAT_TYPE.mock}</span> <b>${esc(NP.matName(m))}</b></td>
-        <td class="num">${rs.length}</td><td class="num">${this.nQs(rs)}</td><td class="nowrap">${up ? esc(up.slice(0, 10)) : ''}</td></tr>`;
+      return `<tr class="click" data-ingo="${m.id}"><td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
+        <td class="num">${rs.length}</td><td class="num">${this.nQs(rs)}</td><td class="nowrap">${esc(up.slice(0, 10))}</td></tr>`;
     }).join('')}</tbody></table></div>`;
   },
 
   matHtml(m) {
     const rs = this.recs(m.id);
     let h = `<div class="panel"><div class="wx-bar"><span class="np-tag mock">${MAT_TYPE.mock}</span><b class="wx-mname">${esc(NP.matName(m))}</b>
-      <span class="small soft">${rs.length}개 지문 · ${this.nQs(rs)}문항</span><span style="flex:1"></span>
+      <span class="small soft">${rs.length}개 항목 · ${this.nQs(rs)}문항</span><span style="flex:1"></span>
       ${rs.length ? '<button type="button" class="btn sm ghost danger" data-ia="delset">문제 모두 삭제</button>' : ''}</div>`;
     if (!rs.length) return h + '<div class="empty">이 모의고사에 올린 삽입 문제가 없습니다. “파일 올리기”로 파일을 올리세요.</div></div>';
     if (!rs.some(r => r.num === this.openNum)) this.openNum = '';

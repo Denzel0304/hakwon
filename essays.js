@@ -87,10 +87,10 @@ const Essays = {
     if (!mats.length) return '<div class="panel"><div class="empty">등록된 시험 교재가 없습니다. “+ 교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하세요.</div></div>';
     const list = mats.filter(m => this.groupsOf(m.id).length);
     if (!list.length) return '<div class="panel"><div class="empty">위에서 교재를 고른 뒤 문항(모의고사) 또는 과·강의 하위 항목(교과서·부교재)을 추가하고 문장을 넣으세요.</div></div>';
-    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문장</th></tr></thead><tbody>${list.map(m => {
-      const gs = this.groupsOf(m.id);
+    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문장</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
+      const gs = this.groupsOf(m.id), up = String((this.rec(m.id) || {}).updatedAt || '').slice(0, 10);
       return `<tr class="click" data-wrgo="${m.id}"><td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
-        <td class="num">${gs.length}</td><td class="num">${this.nSents(gs)}</td></tr>`;
+        <td class="num">${gs.length}</td><td class="num">${this.nSents(gs)}</td><td class="nowrap">${esc(up)}</td></tr>`;
     }).join('')}</tbody></table></div>`;
   },
 
