@@ -19,7 +19,7 @@ const Exams = {
   year: '',
   sem: '',
   q: '',
-  tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재 / 'wr' 서술형 (essays.js) / 'lu' 교재 목록
+  tab: 'exam',          // 'exam' 진행중인 시험 / 'done' 완료된 시험 / 'mat' 시험 교재 / 'gen' 일반 교재 / 'wr' 서술형 (essays.js) / 'ins' 삽입 (inserts.js) / 'lu' 교재 목록
   matType: '',
   matSchool: '',        // 시험 교재 목록의 학교 필터 ('' 전체 / 학교 / '__none' 학교 연결 없는 교과서)
   sel: new Set(),       // 체크한 항목 (탭을 바꾸거나 조건을 바꾸면 비움)
@@ -70,7 +70,7 @@ const Exams = {
   tabsHtml() {
     const ex = Store.all('exams'), dn = ex.filter(e => e.done).length;
     const t = (k, label, n) => `<button data-xtab="${k}" class="${this.tab === k ? 'active' : ''}">${label}<span class="cnt">${n}</span></button>`;
-    return `<div class="tabs">${t('exam', '진행중인 시험', ex.length - dn)}${t('done', '완료된 시험', dn)}${t('mat', '시험 교재', NP.examMats().length)}${t('gen', '일반 교재', NP.genMats().length)}${t('wr', '서술형', Essays.count())}${t('lu', '교재 목록', this.luBooks().length)}</div>`;
+    return `<div class="tabs">${t('exam', '진행중인 시험', ex.length - dn)}${t('done', '완료된 시험', dn)}${t('mat', '시험 교재', NP.examMats().length)}${t('gen', '일반 교재', NP.genMats().length)}${t('wr', '서술형', Essays.count())}${t('ins', '삽입', Inserts.count())}${t('lu', '교재 목록', this.luBooks().length)}</div>`;
   },
   tabClick(e) {
     const t = e.target.closest('[data-xtab]'); if (!t) return false;
@@ -122,6 +122,7 @@ const Exams = {
     queueMicrotask(() => this.stickTabs(main));   // 어느 탭을 그려도 다 그린 뒤 탭 줄 고정 위치를 맞춘다
     if (this.tab === 'lu') { this.renderLineup(main); return; }
     if (this.tab === 'wr') { Essays.render(main); return; }
+    if (this.tab === 'ins') { Inserts.render(main); return; }
     if (this.tab === 'mat' || this.tab === 'gen') { this.renderMats(main); return; }
     const done = this.tab === 'done';
     const all = Store.all('exams');
