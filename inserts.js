@@ -4,7 +4,7 @@
        파일의 연도·월·학년과 같은 모의고사 교재에 붙는다 (교재가 없으면 만들지 물어봄). 교재 연결은 이름·목록용일 뿐 다른 기능과 연동 없음
    · 저장: meta 테이블 (다른 기기와 동기화 · 테이블 추가 없음) — 지문 하나에 기록 하나
        id 'IN_'+교재id+'_'+번호, { kind:'inq', matId, num:'20' | '41-42', qs:[{ id:'20-1', given, body:[{ t, np? } | { m:'①' }], answer:1~5 }], updatedAt }
-   · 인쇄 (이 탭의 인쇄 창): 여러 모의고사에서 지문(번호)을 고르고, 지문 안의 문항을 하나씩 뺄 수 있다
+   · 인쇄 (이 탭의 인쇄 창): 여러 모의고사에서 지문(번호)을 골라 그 지문의 문항을 모두 인쇄한다
        순서는 늘 섞는다 — 같은 지문 문항은 붙지 않게, 되도록 같은 쪽에도 오지 않게 (모든 부가 같은 순서, "다시 섞기"로 바꿈)
        한 부 = 문제지(2단) (+빈 면) + 정답지 (+빈 면) → 정답지는 늘 새 종이에서 시작, 다음 부도 새 종이에서 시작
        종이·머리글(학원명·날짜·이름)·학생 목록·인쇄 방식은 표지+양식(Prints.kit)의 것을 그대로 씀
@@ -12,8 +12,8 @@
 const Inserts = {
   FORMAT: 'mg77-insert-v1',
   matId: '',              // 지금 보고 있는 교재
+  openNum: '',            // 화면에서 펼쳐 본 지문 번호 (하나만)
   sel: new Set(),         // 인쇄 창에서 고른 지문 (교재id|번호) — 앱을 켜 둔 동안 기억
-  off: new Set(),         // 인쇄에서 뺀 문항 (교재id|문항id)
   seed: 1,                // 섞기 순서 (다시 섞기로 바꿈)
   pick: { mode: 'manual', classId: '', sel: [] },   // 학생 이름: 직접 입력 / 반에서 선택
   pr: { name: '', date: '', copies: '' },
@@ -49,7 +49,7 @@ const Inserts = {
     main.innerHTML = h;
     main.onclick = (e) => this.onClick(e, main);
     main.onchange = (e) => {
-      if (e.target.matches('[data-inmat]')) { this.matId = e.target.value; App.render(); return; }
+      if (e.target.matches('[data-inmat]')) { this.matId = e.target.value; this.openNum = ''; App.render(); return; }
       if (e.target.matches('[data-infile]')) { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) this.upload(f); }
     };
     main.oninput = null;
@@ -73,10 +73,15 @@ const Inserts = {
       <span class="small soft">${rs.length}개 지문 · ${this.nQs(rs)}문항</span><span style="flex:1"></span>
       ${rs.length ? '<button type="button" class="btn sm ghost danger" data-ia="delset">문제 모두 삭제</button>' : ''}</div>`;
     if (!rs.length) return h + '<div class="empty">이 모의고사에 올린 삽입 문제가 없습니다. “파일 올리기”로 파일을 올리세요.</div></div>';
-    h += rs.map(r => `<details class="wx-grp in-grp"><summary class="wx-gh"><b class="wx-gl">${esc(r.num)}번</b><span class="small soft">${r.qs.length}문항</span></summary>
+    if (!rs.some(r => r.num === this.openNum)) this.openNum = '';
+    h += `<div class="in-cards">${rs.map(r => `<button type="button" class="in-card${r.num === this.openNum ? ' on' : ''}" data-inopen="${esc(r.num)}"><b>${esc(r.num)}번</b><span>${r.qs.length}문항</span></button>`).join('')}</div>`;
+    const r = rs.find(x => x.num === this.openNum);
+    if (!r) return h + '<p class="small muted in-tip">번호를 누르면 그 지문의 문항이 아래에 나와요.</p></div>';
+    h += `<div class="wx-grp in-grp"><div class="wx-gh"><b class="wx-gl">${esc(r.num)}번</b><span class="small soft">${r.qs.length}문항</span><span style="flex:1"></span>
+        <button type="button" class="btn sm ghost" data-inopen="${esc(r.num)}">접기</button></div>
       <ol class="wx-sl">${r.qs.map(q => `<li class="wx-s"><span class="wx-sn">${esc(q.id)}</span><div class="wx-st in-st">
         <div class="wx-en">${esc(q.given)} <span class="in-ans">정답 ${'①②③④⑤'[q.answer - 1]}</span></div>
-        <div class="wx-ko in-body">${this.screenBody(q)}</div></div></li>`).join('')}</ol></details>`).join('');
+        <div class="wx-ko in-body">${this.screenBody(q)}</div></div></li>`).join('')}</ol></div>`;
     return h + '</div>';
   },
   screenBody(q) { return q.body.map(it => it.m ? `<b class="in-smk">(${it.m})</b>` : esc(it.t)).join(' '); },
@@ -84,7 +89,9 @@ const Inserts = {
   onClick(e, main) {
     if (Exams.commonClick(e, main)) return;
     const go = e.target.closest('tr[data-ingo]');
-    if (go) { this.matId = go.dataset.ingo; App.render(true); return; }
+    if (go) { this.matId = go.dataset.ingo; this.openNum = ''; App.render(true); return; }
+    const op = e.target.closest('[data-inopen]');
+    if (op) { const n = op.dataset.inopen; this.openNum = this.openNum === n ? '' : n; App.render(); return; }
     const b = e.target.closest('[data-ia]');
     if (!b || b.disabled) return;
     const a = b.dataset.ia;
@@ -104,7 +111,6 @@ const Inserts = {
   },
   clearSel(matId) {
     [...this.sel].forEach(k => { if (k.startsWith(matId + '|')) this.sel.delete(k); });
-    [...this.off].forEach(k => { if (k.startsWith(matId + '|')) this.off.delete(k); });
   },
 
   /* ---------- 파일 올리기 ---------- */
@@ -181,13 +187,13 @@ const Inserts = {
 
   // 인쇄할 수 있는 모의고사 → [{ m, rs:[지문 기록] }]
   printMats() { return this.mockMats().map(m => ({ m, rs: this.recs(m.id) })).filter(x => x.rs.length); },
-  // 고른 지문의 문항 (뺀 문항 제외) → [{ key, gk(지문 키), m, num, q }]
+  // 고른 지문의 문항 → [{ key, gk(지문 키), m, num, q }]
   items() {
     const out = [];
     this.printMats().forEach(({ m, rs }) => rs.forEach(r => {
       const gk = m.id + '|' + r.num;
       if (!this.sel.has(gk)) return;
-      r.qs.forEach(q => { if (!this.off.has(m.id + '|' + q.id)) out.push({ key: m.id + '|' + q.id, gk, m, num: r.num, q }); });
+      r.qs.forEach(q => out.push({ key: m.id + '|' + q.id, gk, m, num: r.num, q }));
     }));
     return out;
   },
@@ -198,20 +204,16 @@ const Inserts = {
     if (!pm.length) { toast('인쇄할 삽입 문제가 없습니다. 먼저 파일을 올리세요.'); return; }
     this.loadSet();
     K.ensureAssets(); this.ensureCss();
-    // 없어진 지문·문항은 선택에서 뺀다
-    const liveG = new Set(), liveQ = new Set();
-    pm.forEach(({ m, rs }) => rs.forEach(r => { liveG.add(m.id + '|' + r.num); r.qs.forEach(q => liveQ.add(m.id + '|' + q.id)); }));
+    // 없어진 지문은 선택에서 뺀다
+    const liveG = new Set();
+    pm.forEach(({ m, rs }) => rs.forEach(r => liveG.add(m.id + '|' + r.num)));
     [...this.sel].forEach(k => { if (!liveG.has(k)) this.sel.delete(k); });
-    [...this.off].forEach(k => { if (!liveQ.has(k)) this.off.delete(k); });
     const body = `<div class="pr-wrap wx-pw">
       <aside class="panel pr-side wx-pside">
         <div class="pr-sec"><h2>범위</h2>
           <div class="wx-psbtn"><button type="button" class="btn sm" data-ia="ip-all">전체 선택</button><button type="button" class="btn sm" data-ia="ip-none">선택 해제</button></div>
           <div class="wx-pslist" data-insel>${this.selHtml()}</div>
           <p class="pr-hint" data-insum></p></div>
-        <div class="pr-sec"><h2>문항 빼기</h2>
-          <div class="in-offlist" data-inoff>${this.offHtml()}</div>
-          <p class="pr-hint">눌러서 끄면 그 문항은 인쇄하지 않아요.</p></div>
         <div class="pr-sec"><h2>순서</h2>
           <button type="button" class="btn sm" data-ia="ip-shuffle">다시 섞기</button>
           <p class="pr-hint">같은 지문의 문항은 붙지 않게, 되도록 같은 쪽에도 오지 않게 섞어요. 모든 부가 같은 순서예요.</p></div>
@@ -246,8 +248,6 @@ const Inserts = {
         const refreshSel = () => {
           const box = $('[data-insel]', b), top = box.scrollTop;
           box.innerHTML = this.selHtml(); box.scrollTop = top;
-          const ob = $('[data-inoff]', b), ot = ob.scrollTop;
-          ob.innerHTML = this.offHtml(); ob.scrollTop = ot;
           syncIndet(); upd();
         };
         const refreshNm = (listToo) => {
@@ -262,8 +262,6 @@ const Inserts = {
         b.addEventListener('click', (e) => {
           const chip = e.target.closest('[data-isg]');
           if (chip) { const k = chip.dataset.isg; if (this.sel.has(k)) this.sel.delete(k); else this.sel.add(k); refreshSel(); return; }
-          const qc = e.target.closest('[data-isq]');
-          if (qc) { const k = qc.dataset.isq; if (this.off.has(k)) this.off.delete(k); else this.off.add(k); refreshSel(); return; }
           const bt = e.target.closest('[data-ia]'); if (!bt) return;
           const a = bt.dataset.ia;
           if (a === 'ip-all') { this.printMats().forEach(x => x.rs.forEach(r => this.sel.add(x.m.id + '|' + r.num))); refreshSel(); }
@@ -323,19 +321,6 @@ const Inserts = {
         <div class="np-chips">${rs.map(r => `<button type="button" class="np-c sm ${this.sel.has(m.id + '|' + r.num) ? 'on' : ''}" data-isg="${esc(m.id + '|' + r.num)}">${esc(r.num)}번<small class="wx-cnt">${r.qs.length}</small></button>`).join('')}</div></div>`;
     }).join('');
   },
-  // 문항 빼기: 고른 지문의 문항 칩 (켜짐 = 인쇄함)
-  offHtml() {
-    const rows = [];
-    this.printMats().forEach(({ m, rs }) => rs.forEach(r => {
-      if (!this.sel.has(m.id + '|' + r.num)) return;
-      rows.push(`<div class="wx-psu"><span class="wx-psul">${esc(NP.shortName(m))}<br>${esc(r.num)}번</span><div class="np-chips">${r.qs.map(q => {
-        const k = m.id + '|' + q.id;
-        return `<button type="button" class="np-c sm ${this.off.has(k) ? '' : 'on'}" data-isq="${esc(k)}" title="${esc(q.given)}">${esc(q.id)}</button>`;
-      }).join('')}</div></div>`);
-    }));
-    return rows.length ? rows.join('') : '<div class="none small muted">범위에서 지문을 고르면 문항이 나와요.</div>';
-  },
-
   /* ---------- 학생 이름 (표지+양식과 같은 방식) ---------- */
   pickStudents() { return this.pick.sel.map(id => Store.get('students', id)).filter(Boolean); },
   nmBodyHtml() {
@@ -575,19 +560,19 @@ const Inserts = {
 (function () {
   const st = document.createElement('style');
   st.textContent = `
-.in-grp > summary { cursor: pointer; list-style: none; }
-.in-grp > summary::-webkit-details-marker { display: none; }
-.in-grp > summary::before { content: '▸'; color: var(--ink-mute); margin-right: 2px; }
-.in-grp[open] > summary::before { content: '▾'; }
+.in-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; margin-top: 10px; }
+.in-card { display: flex; align-items: baseline; justify-content: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); cursor: pointer; font-size: 13.5px; white-space: nowrap; }
+.in-card span { font-size: 12px; color: var(--ink-mute); }
+.in-card:hover { border-color: var(--accent); }
+.in-card.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+.in-card.on span { color: var(--accent-ink); }
+.in-tip { margin: 8px 2px 0; }
 .in-st { cursor: default; }
 .in-st:hover { background: none; }
 .in-ans { display: inline-block; margin-left: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border-radius: 10px; padding: 0 8px; }
 .in-body { margin-top: 4px; }
 .in-smk { color: var(--accent-ink); }
 .in-grp .wx-sn { width: auto; min-width: 22px; }
-.in-offlist { max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--tint-strong); }
-.in-offlist .wx-psu { margin: 4px 0; }
-.in-offlist .wx-psul { min-width: 72px; line-height: 1.3; padding-top: 3px; }
 .in-th { cursor: zoom-in; }
 `;
   document.head.appendChild(st);
