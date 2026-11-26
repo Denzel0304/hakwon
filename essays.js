@@ -1,5 +1,5 @@
 /* =========================================================
-   essays.js — 시험+교재 › 서술형 (고등 서술형 대비 문장 + 따라쓰기 노트)
+   essays.js — 변형 문제 › 서술형 (고등 서술형 대비 문장 + 따라쓰기 노트)
    · 시험 교재(모의고사·교과서·부교재)마다 하위 항목을 만들고, 그 안에 문장(영어 + 한글 해석)을 넣는다
        모의고사: 문항 번호(18~45) → 번호 순으로 자동 정렬
        교과서·부교재: 과·강 → 하위 항목(예: 본문 1, 대화문 — 이름 직접 입력) → 같은 과·강 안에서 ↑↓로 순서
@@ -62,7 +62,7 @@ const Essays = {
     if (this.matId && !NP.mat(this.matId)) this.matId = '';
     const m = this.matId ? NP.mat(this.matId) : null;
     const opt = (x) => { const n = this.nSents(this.groupsOf(x.id)); return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문장)` : ''}</option>`; };
-    let h = Exams.headHtml() + Exams.tabsHtml();
+    let h = Variants.headHtml() + Variants.tabsHtml();
     h += `<div class="toolbar"><select data-wrmat style="min-width:280px"><option value="">교재를 고르세요</option>${['mock', 'text', 'sub'].map(t => {
       const l = mats.filter(x => x.type === t);
       return l.length ? `<optgroup label="${MAT_TYPE[t]}">${l.map(opt).join('')}</optgroup>` : '';
@@ -84,7 +84,7 @@ const Essays = {
 
   // 교재를 고르기 전: 문장이 있는 교재 목록
   overviewHtml(mats) {
-    if (!mats.length) return '<div class="panel"><div class="empty">등록된 시험 교재가 없습니다. “+ 교재 등록”으로 모의고사·교과서·부교재를 먼저 등록하세요.</div></div>';
+    if (!mats.length) return '<div class="panel"><div class="empty">등록된 시험 교재가 없습니다.</div></div>';
     const list = mats.filter(m => this.groupsOf(m.id).length);
     if (!list.length) return '<div class="panel"><div class="empty">위에서 교재를 고른 뒤 문항(모의고사) 또는 과·강의 하위 항목(교과서·부교재)을 추가하고 문장을 넣으세요.</div></div>';
     return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문장</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
@@ -140,7 +140,7 @@ const Essays = {
   },
 
   onClick(e, main) {
-    if (Exams.commonClick(e, main)) return;
+    if (Variants.commonClick(e, main)) return;
     const go = e.target.closest('tr[data-wrgo]');
     if (go) { this.matId = go.dataset.wrgo; App.render(true); return; }
     const u = e.target.closest('[data-wrunit]');

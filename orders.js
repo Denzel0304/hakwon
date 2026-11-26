@@ -1,5 +1,5 @@
 /* =========================================================
-   orders.js — 시험+교재 › 순서 (모의고사 지문으로 만든 글의 순서 배열 문제)
+   orders.js — 변형 문제 › 순서 (모의고사 지문으로 만든 글의 순서 배열 문제)
    · 문제는 Claude로 미리 만든 파일(형식 mg77-order-v1, .json)을 "파일 올리기"로 탑재한다
        위에서 고른 모의고사 교재에 붙는다 (파일 속 연도·월은 확인 창에 보여 주기만 함)
    · 저장: meta 테이블 — 지문 하나에 기록 하나 (지문당 1문항)
@@ -40,7 +40,7 @@ const Orders = {
     if (this.matId && !NP.mat(this.matId)) this.matId = '';
     const m = this.matId ? NP.mat(this.matId) : null;
     const opt = (x) => { const n = this.recs(x.id).length; return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
-    let h = Exams.headHtml() + Exams.tabsHtml();
+    let h = Variants.headHtml() + Variants.tabsHtml();
     h += `<div class="toolbar"><select data-odmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
       <span class="muted small">모의고사 글의 순서 문제 · 회차를 고른 뒤 Claude로 만든 파일을 올림</span><span style="flex:1"></span>
       <button class="btn" data-oa="up">파일 올리기</button><button class="btn primary" data-oa="print">인쇄</button>
@@ -58,7 +58,7 @@ const Orders = {
 
   // 교재를 고르기 전: 순서 문제가 있는 교재 목록 (서술형·삽입 탭 목록과 같은 모양)
   overviewHtml(mats) {
-    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다. “+ 교재 등록”으로 모의고사를 먼저 등록하세요.</div></div>';
+    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다.</div></div>';
     const list = mats.filter(m => this.recs(m.id).length);
     if (!list.length) return '<div class="panel"><div class="empty">올린 순서 문제가 없습니다. 위에서 모의고사를 고른 뒤 “파일 올리기”로 Claude가 만든 순서 문제 파일(.json)을 올리세요.</div></div>';
     return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문항</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
@@ -86,7 +86,7 @@ const Orders = {
   },
 
   onClick(e, main) {
-    if (Exams.commonClick(e, main)) return;
+    if (Variants.commonClick(e, main)) return;
     const go = e.target.closest('tr[data-odgo]');
     if (go) { this.matId = go.dataset.odgo; this.openNum = ''; App.render(true); return; }
     const op = e.target.closest('[data-odopen]');

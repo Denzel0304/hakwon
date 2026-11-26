@@ -1,5 +1,5 @@
 /* =========================================================
-   inserts.js — 시험+교재 › 삽입 (모의고사 지문으로 만든 문장 삽입 문제)
+   inserts.js — 변형 문제 › 삽입 (모의고사 지문으로 만든 문장 삽입 문제)
    · 문제는 Claude로 미리 만든 파일(형식 mg77-insert-v1, .json)을 "파일 올리기"로 탑재한다
        위에서 고른 모의고사 교재에 붙는다 (파일 속 연도·월은 확인 창에 보여 주기만 함 — 시행 월이 달라도 선생님이 고른 회차에 붙음)
        교재 연결은 이름·목록용일 뿐 다른 기능과 연동 없음
@@ -41,7 +41,7 @@ const Inserts = {
     if (this.matId && !NP.mat(this.matId)) this.matId = '';
     const m = this.matId ? NP.mat(this.matId) : null;
     const opt = (x) => { const n = this.nQs(this.recs(x.id)); return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
-    let h = Exams.headHtml() + Exams.tabsHtml();
+    let h = Variants.headHtml() + Variants.tabsHtml();
     h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
       <span class="muted small">모의고사 문장 삽입 문제 · 회차를 고른 뒤 Claude로 만든 파일을 올림</span><span style="flex:1"></span>
       <button class="btn" data-ia="up">파일 올리기</button><button class="btn primary" data-ia="print">인쇄</button>
@@ -59,7 +59,7 @@ const Inserts = {
 
   // 교재를 고르기 전: 삽입 문제가 있는 교재 목록 (서술형 탭 목록과 같은 모양)
   overviewHtml(mats) {
-    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다. “+ 교재 등록”으로 모의고사를 먼저 등록하세요.</div></div>';
+    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다.</div></div>';
     const list = mats.filter(m => this.recs(m.id).length);
     if (!list.length) return '<div class="panel"><div class="empty">올린 삽입 문제가 없습니다. 위에서 모의고사를 고른 뒤 “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리세요.</div></div>';
     return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문항</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
@@ -89,7 +89,7 @@ const Inserts = {
   screenBody(q) { return q.body.map(it => it.m ? `<b class="in-smk">(${it.m})</b>` : esc(it.t)).join(' '); },
 
   onClick(e, main) {
-    if (Exams.commonClick(e, main)) return;
+    if (Variants.commonClick(e, main)) return;
     const go = e.target.closest('tr[data-ingo]');
     if (go) { this.matId = go.dataset.ingo; this.openNum = ''; App.render(true); return; }
     const op = e.target.closest('[data-inopen]');

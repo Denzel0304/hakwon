@@ -8,7 +8,7 @@ const App = {
   _needRender: false,
   pages: {
     today: Today, students: Students, classes: Classes, timetable: Timetable,
-    lessons: Lessons, attendance: AttBook, report: Reports, words: WordBook, vocas: Vocas, armgijang: Armg1738, books: Books, progress: ProgressBook, psum: ProgressSum, sms: SmsPage, makeups: Makeups, exams: Exams, scores: Scores, prints: Prints,
+    lessons: Lessons, attendance: AttBook, report: Reports, words: WordBook, vocas: Vocas, armgijang: Armg1738, books: Books, progress: ProgressBook, psum: ProgressSum, sms: SmsPage, makeups: Makeups, exams: Exams, variants: Variants, scores: Scores, prints: Prints,
     counsels: Counsels, calendar: BigCal, events: EventsPage, day: DayPage, settings: Settings, lessonplan: LessonPlan, software: SoftwarePage,
   },
 
@@ -360,6 +360,7 @@ const StartRemind = {
     if (p === 'lessons') App.go('lessons', { date: App.selDate });
     else {
       if (p === 'progress') { ProgressBook.classId = ProgressBook.nowClass(); ProgressSum.classId = ''; }   // 메뉴로 열면 진도는 지금 시각의 반(없으면 '선택 안 함')에서 시작 (진도 요약은 '전체')
+      if (p === 'variants') Variants.tab = 'wr';   // 메뉴로 열면 항상 서술형 탭부터
       App.go(p, {});
     }
   });
