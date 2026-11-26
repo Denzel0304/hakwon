@@ -41,7 +41,7 @@ const Inserts = {
     const m = this.matId ? NP.mat(this.matId) : null;
     const opt = (x) => { const n = this.nQs(this.recs(x.id)); return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
     let h = Exams.headHtml() + Exams.tabsHtml();
-    h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">모의고사를 고르세요</option>${mats.map(opt).join('')}</select>
+    h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.map(opt).join('')}</select>
       <span class="muted small">문장 삽입 문제 · Claude로 만든 파일을 올려 탑재</span><span style="flex:1"></span>
       <button class="btn" data-ia="up">파일 올리기</button><button class="btn primary" data-ia="print">인쇄</button>
       <input type="file" data-infile accept=".json,application/json" hidden></div>`;
