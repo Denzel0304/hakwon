@@ -159,7 +159,8 @@ const SmsPage = {
         <textarea data-text rows="9" placeholder="보낼 내용을 입력하세요. {이름} 등은 학생마다 바뀌어 들어갑니다.">${esc(this.text)}</textarea>
         <div class="small soft" id="sx7-cnt" style="margin-top:4px">${this.cntHtml()}</div>
         <p class="small muted" style="margin:6px 0 0">{이름} 성 뺀 이름 · 조사는 자동으로 맞춤 ({이름}를 → 윤성이를 / 윤수를) · {반} 다니는 반 이름</p>
-        <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button class="btn danger" data-a="clrtext" title="보낼 내용에 입력한 글을 모두 지웁니다">초기화</button>
           <button class="btn primary" data-a="preview" ${this.sending ? 'disabled' : ''}>${this.sending ? '발송 요청 중…' : '미리보기 후 발송'}</button>
         </div>
       </div>
@@ -531,6 +532,11 @@ const SmsPage = {
         this.sel.clear();
         $$('[data-sid]', main).forEach(cb => { cb.checked = false; });
         this.paintSel(main);
+      } else if (k === 'clrtext') {          // 초기화: 보낼 내용만 지움 (받는 사람·템플릿 선택은 그대로)
+        const ta = $('[data-text]', main);
+        if (ta) { ta.value = ''; ta.focus(); }
+        this.text = '';
+        const cnt = $('#sx7-cnt', main); if (cnt) cnt.innerHTML = this.cntHtml();
       } else if (k === 'preview') this.preview();
       else if (k === 'tplsave') this.saveTpl();
       else if (k === 'tpldel') this.delTpl();
