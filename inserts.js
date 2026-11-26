@@ -1,7 +1,8 @@
 /* =========================================================
    inserts.js — 시험+교재 › 삽입 (모의고사 지문으로 만든 문장 삽입 문제)
    · 문제는 Claude로 미리 만든 파일(형식 mg77-insert-v1, .json)을 "파일 올리기"로 탑재한다
-       파일의 연도·월·학년과 같은 모의고사 교재에 붙는다 (교재가 없으면 만들지 물어봄). 교재 연결은 이름·목록용일 뿐 다른 기능과 연동 없음
+       위에서 고른 모의고사 교재에 붙는다 (파일 속 연도·월은 확인 창에 보여 주기만 함 — 시행 월이 달라도 선생님이 고른 회차에 붙음)
+       교재 연결은 이름·목록용일 뿐 다른 기능과 연동 없음
    · 저장: meta 테이블 (다른 기기와 동기화 · 테이블 추가 없음) — 지문 하나에 기록 하나
        id 'IN_'+교재id+'_'+번호, { kind:'inq', matId, num:'20' | '41-42', qs:[{ id:'20-1', given, body:[{ t, np? } | { m:'①' }], answer:1~5 }], updatedAt }
    · 인쇄 (이 탭의 인쇄 창): 여러 모의고사에서 지문(번호)을 골라 그 지문의 문항을 모두 인쇄한다
@@ -42,7 +43,7 @@ const Inserts = {
     const opt = (x) => { const n = this.nQs(this.recs(x.id)); return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
     let h = Exams.headHtml() + Exams.tabsHtml();
     h += `<div class="toolbar"><select data-inmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
-      <span class="muted small">모의고사 문장 삽입 문제 · Claude로 만든 파일을 올리면 같은 모의고사에 자동으로 붙음</span><span style="flex:1"></span>
+      <span class="muted small">모의고사 문장 삽입 문제 · 회차를 고른 뒤 Claude로 만든 파일을 올림</span><span style="flex:1"></span>
       <button class="btn" data-ia="up">파일 올리기</button><button class="btn primary" data-ia="print">인쇄</button>
       <input type="file" data-infile accept=".json,application/json" hidden></div>`;
     h += m ? this.matHtml(m) : this.overviewHtml(mats);
@@ -58,9 +59,9 @@ const Inserts = {
 
   // 교재를 고르기 전: 삽입 문제가 있는 교재 목록 (서술형 탭 목록과 같은 모양)
   overviewHtml(mats) {
-    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다. “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리면 파일의 연도·월·학년으로 모의고사 교재가 만들어지고 문제가 붙습니다.</div></div>';
+    if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다. “+ 교재 등록”으로 모의고사를 먼저 등록하세요.</div></div>';
     const list = mats.filter(m => this.recs(m.id).length);
-    if (!list.length) return '<div class="panel"><div class="empty">올린 삽입 문제가 없습니다. “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리세요. 파일의 연도·월·학년과 같은 모의고사 교재에 자동으로 붙습니다.</div></div>';
+    if (!list.length) return '<div class="panel"><div class="empty">올린 삽입 문제가 없습니다. 위에서 모의고사를 고른 뒤 “파일 올리기”로 Claude가 만든 삽입 문제 파일(.json)을 올리세요.</div></div>';
     return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th class="num">항목</th><th class="num">문항</th><th>최근 변경</th></tr></thead><tbody>${list.map(m => {
       const rs = this.recs(m.id), up = rs.map(r => r.updatedAt || '').sort().pop() || '';
       return `<tr class="click" data-ingo="${m.id}"><td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
@@ -96,7 +97,12 @@ const Inserts = {
     const b = e.target.closest('[data-ia]');
     if (!b || b.disabled) return;
     const a = b.dataset.ia;
-    if (a === 'up') { $('[data-infile]', main).click(); return; }
+    if (a === 'up') {
+      const m = this.matId ? NP.mat(this.matId) : null;
+      if (!m || m.type !== 'mock') { toast('먼저 위에서 문제를 올릴 모의고사를 고르세요.'); $('[data-inmat]', main).focus(); return; }
+      this._upMat = m.id;
+      $('[data-infile]', main).click(); return;
+    }
     if (a === 'print') { this.openPrint(); return; }
     if (a === 'delset') { this.delSet(this.matId); return; }
   },
@@ -150,16 +156,17 @@ const Inserts = {
     try { d = JSON.parse(await file.text()); } catch (e) { d = null; }
     const err = d ? this.check(d) : '파일을 읽지 못했습니다 (JSON 파일이 아닙니다)';
     if (err) { alertDlg('올릴 수 없는 파일', err); return; }
+    // 올릴 곳 = 파일 올리기를 누를 때 고른 모의고사 (파일 속 연도·월로 자동 연결하지 않음)
+    const m = NP.mat(this._upMat || this.matId);
+    if (!m || m.type !== 'mock') { toast('먼저 위에서 문제를 올릴 모의고사를 고르세요.'); return; }
     const y = +d.exam.year, mo = +d.exam.month, g = +d.exam.grade;
-    const label = `${String(y).slice(-2)}년 ${mo}월 ${gradeLabel(g)} 모의고사`;
-    let m = NP.mats().find(x => x.type === 'mock' && +x.year === y && +x.month === mo && +x.grade === g);
-    if (!m) {
-      if (!await confirmDlg(`“${label}” 교재가 없습니다.\n시험 교재에 이 모의고사를 만들고 문제를 올릴까요?`, '만들고 올리기')) return;
-      m = Store.put('meta', { id: uid('MT'), kind: 'mat', createdAt: new Date().toISOString(), type: 'mock', year: y, month: mo, grade: g });
-    }
+    const fileName = String(d.exam.title || '').trim() || `${y}년 ${mo}월 ${gradeLabel(g)} 모의고사`;
     const old = this.recs(m.id);
     const nNew = d.passages.reduce((n, p) => n + p.qs.length, 0);
-    if (old.length && !await confirmDlg(`“${NP.matName(m)}”에 이미 삽입 문제 ${this.nQs(old)}문항이 있습니다.\n지우고 새 파일의 ${nNew}문항으로 바꿀까요?`, '바꾸기', true)) return;
+    const warn = (+m.year !== y || +m.grade !== g) ? `\n\n※ 파일과 고른 교재의 연도·학년이 다릅니다. 회차를 다시 확인하세요.` : '';
+    const msg = `파일: ${fileName}\n올릴 곳: “${NP.matName(m)}”\n\n${d.passages.length}개 지문 ${nNew}문항을 이 모의고사에 올릴까요?`
+      + (old.length ? `\n이미 있는 ${this.nQs(old)}문항은 지워지고 새 파일로 바뀝니다.` : '') + warn;
+    if (!await confirmDlg(msg, old.length ? '바꾸기' : '올리기', !!old.length || !!warn)) return;
     old.forEach(r => Store.del('meta', r.id));
     const at = new Date().toISOString();
     d.passages.forEach(p => {
