@@ -42,6 +42,7 @@ const Banks = {
   _upMat: '',
   // 인쇄 창 — 앱을 켜 둔 동안 기억
   sel: new Set(),         // 고른 지문 (교재id|번호)
+  examId: '',             // 범위를 가져온 학교 시험 (시험+교재)
   types: new Set(),       // 고른 유형
   vars: new Set(['orig']),
   cnt: { mode: 'all', n: 1 },
@@ -139,7 +140,7 @@ const Banks = {
   async wipe() {
     try { if (this.db) this.db.close(); } catch (e) { /* 이미 닫힘 */ }
     this.db = null; this.files = new Map(); this.loaded = false; this.loadP = null; this.loadErr = false;
-    this.matId = ''; this.openNum = ''; this.sel.clear(); this.types.clear(); this.vars = new Set(['orig']);
+    this.matId = ''; this.openNum = ''; this.examId = ''; this.sel.clear(); this.types.clear(); this.vars = new Set(['orig']);
     this.cnt = { mode: 'all', n: 1 }; this.arr = { type: 'group', num: 'asc' }; this.seed = 1;
     this.pick = { mode: 'manual', classId: '', sel: [] }; this.pr = { name: '', date: '', copies: '' }; this.set = null; this._cache = null;
     await new Promise(res => {
@@ -161,6 +162,27 @@ const Banks = {
     return out;
   },
   dataMats() { return this.mockMats().map(m => ({ m, its: this.allItems(m) })).filter(x => x.its.length); },
+  /* ---------- 학교 시험 범위 (시험+교재 › 진행중인 시험, 고등만) ---------- */
+  examList() {
+    return Store.all('exams').filter(e => !e.done && +e.grade >= 10 && (e.items || []).some(it => { const m = NP.mat(it.matId); return m && m.type === 'mock'; }))
+      .sort((a, b) => String(a.start || '9').localeCompare(String(b.start || '9')) || ko(schoolShort(a.school), schoolShort(b.school)));
+  },
+  examLabel(e) { return `${schoolShort(e.school)} ${gradeLabel(e.grade)} · ${e.year}년 ${e.semester}학기 ${EXAM_KIND[e.kind] || ''}`.trim(); },
+  // 시험 범위의 모의고사 번호 중 변형문제가 있는 지문 (41-42 는 41·42 어느 쪽이 범위에 있어도 들어감, 번호를 안 적은 회차는 전체)
+  examGks(e, dm) {
+    const out = new Set();
+    (e.items || []).forEach(it => {
+      const d = dm.find(x => x.m.id === it.matId); if (!d) return;
+      const ns = new Set((it.nums || []).map(Number));
+      d.its.forEach(x => { if (!ns.size || String(x.num).split('-').some(n => ns.has(+n))) out.add(x.gk); });
+    });
+    return out;
+  },
+  examSelHtml(cur) {
+    const ex = this.examList();
+    return `<select data-bkexam style="width:100%"><option value="">학교 시험 범위로 고르기 (안 고르면 직접)</option>${ex.map(e => `<option value="${esc(e.id)}" ${e.id === cur ? 'selected' : ''}>${esc(this.examLabel(e))}</option>`).join('')}</select>`;
+  },
+
   // 탭 옆 숫자: 문제가 올라간 모의고사 수
   count() { return this.mockMats().filter(m => this.bankFiles(m.id).length || Inserts.recs(m.id).length || Orders.recs(m.id).length).length; },
   srcLabel(x) { return `${NP.shortName(x.m)} · ${x.num}번${x.v !== 'orig' ? ` (변형-${x.lev || this.vName(x.v)})` : ''}`; },
@@ -187,7 +209,7 @@ const Banks = {
     h += `<div class="toolbar"><select data-bkmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
       <span class="muted small">모의고사 변형문제 · 회차를 고른 뒤 Claude로 만든 파일(은행·삽입·순서)을 올림</span><span style="flex:1"></span>
       <button class="btn" data-bka="down" title="${m ? '이 회차' : '모든 회차'}의 문제 파일(json)을 zip 하나로 내려받음">${m ? '이 회차 내려받기' : '모두 내려받기'}</button>
-      <button class="btn" data-bka="up">파일 올리기</button><button class="btn primary" data-bka="print">인쇄</button>
+      <button class="btn" data-bka="up">파일 올리기</button><button class="btn" data-bka="mock">모의 시험</button><button class="btn primary" data-bka="print">인쇄</button>
       <input type="file" data-bkfile accept=".json,application/json" multiple hidden></div>`;
     if (this.loadErr) h += '<div class="panel"><div class="empty">이 PC의 문제 은행 저장소를 열지 못했습니다. 브라우저를 다시 열어 보세요. (삽입·순서는 그대로 보입니다)</div></div>';
     h += m ? this.matHtml(m) : this.overviewHtml(mats);
@@ -276,6 +298,7 @@ const Banks = {
       $('[data-bkfile]', main).click(); return;
     }
     if (a === 'print') { this.openPrint(); return; }
+    if (a === 'mock') { MockTest.open(); return; }
     if (a === 'delall') { this.delAll(this.matId); return; }
     if (a === 'down') { this.download(this.matId ? NP.mat(this.matId) : null); return; }
   },
@@ -522,6 +545,7 @@ const Banks = {
     const body = `<div class="pr-wrap wx-pw">
       <aside class="panel pr-side wx-pside">
         <div class="pr-sec"><h2>범위</h2>
+          <div style="margin-bottom:6px">${this.examSelHtml(this.examId)}</div>
           <div class="wx-psbtn"><button type="button" class="btn sm" data-bka="bp-all">전체 선택</button><button type="button" class="btn sm" data-bka="bp-none">선택 해제</button></div>
           <div class="wx-pslist" data-bksel>${this.selHtml(dm)}</div></div>
         <div class="pr-sec"><h2>유형</h2>
@@ -617,7 +641,12 @@ const Banks = {
         });
         b.addEventListener('change', (e) => {
           const t = e.target;
-          if (t.matches('[data-bsm]')) {
+          if (t.matches('[data-bkexam]')) {
+            this.examId = t.value;
+            const ex = t.value ? Store.get('exams', t.value) : null;
+            if (ex) { this.sel = this.examGks(ex, this.dataMats()); if (!this.sel.size) toast('이 시험 범위에 올린 변형문제가 없어요.'); }
+            refreshPick();
+          } else if (t.matches('[data-bsm]')) {
             const d = this.dataMats().find(y => y.m.id === t.dataset.bsm);
             if (d) d.its.forEach(x => { if (t.checked) this.sel.add(x.gk); else this.sel.delete(x.gk); });
             refreshPick();
@@ -803,8 +832,8 @@ const Banks = {
     return pages;
   },
   // 쪽 나누기 (화면 밖에 실제 크기로 그려서 잰다) → { qs:[문제지 본문], ak:[해설지 본문], n }
-  async paginate(items) {
-    const key = items.map(x => x.key).join('|') + '#' + this.seed;
+  async paginate(items, title) {
+    const key = items.map(x => x.key).join('|') + '#' + this.seed + '#' + (title || '');
     if (this._cache && this._cache.key === key) return this._cache;
     await Inserts.fontsReady();
     const host = document.createElement('div');
@@ -812,8 +841,8 @@ const Banks = {
     document.body.appendChild(host);
     try {
       const ts = [...new Set(items.map(x => x.type))];
-      const one = ts.length === 1;              // 한 유형뿐이면 발문은 첫 쪽에 한 번 (삽입·순서 탭과 같음), 여러 유형이면 문항마다
-      const tag = one ? this.tName(ts[0]) : '변형문제';
+      const one = ts.length === 1 && !title;    // 한 유형뿐이면 발문은 첫 쪽에 한 번 (삽입·순서 탭과 같음), 여러 유형이면 문항마다
+      const tag = title || (one ? this.tName(ts[0]) : '변형문제');
       const dir = `<div class="in-dir"><span class="pn-tag">${esc(tag)} · ${items.length}문항</span>${one ? `<span>${esc(this.stemOf(items[0]))}</span>` : ''}</div>`;
       const qs = this.flow(host, items.map((x, i) => this.qHtml(x, i + 1, !one)), 'in-qs', dir);
       let ak;
