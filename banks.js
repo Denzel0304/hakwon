@@ -18,9 +18,10 @@ const Banks = {
   FORMAT: 'mg77-school-bank-v1',
   DB: 'mg77_bank',
   ST: 'files',
-  TYPES: [['grammar', '어법'], ['vocab', '어휘'], ['gbox', '어법 선택'], ['vbox', '어휘 선택'], ['blank', '빈칸'], ['summary', '요약'],
-          ['insert', '삽입'], ['order', '순서'], ['irrelevant', '무관'], ['gist', '요지'], ['topic', '주제'], ['title', '제목'],
-          ['claim', '주장'], ['implication', '함축'], ['match', '일치'], ['mismatch', '불일치']],
+  // 유형 순서 = 모의고사 번호 순서 (20 주장 · 21 함축 · 22 요지 · 23 주제 · 24 제목 · 26 불일치(+일치) · 29 어법(+어법 선택) · 30 어휘(+어휘 선택) · 31~34 빈칸 · 35 무관 · 36~37 순서 · 38~39 삽입 · 40 요약)
+  TYPES: [['claim', '주장'], ['implication', '함축'], ['gist', '요지'], ['topic', '주제'], ['title', '제목'], ['mismatch', '불일치'], ['match', '일치'],
+          ['grammar', '어법'], ['gbox', '어법 선택'], ['vocab', '어휘'], ['vbox', '어휘 선택'], ['blank', '빈칸'], ['irrelevant', '무관'],
+          ['order', '순서'], ['insert', '삽입'], ['summary', '요약']],
   VARS: [['orig', '원문'], ['v1', '약'], ['v2', '중'], ['v3', '강']],
   KIND_NAME: { grammar: '어법', vocab: '어휘', 'gbox+vbox': '어법·어휘 선택', 'blank+summary': '빈칸·요약', 'insert+order+irrelevant': '무관',
                irrelevant: '무관', 'gist+topic+title+claim+implication+mismatch+match': '요지·주제·제목·주장·함축·일치·불일치', variant: '변형 지문(약·중·강) 문제' },
@@ -185,14 +186,24 @@ const Banks = {
   },
 
   matHtml(m) {
-    const its = this.allItems(m), fs = this.bankFiles(m.id), ni = Inserts.recs(m.id), no = Orders.recs(m.id);
+    const its = this.allItems(m), fs = this.bankFiles(m.id);
     let h = `<div class="panel"><div class="wx-bar"><span class="np-tag mock">${MAT_TYPE.mock}</span><b class="wx-mname">${esc(NP.matName(m))}</b>
       <span class="small soft">${its.length}문항</span><span style="flex:1"></span></div>`;
     if (!its.length) return h + '<div class="empty">이 모의고사에 올린 변형문제가 없습니다. “파일 올리기”로 파일을 올리세요.</div></div>';
-    // 올린 파일 (지우기)
-    const chips = fs.map(f => `<span class="bk-file"><b>${esc(this.kindName(f.kind))}</b> ${f.items.length}문항<button type="button" class="bk-x" data-bkdelf="${esc(f.key)}" title="이 파일 지우기">×</button></span>`);
-    if (ni.length) chips.push(`<span class="bk-file"><b>삽입</b> ${Inserts.nQs(ni)}문항<button type="button" class="bk-x" data-bka="delins" title="삽입 문제 모두 지우기">×</button></span>`);
-    if (no.length) chips.push(`<span class="bk-file"><b>순서</b> ${no.length}문항<button type="button" class="bk-x" data-bka="delord" title="순서 문제 모두 지우기">×</button></span>`);
+    // 이름표: 변형 지문(약·중·강) 문제를 맨 앞에, 원문 문제는 유형마다 따로 (× = 그 유형이 들어 있는 파일 지우기)
+    const chip = (nm, n, del) => `<span class="bk-file"><b>${esc(nm)}</b> ${n}문항<button type="button" class="bk-x" ${del} title="지우기">×</button></span>`;
+    const chips = [];
+    fs.filter(f => f.kind === 'variant').forEach(f => chips.push(chip('변형 지문(약·중·강)', f.items.length, `data-bkdelf="${esc(f.key)}"`)));
+    const orig = its.filter(x => x.v === 'orig');
+    this.TYPES.forEach(([t, nm]) => {
+      const n = orig.filter(x => x.type === t).length;
+      if (!n) return;
+      let del;
+      if (t === 'insert') del = 'data-bka="delins"';
+      else if (t === 'order') del = 'data-bka="delord"';
+      else { const f = fs.find(y => y.kind !== 'variant' && y.items.some(it => it.type === t && (it.variant || 'orig') === 'orig')); del = f ? `data-bkdelf="${esc(f.key)}"` : 'disabled'; }
+      chips.push(chip(nm, n, del));
+    });
     h += `<div class="bk-files">${chips.join('')}</div>`;
     // 유형 × 원문·변형 문항 수
     const ts = [...new Set(its.map(x => x.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b));
@@ -257,7 +268,10 @@ const Banks = {
   async delFile(key) {
     const f = this.files.get(key); if (!f) return;
     const m = NP.mat(f.matId);
-    if (!await confirmDlg(`“${m ? NP.matName(m) : ''}”의 ${this.kindName(f.kind)} 문제 ${f.items.length}문항을 지울까요?\n(이 PC에서만 지워집니다. 파일을 다시 올리면 돌아옵니다)`, '삭제', true)) return;
+    const ts = [...new Set(f.items.map(it => it.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b)).map(t => this.tName(t));
+    const nm = f.kind === 'variant' ? '변형 지문(약·중·강)' : ts.join('·');
+    const together = f.kind !== 'variant' && ts.length > 1 ? `\n${ts.join('·')}은(는) 한 파일로 올라가 있어 함께 지워집니다.` : '';
+    if (!await confirmDlg(`“${m ? NP.matName(m) : ''}”의 ${nm} 문제 ${f.items.length}문항을 지울까요?${together}\n(이 PC에서만 지워집니다. 파일을 다시 올리면 돌아옵니다)`, '삭제', true)) return;
     try { await this.dbDel(key); } catch (e) { alertDlg('지우지 못했습니다', '이 PC의 저장소에서 지우지 못했습니다. 다시 해 보세요.'); return; }
     this._cache = null;
     toast('지웠습니다');
