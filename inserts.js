@@ -3,8 +3,9 @@
    · 문제는 Claude로 미리 만든 파일(형식 mg77-insert-v1, .json)을 "파일 올리기"로 탑재한다
        위에서 고른 모의고사 교재에 붙는다 (파일 속 연도·월은 확인 창에 보여 주기만 함 — 시행 월이 달라도 선생님이 고른 회차에 붙음)
        교재 연결은 이름·목록용일 뿐 다른 기능과 연동 없음
-   · 저장: meta 테이블 (다른 기기와 동기화 · 테이블 추가 없음) — 지문 하나에 기록 하나
-       id 'IN_'+교재id+'_'+번호, { kind:'inq', matId, num:'20' | '41-42', qs:[{ id:'20-1', given, body:[{ t, np? } | { m:'①' }], answer:1~5 }], updatedAt }
+   · 저장: 이 PC에만 (2026-11-28 바꿈 — 변형문제 탭 은행과 같은 IndexedDB 'mg77_bank', Banks.saveLocal / localRecs, 로그아웃하면 지워짐)
+       교재 하나에 기록 하나 { key: 교재id|#insert, recs:[{ id, num:'20' | '41-42', qs:[{ id:'20-1', given, body:[{ t, np? } | { m:'①' }], answer:1~5 }], updatedAt }] }
+       예전 meta 테이블(동기화)의 kind:'inq' 기록은 Banks.migrate() 가 한 번 이 PC로 옮기고 지운다
    · 인쇄 (이 탭의 인쇄 창): 여러 모의고사에서 지문(번호)을 골라 그 지문의 문항을 모두 인쇄한다
        순서는 늘 섞는다 — 같은 지문 문항은 붙지 않게, 되도록 같은 쪽에도 오지 않게 (모든 부가 같은 순서, "다시 섞기"로 바꿈)
        한 부 = 문제지(2단) (+빈 면) + 정답지 (+빈 면) → 정답지는 늘 새 종이에서 시작, 다음 부도 새 종이에서 시작
@@ -26,7 +27,7 @@ const Inserts = {
   /* ---------- 저장 ---------- */
   rid(matId, num) { return 'IN_' + matId + '_' + num; },
   numKey(n) { return parseInt(n, 10) || 0; },
-  recs(matId) { return Store.where('meta', r => r.kind === 'inq' && r.matId === matId && Array.isArray(r.qs)).sort((a, b) => this.numKey(a.num) - this.numKey(b.num)); },
+  recs(matId) { return Banks.localRecs(matId, 'insert').filter(r => Array.isArray(r.qs)).sort((a, b) => this.numKey(a.num) - this.numKey(b.num)); },
   nQs(recs) { return recs.reduce((n, r) => n + r.qs.length, 0); },
   mockMats() { return NP.sortMats(NP.examMats().filter(m => m.type === 'mock')); },
   // 탭 옆 숫자: 삽입 문제가 올라간 모의고사 수
@@ -111,7 +112,7 @@ const Inserts = {
     const m = NP.mat(matId), rs = this.recs(matId);
     if (!m || !rs.length) return;
     if (!await confirmDlg(`“${NP.matName(m)}”의 삽입 문제 ${this.nQs(rs)}문항을 모두 삭제할까요?`, '삭제', true)) return;
-    rs.forEach(r => Store.del('meta', r.id));
+    try { await Banks.delLocal(matId, 'insert'); } catch (e) { alertDlg('지우지 못했습니다', '이 PC의 저장소에서 지우지 못했습니다. 다시 해 보세요.'); return; }
     this.clearSel(matId);
     toast('삽입 문제를 삭제했습니다');
     App.render();
@@ -167,14 +168,15 @@ const Inserts = {
     const msg = `파일: ${fileName}\n올릴 곳: “${NP.matName(m)}”\n\n${d.passages.length}개 지문 ${nNew}문항을 이 모의고사에 올릴까요?`
       + (old.length ? `\n이미 있는 ${this.nQs(old)}문항은 지워지고 새 파일로 바뀝니다.` : '') + warn;
     if (!await confirmDlg(msg, old.length ? '바꾸기' : '올리기', !!old.length || !!warn)) return;
-    old.forEach(r => Store.del('meta', r.id));
     const at = new Date().toISOString();
-    d.passages.forEach(p => {
+    const recs = d.passages.map(p => {
       const num = String(p.num).trim();
-      Store.put('meta', { id: this.rid(m.id, num), kind: 'inq', matId: m.id, num, updatedAt: at,
+      return { id: this.rid(m.id, num), num, updatedAt: at,
         qs: p.qs.map(q => ({ id: String(q.id), given: q.given.trim(), answer: q.answer,
-          body: q.body.map(it => it.m ? { m: it.m } : (it.np ? { t: it.t, np: true } : { t: it.t })) })) });
+          body: q.body.map(it => it.m ? { m: it.m } : (it.np ? { t: it.t, np: true } : { t: it.t })) })) };
     });
+    try { await Banks.saveLocal(m.id, 'insert', recs); }      // 있던 것은 통째로 바뀜
+    catch (e) { alertDlg('저장하지 못했습니다', '이 PC의 저장 공간에 넣지 못했습니다. 브라우저 저장 공간을 확인해 주세요.'); return; }
     this.clearSel(m.id);
     this.matId = m.id;
     toast(`${NP.matName(m)} · ${d.passages.length}개 지문 ${nNew}문항을 올렸습니다`);

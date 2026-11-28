@@ -4,10 +4,12 @@
        mg77-school-bank-v1 : Claude로 만든 문항 은행 (어법·어휘·어법 선택·어휘 선택·빈칸·요약·무관·요지·주제·제목·주장·함축·일치·불일치, 변형 지문 약·중·강)
                              → 이 PC에만 저장 (IndexedDB 'mg77_bank', 로그아웃하면 app.js 가 Banks.wipe() 로 함께 지움)
                              → 은행 속 삽입·순서 문항은 올리지 않음 (삽입·순서는 아래 파일로 따로 올린 것을 씀)
-       mg77-insert-v1 / mg77-order-v1 : 삽입·순서 문제 → inserts.js · orders.js 의 저장 방식 그대로 (meta 테이블, 동기화)
+       mg77-insert-v1 / mg77-order-v1 : 삽입·순서 문제 → inserts.js · orders.js 의 올리기 그대로, 저장도 이 PC (2026-11-28, 예전 동기화 저장분은 migrate() 가 한 번 옮김)
      모두 위에서 고른 모의고사 교재에 붙는다 (파일 속 연도·월은 확인 창에 보여 주기만 함)
    · 은행 기록: { key: 교재id|파일종류, matId, kind(파일 type), title, n, at, items:[문항 (인쇄에 쓰는 칸만)] }
+     삽입·순서 기록: { key: 교재id|#insert · 교재id|#order, matId, kind:'#insert'|'#order', at, recs:[지문마다] }
        같은 교재에 같은 종류 파일을 다시 올리면 바뀜
+   · 내려받기: 회차 하나 / 모든 회차를 zip 하나로 (은행 json · 삽입 json · 순서 json) → 그대로 다시 올릴 수 있음 (다른 PC로 옮길 때)
    · 인쇄 (이 탭의 인쇄 창): 범위(회차별 지문) · 유형(16개, 하나씩) · 지문(원문/변형 약·중·강) · 개수 · 배열
        배열: 유형 = 유형별로 묶기(기본) / 섞기, 번호 = 순서대로(기본) / 섞기 (섞으면 같은 지문은 붙지 않게)
        한 부 = 문제지(2단) (+빈 면) + 해설지 (+빈 면) → 해설지는 늘 새 종이에서 시작
@@ -109,6 +111,30 @@ const Banks = {
     });
     this.files.delete(key);
   },
+  // 삽입·순서 (이 PC) — inserts.js · orders.js 가 부른다. t = 'insert' | 'order'
+  localRecs(matId, t) { const f = this.files.get(matId + '|#' + t); return f ? f.recs.map(r => Object.assign({ matId, kind: t === 'insert' ? 'inq' : 'ordq' }, r)) : []; },
+  async saveLocal(matId, t, recs) { await this.dbPut({ key: matId + '|#' + t, matId, kind: '#' + t, at: new Date().toISOString(), recs }); this._cache = null; },
+  async delLocal(matId, t) { if (this.files.has(matId + '|#' + t)) await this.dbDel(matId + '|#' + t); this._cache = null; },
+  // 예전에 동기화 저장(meta)에 올린 삽입·순서를 이 PC로 한 번 옮기고 meta 에서 지운다 (이 PC에 이미 있으면 이 PC 것을 둔다)
+  async migrate() {
+    if (this._migrating || !this.loaded || this.loadErr) return false;
+    const old = Store.where('meta', r => (r.kind === 'inq' && Array.isArray(r.qs)) || (r.kind === 'ordq' && r.q));
+    if (!old.length) return false;
+    this._migrating = true;
+    try {
+      const groups = new Map();
+      old.forEach(r => { const t = r.kind === 'inq' ? 'insert' : 'order', k = r.matId + '|' + t; if (!groups.has(k)) groups.set(k, { matId: r.matId, t, rs: [] }); groups.get(k).rs.push(r); });
+      for (const { matId, t, rs } of groups.values()) {
+        if (!this.files.has(matId + '|#' + t)) {
+          await this.saveLocal(matId, t, rs.map(r => t === 'insert' ? { id: r.id, num: r.num, updatedAt: r.updatedAt, qs: r.qs } : { id: r.id, num: r.num, updatedAt: r.updatedAt, q: r.q }));
+        }
+        rs.forEach(r => Store.del('meta', r.id));       // 이 PC에 들어간 뒤에만 지움
+      }
+      return true;
+    } catch (e) { return false; }                        // 못 옮기면 meta 는 그대로 두고 다음에 다시
+    finally { this._migrating = false; }
+  },
+
   // 로그아웃: 이 PC의 은행을 모두 지움
   async wipe() {
     try { if (this.db) this.db.close(); } catch (e) { /* 이미 닫힘 */ }
@@ -124,7 +150,7 @@ const Banks = {
 
   /* ---------- 모은 문항 (은행 + 삽입·순서) ---------- */
   mockMats() { return Inserts.mockMats(); },
-  bankFiles(matId) { return [...this.files.values()].filter(f => f.matId === matId).sort((a, b) => this.tIdx((a.items[0] || {}).type) - this.tIdx((b.items[0] || {}).type)); },
+  bankFiles(matId) { return [...this.files.values()].filter(f => f.matId === matId && f.kind[0] !== '#').sort((a, b) => this.tIdx((a.items[0] || {}).type) - this.tIdx((b.items[0] || {}).type)); },
   // → [{ key, gk(교재id|번호), m, num, type, v(orig|v1~v3), lev, kind(bank|ins|ord), it | q }]
   allItems(m) {
     const out = [];
@@ -149,9 +175,10 @@ const Banks = {
       main.innerHTML = Variants.headHtml() + Variants.tabsHtml() + '<div class="panel"><div class="empty">문제 은행을 불러오는 중…</div></div>';
       main.onclick = (e) => { Variants.commonClick(e, main); };
       main.onchange = null; main.oninput = null; main.onkeydown = null;
-      this.load().then(() => { if (App.page === 'variants' && Variants.tab === 'mx') App.render(); });
+      this.load().then(() => this.migrate()).then(() => { if (App.page === 'variants' && Variants.tab === 'mx') App.render(); });
       return;
     }
+    this.migrate().then(moved => { if (moved && App.page === 'variants' && Variants.tab === 'mx') App.render(); });
     const mats = this.mockMats();
     if (this.matId && !NP.mat(this.matId)) this.matId = '';
     const m = this.matId ? NP.mat(this.matId) : null;
@@ -159,6 +186,7 @@ const Banks = {
     let h = Variants.headHtml() + Variants.tabsHtml();
     h += `<div class="toolbar"><select data-bkmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
       <span class="muted small">모의고사 변형문제 · 회차를 고른 뒤 Claude로 만든 파일(은행·삽입·순서)을 올림</span><span style="flex:1"></span>
+      <button class="btn" data-bka="down" title="${m ? '이 회차' : '모든 회차'}의 문제 파일(json)을 zip 하나로 내려받음">${m ? '이 회차 내려받기' : '모두 내려받기'}</button>
       <button class="btn" data-bka="up">파일 올리기</button><button class="btn primary" data-bka="print">인쇄</button>
       <input type="file" data-bkfile accept=".json,application/json" multiple hidden></div>`;
     if (this.loadErr) h += '<div class="panel"><div class="empty">이 PC의 문제 은행 저장소를 열지 못했습니다. 브라우저를 다시 열어 보세요. (삽입·순서는 그대로 보입니다)</div></div>';
@@ -249,6 +277,7 @@ const Banks = {
     }
     if (a === 'print') { this.openPrint(); return; }
     if (a === 'delall') { this.delAll(this.matId); return; }
+    if (a === 'down') { this.download(this.matId ? NP.mat(this.matId) : null); return; }
   },
 
   // 이 회차의 변형문제를 모두 지움: 은행(이 PC) + 삽입·순서(동기화 저장 → 다른 기기에서도 지워짐)
@@ -258,19 +287,82 @@ const Banks = {
     const n = this.allItems(m).length;
     if (!n) return;
     const parts = [];
-    if (fs.length) parts.push(`은행 ${fs.reduce((k, f) => k + f.items.length, 0)}문항 (이 PC)`);
+    if (fs.length) parts.push(`은행 ${fs.reduce((k, f) => k + f.items.length, 0)}문항`);
     if (ni.length) parts.push(`삽입 ${Inserts.nQs(ni)}문항`);
     if (no.length) parts.push(`순서 ${no.length}문항`);
-    const sync = ni.length || no.length ? '\n삽입·순서는 다른 기기에서도 지워집니다.' : '';
-    if (!await confirmDlg(`“${NP.matName(m)}”의 변형문제 ${n}문항을 모두 지울까요?\n${parts.join(' · ')}${sync}\n(파일을 다시 올리면 돌아옵니다)`, '삭제', true)) return;
-    try { for (const f of fs) await this.dbDel(f.key); }
+    if (!await confirmDlg(`“${NP.matName(m)}”의 변형문제 ${n}문항을 모두 지울까요?\n${parts.join(' · ')}\n(이 PC에서 지워집니다. 미리 “이 회차 내려받기”로 받아 두면 다시 올릴 수 있어요)`, '삭제', true)) return;
+    try { for (const f of fs) await this.dbDel(f.key); await this.delLocal(matId, 'insert'); await this.delLocal(matId, 'order'); }
     catch (e) { alertDlg('지우지 못했습니다', '이 PC의 저장소에서 지우지 못했습니다. 다시 해 보세요.'); return; }
-    ni.forEach(r => Store.del('meta', r.id)); Inserts.clearSel(matId);
-    no.forEach(r => Store.del('meta', r.id)); Orders.clearSel(matId);
+    Inserts.clearSel(matId); Orders.clearSel(matId);
     [...this.sel].forEach(k => { if (k.startsWith(matId + '|')) this.sel.delete(k); });
     this._cache = null; this.openNum = '';
     toast('이 회차의 변형문제를 지웠습니다');
     App.render();
+  },
+
+  /* ---------- 내려받기 (zip) ---------- */
+  FILE_NAME: { grammar: '어법', vocab: '어휘', 'gbox+vbox': '어법어휘선택', 'blank+summary': '빈칸요약', 'insert+order+irrelevant': '무관', irrelevant: '무관',
+               'gist+topic+title+claim+implication+mismatch+match': '요지주제제목주장함축일치불일치', variant: '변형지문' },
+  // 회차 하나 → [{ name, text }] (올리기로 그대로 다시 올릴 수 있는 형식)
+  exportOf(m) {
+    const exam = { year: +m.year, month: +m.month, grade: +m.grade };
+    const base = `${String(m.year).slice(-2)}년 ${m.month}월 ${gradeLabel(m.grade)}`;
+    const out = [];
+    this.bankFiles(m.id).forEach(f => {
+      const id = String((f.items[0] || {}).id || '').split(':')[0].replace(/-v\d$/, '');
+      out.push({ name: `${base}_은행_${this.FILE_NAME[f.kind] || f.kind.replace(/\W+/g, '_')}.json`,
+        text: JSON.stringify({ format: this.FORMAT, exam: Object.assign({ id }, exam, { title: f.title || NP.matName(m) }), type: f.kind, items: f.items }) });
+    });
+    const ni = Inserts.recs(m.id), no = Orders.recs(m.id);
+    if (ni.length) out.push({ name: `${base}_삽입문제.json`,
+      text: JSON.stringify({ format: Inserts.FORMAT, exam: Object.assign({}, exam, { title: NP.matName(m) }), passages: ni.map(r => ({ num: r.num, qs: r.qs })) }) });
+    if (no.length) out.push({ name: `${base}_순서문제.json`,
+      text: JSON.stringify({ format: Orders.FORMAT, exam: Object.assign({}, exam, { title: NP.matName(m) }), passages: no.map(r => ({ num: r.num, q: Object.assign({ id: r.num }, r.q) })) }) });
+    return out;
+  },
+  download(m) {
+    const list = m ? [m] : this.dataMats().map(d => d.m);
+    let files = [];
+    list.forEach(x => {
+      const fs = this.exportOf(x);
+      const dir = `${String(x.year).slice(-2)}년 ${x.month}월 ${gradeLabel(x.grade)}/`;
+      files = files.concat(m ? fs : fs.map(f => ({ name: dir + f.name, text: f.text })));     // 모두 받기는 회차마다 폴더
+    });
+    if (!files.length) { toast('내려받을 문제가 없습니다.'); return; }
+    const blob = this.zip(files);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `변형문제_${m ? `${String(m.year).slice(-2)}년 ${m.month}월 ${gradeLabel(m.grade)}` : '모든 회차'}_${todayStr()}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`${files.length}개 파일을 zip으로 내려받았습니다`);
+  },
+  // 압축 없는 zip (파일 이름 UTF-8) — 외부 라이브러리 없이
+  zip(files) {
+    const enc = new TextEncoder();
+    if (!this._crcT) { this._crcT = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; this._crcT[n] = c >>> 0; } }
+    const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = this._crcT[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+    const d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF, dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+    const parts = [], central = [];
+    let off = 0;
+    files.forEach(f => {
+      const name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true);
+      h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+      parts.push(h.buffer, name, data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+      central.push(c.buffer, name);
+      off += 30 + name.length + data.length;
+    });
+    const csize = central.reduce((n, b) => n + b.byteLength, 0);
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+    return new Blob([...parts, ...central, e.buffer], { type: 'application/zip' });
   },
 
   /* ---------- 파일 올리기 ---------- */
