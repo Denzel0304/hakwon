@@ -207,9 +207,9 @@ const Banks = {
     const opt = (x) => { const n = this.allItems(x).length; return `<option value="${x.id}" ${m && m.id === x.id ? 'selected' : ''}>${esc(NP.matName(x))}${n ? ` (${n}문항)` : ''}</option>`; };
     let h = Variants.headHtml() + Variants.tabsHtml();
     h += `<div class="toolbar"><select data-bkmat style="min-width:280px"><option value="">교재를 고르세요</option>${mats.length ? `<optgroup label="${MAT_TYPE.mock}">${mats.map(opt).join('')}</optgroup>` : ''}</select>
-      <span class="muted small">모의고사 변형문제 · 회차를 고른 뒤 Claude로 만든 파일(은행·삽입·순서)을 올림</span><span style="flex:1"></span>
+      <span style="flex:1"></span>
       <button class="btn" data-bka="down" title="${m ? '이 회차' : '모든 회차'}의 문제 파일(json)을 zip 하나로 내려받음">${m ? '이 회차 내려받기' : '모두 내려받기'}</button>
-      <button class="btn" data-bka="up">파일 올리기</button><button class="btn" data-bka="mock">모의 시험</button><button class="btn primary" data-bka="print">인쇄</button>
+      <button class="btn" data-bka="up">파일 올리기</button><button class="btn bk-mockbtn" data-bka="mock">모의 시험</button><button class="btn primary" data-bka="print">인쇄</button>
       <input type="file" data-bkfile accept=".json,application/json" multiple hidden></div>`;
     if (this.loadErr) h += '<div class="panel"><div class="empty">이 PC의 문제 은행 저장소를 열지 못했습니다. 브라우저를 다시 열어 보세요. (삽입·순서는 그대로 보입니다)</div></div>';
     h += m ? this.matHtml(m) : this.overviewHtml(mats);
@@ -938,12 +938,13 @@ const Banks = {
 .pn-sheet .bk-blank{display:inline-block;min-width:24mm;border-bottom:0.25mm solid #1f272d;text-align:center;text-indent:0;line-height:1.1;font-weight:700}
 .pn-sheet .bk-arrow{text-align:center;font-size:9pt;line-height:1;margin:1.2mm 0 0.6mm;color:#1f272d}
 .pn-sheet .bk-sum{border:0.3mm solid #39434a;padding:1.5mm 2.4mm;font-family:"Noto Serif KR",serif;font-size:8.8pt;line-height:1.7;color:#1f272d;text-align:justify;overflow-wrap:anywhere}
-.pn-sheet .bk-opts{margin-top:1.6mm;font-family:"Noto Serif KR",serif;font-size:8.6pt;line-height:1.45;color:#1f272d}
+.pn-sheet .bk-opts{margin-top:4mm;font-family:"Noto Serif KR",serif;font-size:8.6pt;line-height:1.6;color:#1f272d}
 .pn-sheet .bk-opts > div{padding-left:5mm;text-indent:-5mm;overflow-wrap:anywhere}
 .pn-sheet .bk-ol{display:inline-block;width:5mm;text-indent:0}
-.pn-sheet .bk-ot{margin-top:1.6mm;border-collapse:collapse;font-family:"Noto Serif KR",serif;font-size:8.6pt;color:#1f272d}
+.pn-sheet .bk-ot{margin-top:4mm;border-collapse:collapse;font-family:"Noto Serif KR",serif;font-size:8.6pt;color:#1f272d}
 .pn-sheet .bk-ot th{font-weight:700;padding:0 2mm 0.4mm 0;text-align:left}
-.pn-sheet .bk-ot td{padding:0.2mm 2mm 0.2mm 0;white-space:nowrap}
+.pn-sheet .bk-ot td{padding:0.4mm 2mm 0.4mm 0;white-space:nowrap}
+.pn-sheet .in-q .od-opts{margin-top:4mm}
 .pn-sheet .bk-dots{color:#6b747a}
 .pn-sheet .bk-ak{padding-bottom:2.6mm;font-family:"Noto Serif KR",serif;color:#1f272d}
 .pn-sheet .bk-akh{display:flex;align-items:baseline;gap:1.6mm;font-size:9pt;margin-bottom:0.6mm}
@@ -971,6 +972,8 @@ const Banks = {
 @media (max-width: 900px) { .bk-sumt { grid-template-columns: 1fr; } }
 .bk-sn { width: auto !important; min-width: 44px; font-size: 12px; white-space: nowrap; }
 .bk-psum { margin: 0 0 8px; }
+.btn.bk-mockbtn { background: #E3F2E6; border-color: #9FCDA9; color: #24663A; }
+.btn.bk-mockbtn:hover { background: #D3EBD8; border-color: #6FB27E; }
 `;
   document.head.appendChild(st);
 })();

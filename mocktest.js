@@ -1,8 +1,9 @@
 /* =========================================================
    mocktest.js — 변형 문제 › 변형문제 탭 › 모의 시험 (학교 기출과 비슷한 모의 시험지 조합)
    · 문항은 Banks(banks.js)가 모은 것 (은행 + 삽입·순서, 이 PC). 은행 파일은 고치지 않고 유형·원문/변형 표시만 보고 조합한다
-   · 학교 틀 (동기화 저장, meta): id 'MXT_'+학교, { kind:'mxtpl', school, counts:{ 유형: 문항 수 }, updatedAt }
-       틀이 없는 학교는 기본 틀(주성고 기준)로 시작 → "이 학교 틀로 저장"
+   · 학교 틀 (동기화 저장, meta): id 'MXT_'+학교·학년(예: '주성고 고2'), { kind:'mxtpl', school, counts:{ 유형: 문항 수 }, updatedAt }
+       틀이 없는 학교·학년은 기본 틀(22문항)로 시작 → 숫자를 고치고 "이 학교·학년 틀로 저장" (있으면 덮어씀)
+       출제 기록도 학교·학년별
    · 출제 기록 (동기화 저장, meta): id MXH_…, { kind:'mxhist', school, title, at, keys:[문항 키 — 인쇄 순서], ratio, total }
        "이 세트 기록" 을 누를 때만 남김. 다음에 같은 학교로 뽑을 때 기록된 문항은 빼고 고름 (모자라면 다시 씀)
        기록한 세트는 "다시 인쇄"로 똑같이 다시 뽑을 수 있음
@@ -19,11 +20,11 @@ const MockTest = {
   FAM: { grammar: 'A', gbox: 'A', vocab: 'A', vbox: 'A', blank: 'A', irrelevant: 'A', order: 'A', insert: 'A',
          gist: 'B', topic: 'B', title: 'B', claim: 'B', implication: 'B', summary: 'B', match: 'C', mismatch: 'C' },
   VAR_TYPES: new Set(['grammar', 'gbox', 'vocab', 'vbox', 'blank', 'irrelevant']),
-  DEFAULT: { gist: 1, topic: 1, title: 2, implication: 2, mismatch: 2, grammar: 2, vocab: 2, blank: 4, irrelevant: 1, order: 2, insert: 1, summary: 2 },   // 주성고 기준 22문항
+  DEFAULT: { gist: 1, topic: 1, title: 2, implication: 2, mismatch: 2, grammar: 2, vocab: 2, blank: 4, irrelevant: 1, order: 2, insert: 1, summary: 2 },   // 기본 틀 22문항 (처음 분석한 주성고 기출 기준)
   RATIOS: [0, 0.3, 0.5],
 
   examId: '',
-  school: '',             // 틀·기록에 쓰는 학교 (짧은 이름)
+  school: '',             // 틀·기록에 쓰는 학교·학년 (예: '주성고 고2')
   sel: new Set(),         // 범위 (교재id|번호)
   counts: null,           // 지금 화면의 틀 (저장 전)
   ratio: 0.3,
@@ -35,11 +36,12 @@ const MockTest = {
 
   /* ---------- 학교 틀 · 기록 (동기화) ---------- */
   tplId(school) { return 'MXT_' + school; },
+  keyOf(e) { return `${schoolShort(e.school)} ${gradeLabel(e.grade)}`; },     // 학교·학년
   tplOf(school) { const r = school && Store.get('meta', this.tplId(school)); return r && r.kind === 'mxtpl' ? r : null; },
   schools() {
     const set = new Set();
     Store.where('meta', r => r.kind === 'mxtpl' || r.kind === 'mxhist').forEach(r => r.school && set.add(r.school));
-    Banks.examList().forEach(e => set.add(schoolShort(e.school)));
+    Banks.examList().forEach(e => set.add(this.keyOf(e)));
     return [...set].filter(Boolean).sort(ko);
   },
   hist(school) { return Store.where('meta', r => r.kind === 'mxhist' && r.school === school).sort((a, b) => String(b.at).localeCompare(String(a.at))); },
@@ -210,7 +212,7 @@ const MockTest = {
           <div class="wx-pslist" data-mxsel>${this.selHtml()}</div>
           <p class="pr-hint mx-cap" data-mxcap>${this.capHtml()}</p></div>
         <div class="pr-sec"><h2>학교 틀</h2>
-          <label class="pr-fld"><span>학교</span><select data-mxschool>${this.schoolOpts()}</select></label>
+          <label class="pr-fld"><span>학교·학년</span><select data-mxschool>${this.schoolOpts()}</select></label>
           <div data-mxtpl>${this.tplHtml()}</div></div>
         <div class="pr-sec"><h2>변형 비율</h2>
           <div class="pr-nm-mode" role="radiogroup" aria-label="변형 비율">${this.RATIOS.map(r => `<label class="chk"><input type="radio" name="mx-ratio" value="${r}" ${this.ratio === r ? 'checked' : ''}>${Math.round(r * 100)}%</label>`).join('')}</div>
@@ -296,7 +298,7 @@ const MockTest = {
             if (ex) {
               this.sel = Banks.examGks(ex, Banks.dataMats());
               if (!this.sel.size) toast('이 시험 범위에 올린 변형문제가 없어요.');
-              this.school = schoolShort(ex.school); this.loadCounts();
+              this.school = this.keyOf(ex); this.loadCounts();
               refreshSchool();
             }
             refreshSel();
@@ -345,19 +347,20 @@ const MockTest = {
         return `<label class="mx-tc"><span>${esc(nm)} <small class="mx-max${over ? ' mx-over' : ''}" data-mxmax="${t}">${c ? `최대 ${c.per[t]}` : ''}</small></span><input type="number" min="0" max="20" step="1" value="${+this.counts[t] || 0}" data-mxc="${t}"${over ? ' class="mx-over"' : ''}></label>`; }).join('')}</div>
       <div class="mx-tplb"><span class="small">합계 <b data-mxtot>${this.total(this.counts)}</b>문항</span><span style="flex:1"></span>
         <button type="button" class="btn sm" data-mxa="tplreset">되돌리기</button>
-        ${this.school ? `<button type="button" class="btn sm" data-mxa="tplsave">이 학교 틀로 저장</button>` : ''}</div>
+        ${this.school ? `<button type="button" class="btn sm" data-mxa="tplsave">${saved ? '이 학교·학년 틀 덮어쓰기' : '이 학교·학년 틀로 저장'}</button>` : ''}</div>
       <p class="mx-warn" data-mxwarn>${esc(this.warnHtml(c))}</p>
-      <p class="pr-hint">${this.school ? (saved ? `${esc(this.school)} 틀 (저장됨)` : `${esc(this.school)}은(는) 저장된 틀이 없어 기본 틀(주성고 기준)로 시작했어요.`) : '기본 틀(주성고 기준)이에요. 학교를 고르면 그 학교 틀을 쓰고 저장할 수 있어요.'} 지문이 모자라면 답이 새지 않는 쪽을 먼저 지키고, 문항 수는 다른 유형으로 채워요.</p>`;
+      <p class="pr-hint">${this.school ? (saved ? `${esc(this.school)} 틀 (저장됨)` : `${esc(this.school)}은(는) 저장된 틀이 없어 기본 틀(22문항)로 시작했어요. 숫자를 고치고 저장하면 다음부터 그 틀을 써요.`) : '기본 틀(22문항)이에요. 학교 시험이나 학교·학년을 고르면 그 틀을 쓰고 저장할 수 있어요.'} 지문이 모자라면 답이 새지 않는 쪽을 먼저 지키고, 문항 수는 다른 유형으로 채워요.</p>`;
   },
   saveTpl(b) {
     if (!this.school) return;
+    const had = !!this.tplOf(this.school);
     Store.put('meta', { id: this.tplId(this.school), kind: 'mxtpl', school: this.school, counts: Object.assign({}, this.counts), updatedAt: new Date().toISOString() });
-    toast(`${this.school} 틀을 저장했습니다`);
+    toast(`${this.school} 틀을 ${had ? '덮어썼습니다' : '저장했습니다'}`);
     $('[data-mxschool]', b).innerHTML = this.schoolOpts();
     $('[data-mxtpl]', b).innerHTML = this.tplHtml();
   },
   histHtml() {
-    if (!this.school) return '<p class="pr-hint">학교를 고르면 그 학교의 출제 기록을 쓰고 남길 수 있어요.</p>';
+    if (!this.school) return '<p class="pr-hint">학교·학년을 고르면 그 출제 기록을 쓰고 남길 수 있어요.</p>';
     const hs = this.hist(this.school);
     const n = new Set([].concat(...hs.map(h => h.keys || []))).size;
     if (!hs.length) return `<p class="pr-hint">${esc(this.school)}: 아직 기록한 세트가 없어요. 마음에 드는 세트를 “이 세트 기록”으로 남기면 다음부터 그 문항은 빼고 골라요.</p>`;
@@ -376,7 +379,7 @@ const MockTest = {
     }
   },
   async saveSet(b) {
-    if (!this.school) { toast('기록하려면 학교 틀에서 학교를 고르세요.'); return; }
+    if (!this.school) { toast('기록하려면 학교 틀에서 학교·학년을 고르세요.'); return; }
     if (this.fixed) { toast('이미 기록한 세트예요.'); return; }
     const r = this._last;
     if (!r || !r.items.length) { toast('기록할 세트가 없어요.'); return; }
