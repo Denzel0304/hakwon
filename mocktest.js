@@ -60,6 +60,40 @@ const MockTest = {
     }));
     return [...by.values()].sort((a, b) => a.mi - b.mi || Banks.numKey(a.num) - Banks.numKey(b.num));
   },
+  // 이 범위로 낼 수 있는 최대: 지문마다 1 + (대의형과 일치·불일치를 둘 다 가진 지문은 1 더). 유형별 최대 = 그 유형을 가진 지문 수
+  capInfo() {
+    const ps = this.passages(), per = {};
+    Banks.TYPES.forEach(([t]) => { per[t] = ps.filter(p => p.items.some(x => x.type === t)).length; });
+    const dbl = ps.filter(p => p.items.some(x => this.FAM[x.type] === 'B') && p.items.some(x => this.FAM[x.type] === 'C')).length;
+    return { n: ps.length, dbl, max: ps.length + dbl, per };
+  },
+  capHtml() {
+    if (!this.sel.size) return '';
+    const c = this.capInfo();
+    return `지문 ${c.n}개 · 두 번 쓸 수 있는 지문 ${c.dbl}개 → 이 범위로 낼 수 있는 최대 <b>${c.max}문항</b>`
+      + (c.dbl ? ` <span class="small soft">(두 번 쓰는 지문은 대의형 + 일치·불일치 짝일 때만이라, 어법·빈칸 같은 글자형을 넣을수록 실제로는 줄어요)</span>` : '');
+  },
+  warnHtml(c) {
+    if (!c) return '';
+    const tot = this.total(this.counts);
+    const over = Banks.TYPES.filter(([t]) => (+this.counts[t] || 0) > c.per[t]).map(([, nm]) => nm);
+    const out = [];
+    if (tot > c.max) out.push(`최대 ${c.max}문항이라 ${tot}문항은 다 못 채워요.`);
+    if (over.length) out.push(`${over.join('·')}은(는) 범위에 있는 지문보다 많아요.`);
+    return out.join(' ');
+  },
+  // 범위·틀 숫자가 바뀌면 최대 표시만 고침 (입력 칸은 다시 그리지 않음)
+  updateCap(b) {
+    const c = this.sel.size ? this.capInfo() : null;
+    const cap = $('[data-mxcap]', b); if (cap) cap.innerHTML = this.capHtml();
+    $$('[data-mxc]', b).forEach(inp => {
+      const t = inp.dataset.mxc, mx = $(`[data-mxmax="${t}"]`, b), over = !!c && (+this.counts[t] || 0) > c.per[t];
+      inp.classList.toggle('mx-over', over);
+      if (mx) { mx.textContent = c ? `최대 ${c.per[t]}` : ''; mx.classList.toggle('mx-over', over); }
+    });
+    const w = $('[data-mxwarn]', b); if (w) w.textContent = this.warnHtml(c);
+  },
+
   build() {
     const rnd = Inserts.rng(this.seed * 13 + 5);
     const ps = this.passages();
@@ -173,7 +207,8 @@ const MockTest = {
         <div class="pr-sec"><h2>시험 범위</h2>
           <div style="margin-bottom:6px" data-mxexamw>${Banks.examSelHtml(this.examId).replace('data-bkexam', 'data-mxexam')}</div>
           <div class="wx-psbtn"><button type="button" class="btn sm" data-mxa="all">전체 선택</button><button type="button" class="btn sm" data-mxa="none">선택 해제</button></div>
-          <div class="wx-pslist" data-mxsel>${this.selHtml()}</div></div>
+          <div class="wx-pslist" data-mxsel>${this.selHtml()}</div>
+          <p class="pr-hint mx-cap" data-mxcap>${this.capHtml()}</p></div>
         <div class="pr-sec"><h2>학교 틀</h2>
           <label class="pr-fld"><span>학교</span><select data-mxschool>${this.schoolOpts()}</select></label>
           <div data-mxtpl>${this.tplHtml()}</div></div>
@@ -211,7 +246,7 @@ const MockTest = {
       onMount: (b, md) => {
         const upd = debounce(() => this.prevBuild(b, md), 250);
         const syncIndet = () => $$('[data-indet]', b).forEach(x => { x.indeterminate = true; });
-        const refreshSel = () => { const box = $('[data-mxsel]', b), top = box.scrollTop; box.innerHTML = this.selHtml(); box.scrollTop = top; syncIndet(); this.fixed = null; upd(); };
+        const refreshSel = () => { const box = $('[data-mxsel]', b), top = box.scrollTop; box.innerHTML = this.selHtml(); box.scrollTop = top; syncIndet(); this.updateCap(b); this.fixed = null; upd(); };
         const refreshSchool = () => {
           $('[data-mxschool]', b).innerHTML = this.schoolOpts();
           $('[data-mxtpl]', b).innerHTML = this.tplHtml();
@@ -247,7 +282,7 @@ const MockTest = {
         });
         b.addEventListener('input', (e) => {
           const t = e.target;
-          if (t.matches('[data-mxc]')) { const v = Math.max(0, Math.min(20, parseInt(t.value, 10) || 0)); this.counts[t.dataset.mxc] = v; $('[data-mxtot]', b).textContent = this.total(this.counts); this.fixed = null; upd(); }
+          if (t.matches('[data-mxc]')) { const v = Math.max(0, Math.min(20, parseInt(t.value, 10) || 0)); this.counts[t.dataset.mxc] = v; $('[data-mxtot]', b).textContent = this.total(this.counts); this.updateCap(b); this.fixed = null; upd(); }
           else if (t.matches('[data-mp-ac]')) { K.setAcademy(t.value); upd(); }
           else if (t.matches('[data-mp-date]')) { Banks.pr.date = isYmd(t.value) ? t.value : ''; upd(); }
           else if (t.matches('[data-bp-name]')) { Banks.pr.name = t.value; upd(); }
@@ -305,10 +340,13 @@ const MockTest = {
   },
   tplHtml() {
     const saved = this.tplOf(this.school);
-    return `<div class="mx-tpl">${Banks.TYPES.map(([t, nm]) => `<label class="mx-tc"><span>${esc(nm)}</span><input type="number" min="0" max="20" step="1" value="${+this.counts[t] || 0}" data-mxc="${t}"></label>`).join('')}</div>
+    const c = this.sel.size ? this.capInfo() : null;
+    return `<div class="mx-tpl">${Banks.TYPES.map(([t, nm]) => { const over = !!c && (+this.counts[t] || 0) > c.per[t];
+        return `<label class="mx-tc"><span>${esc(nm)} <small class="mx-max${over ? ' mx-over' : ''}" data-mxmax="${t}">${c ? `최대 ${c.per[t]}` : ''}</small></span><input type="number" min="0" max="20" step="1" value="${+this.counts[t] || 0}" data-mxc="${t}"${over ? ' class="mx-over"' : ''}></label>`; }).join('')}</div>
       <div class="mx-tplb"><span class="small">합계 <b data-mxtot>${this.total(this.counts)}</b>문항</span><span style="flex:1"></span>
         <button type="button" class="btn sm" data-mxa="tplreset">되돌리기</button>
         ${this.school ? `<button type="button" class="btn sm" data-mxa="tplsave">이 학교 틀로 저장</button>` : ''}</div>
+      <p class="mx-warn" data-mxwarn>${esc(this.warnHtml(c))}</p>
       <p class="pr-hint">${this.school ? (saved ? `${esc(this.school)} 틀 (저장됨)` : `${esc(this.school)}은(는) 저장된 틀이 없어 기본 틀(주성고 기준)로 시작했어요.`) : '기본 틀(주성고 기준)이에요. 학교를 고르면 그 학교 틀을 쓰고 저장할 수 있어요.'} 지문이 모자라면 답이 새지 않는 쪽을 먼저 지키고, 문항 수는 다른 유형으로 채워요.</p>`;
   },
   saveTpl(b) {
@@ -429,6 +467,12 @@ const MockTest = {
 .mx-tc { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; }
 .mx-tc input { width: 52px; text-align: right; }
 .mx-tplb { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.mx-max { font-size: 11px; color: var(--ink-mute); font-weight: 400; margin-left: 2px; }
+.mx-max.mx-over, .mx-warn { color: var(--danger, #c62828); }
+.mx-tc input.mx-over { border-color: var(--danger, #c62828); color: var(--danger, #c62828); }
+.mx-warn { font-size: 12.5px; font-weight: 600; margin: 6px 0 0; min-height: 0; }
+.mx-warn:empty { display: none; }
+.mx-cap { margin: 6px 0 0; }
 .mx-rep { margin-top: 8px; }
 .mx-rept { font-size: 12.5px; }
 .mx-rept .mx-adj td { color: var(--accent-ink); font-weight: 600; }
