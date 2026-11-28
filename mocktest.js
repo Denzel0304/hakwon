@@ -127,13 +127,15 @@ const MockTest = {
       const c = ps.filter(p => !p.got.length && p.types.has(t)).sort((a, b) => a.types.size - b.types.size || a.r - b.r);
       if (c.length) put(c[0], t); else left.push(t);
     });
-    // 2) 못 채운 대의형·세부형 칸은 짝(대의 + 세부)으로 두 번째 쓰기
+    // 2) 못 채운 대의형·세부형 칸은 짝(대의 + 세부)으로 두 번째 쓰기 — 단, 안 쓴 지문이 남아 있으면 두 번 쓰지 않음
+    //    (지문이 넉넉하면 틀보다 '같은 지문 두 번 안 쓰기'가 먼저, 사용자 2026-11-28 → 3)에서 안 쓴 지문의 다른 유형으로)
     const left2 = [];
+    const freshLeft = () => ps.some(p => !p.got.length && p.types.size);
     left.forEach(t => {
-      const c = fam(t) === 'A' ? [] : ps.filter(p => p.got.length === 1 && canAdd(p, t)).sort((a, b) => a.r - b.r);
+      const c = fam(t) === 'A' || freshLeft() ? [] : ps.filter(p => p.got.length === 1 && canAdd(p, t)).sort((a, b) => a.r - b.r);
       if (c.length) put(c[0], t); else left2.push(t);
     });
-    // 3) 그래도 남은 칸은 규칙 안에서 다른 유형으로 (틀에 있는 유형 중 덜 채워진 것부터, 없으면 아무 유형)
+    // 3) 그래도 남은 칸은 규칙 안에서 다른 유형으로: 안 쓴 지문 먼저 → 아직 시험지에 없는 유형 먼저 → 없으면 덜 채워진 유형
     const have = (t) => assign.filter(a => a.t === t).length;
     const lex = (u, v) => { for (let i = 0; i < u.length; i++) if (u[i] !== v[i]) return u[i] - v[i]; return 0; };
     for (let k = 0; k < left2.length; k++) {
@@ -141,7 +143,7 @@ const MockTest = {
       ps.forEach(p => p.types.forEach(t => {
         if (!canAdd(p, t)) return;
         const inTpl = target[t] ? 0 : 1, fresh = p.got.length ? 1 : 0;
-        const sc = [fresh, have(t) / (target[t] || 1), inTpl, p.r];     // 새 지문 먼저 → 덜 채워진 유형 먼저 (틀 밖 유형도 고르게)
+        const sc = [fresh, have(t) ? 1 : 0, have(t) / (target[t] || 1), inTpl, p.r];
         if (!best || lex(sc, best.sc) < 0) best = { p, t, sc };
       }));
       if (!best) break;
@@ -168,6 +170,23 @@ const MockTest = {
       slotsUsed.add(slot(x)); ansCnt[Banks.answerOf(x) - 1]++;
       picked.push(x);
     });
+    // 두 번 쓴 지문: 대의형 정답 낱말이 일치·불일치 진술문과 많이 겹치면(50% 이상) 덜 겹치는 버전 짝으로 바꿈 (힌트 막기)
+    let overlapLeft = 0;
+    ps.filter(p => p.got.length === 2).forEach(p => {
+      const idx = picked.map((x, i) => x.gk === p.gk ? i : -1).filter(i => i >= 0);
+      if (idx.length !== 2) return;
+      const [bi, ci] = this.FAM[picked[idx[0]].type] === 'B' ? idx : [idx[1], idx[0]];
+      const cand = (x) => { const c = p.items.filter(y => y.type === x.type && y.v === x.v); const f = c.filter(y => !used.has(y.key)); return f.length ? f : c; };
+      let best = null;
+      cand(picked[bi]).forEach(xb => cand(picked[ci]).forEach(xc => {
+        const ov = this.overlap(xb, xc), sc = [ov >= 0.5 ? 1 : 0, (xb === picked[bi] ? 0 : 1) + (xc === picked[ci] ? 0 : 1), ov];
+        if (!best || lex(sc, best.sc) < 0) best = { xb, xc, sc, ov };
+      }));
+      if (!best) return;
+      picked[bi] = best.xb; picked[ci] = best.xc;
+      if (best.ov >= 0.5) overlapLeft++;
+    });
+    ansCnt.fill(0); picked.forEach(x => { ansCnt[Banks.answerOf(x) - 1]++; });
     // 같은 지문 두 문항이 붙지 않게 (같은 유형 안에서 자리 바꿈)
     for (let i = 1; i < picked.length; i++) {
       if (picked[i].gk !== picked[i - 1].gk) continue;
@@ -177,8 +196,20 @@ const MockTest = {
     const got = {};
     picked.forEach(x => { got[x.type] = (got[x.type] || 0) + 1; });
     const doubles = ps.filter(p => p.got.length > 1).map(p => `${NP.shortName(p.m)} ${p.num}번 (${p.got.map(t => Banks.tName(t)).join(' + ')})`);
-    this._last = { items: picked, target, got, doubles, nPass: ps.length, short: this.total(target) - picked.length, reused, nVar: picked.filter(x => x.v !== 'orig').length, ansCnt };
+    this._last = { items: picked, target, got, doubles, nPass: ps.length, short: this.total(target) - picked.length, reused, nVar: picked.filter(x => x.v !== 'orig').length, ansCnt, overlapLeft };
     return this._last;
+  },
+  // 대의형 정답(요약은 두 낱말)의 내용어 중 일치·불일치 진술문 하나에 들어 있는 비율의 최대값
+  STOP: new Set('the a an of to in and or is are be was were that this it its for on with as by from at not no can than their they them his her he she you your we our what which who how why when do does did more most into about should may might will would has have had also only just very'.split(' ')),
+  words(s) { return new Set((String(s).toLowerCase().match(/[a-z]+/g) || []).filter(w => w.length > 3 && !this.STOP.has(w))); },
+  overlap(xb, xc) {
+    if (xb.kind !== 'bank' || xc.kind !== 'bank') return 0;
+    const a = xb.it.options && xb.it.options[xb.it.answer - 1];
+    const aw = this.words(Array.isArray(a) ? a.join(' ') : a || '');
+    if (!aw.size) return 0;
+    let best = 0;
+    (xc.it.options || []).forEach(o => { const ow = this.words(o); let n = 0; aw.forEach(w => { if (ow.has(w)) n++; }); best = Math.max(best, n / aw.size); });
+    return best;
   },
   // 기록 세트 다시 인쇄: 키 순서 그대로
   fromHist(h) {
@@ -401,7 +432,7 @@ const MockTest = {
     }).join('');
     const notes = [];
     notes.push(`지문 ${r.nPass}개에서 ${r.items.length}문항 · 변형 ${r.nVar}문항 · 정답 ${r.ansCnt.map((n, i) => Banks.LAB[i] + n).join(' ')}`);
-    if (r.doubles.length) notes.push(`두 번 쓴 지문 ${r.doubles.length}개: ${r.doubles.map(esc).join(', ')}`);
+    if (r.doubles.length) notes.push(`두 번 쓴 지문 ${r.doubles.length}개: ${r.doubles.map(esc).join(', ')}` + (r.overlapLeft ? ` — 그중 ${r.overlapLeft}개는 다른 버전이 없어 대의형 정답 낱말이 진술문과 겹쳐요 (확인해 주세요)` : ''));
     if (r.short > 0) notes.push(`<b>틀보다 ${r.short}문항 적어요</b> — 지문이 모자라 답이 새지 않게 채울 수 있는 만큼만 냈어요. 범위를 넓히거나 틀을 줄이세요.`);
     if (r.reused) notes.push(`기록된 문항을 다시 쓴 칸 ${r.reused}개 (새 문항이 모자람)`);
     return `<table class="tbl compact mx-rept"><thead><tr><th>유형</th><th class="num">틀</th><th class="num">나옴</th><th></th></tr></thead><tbody>${rows}</tbody></table>
