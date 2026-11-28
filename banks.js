@@ -1,7 +1,7 @@
 /* =========================================================
    banks.js — 변형 문제 › 변형문제 탭 (모의고사 문항 은행 + 삽입·순서)
    · 올리는 파일 (한 번에 여러 개, 형식을 보고 알아서 구분)
-       mg77-school-bank-v1 : Claude로 만든 문항 은행 (어법·어휘·네모·빈칸·요약·무관·요지·주제·제목·주장·함축·일치·불일치, 변형 지문 약·중·강)
+       mg77-school-bank-v1 : Claude로 만든 문항 은행 (어법·어휘·어법 선택·어휘 선택·빈칸·요약·무관·요지·주제·제목·주장·함축·일치·불일치, 변형 지문 약·중·강)
                              → 이 PC에만 저장 (IndexedDB 'mg77_bank', 로그아웃하면 app.js 가 Banks.wipe() 로 함께 지움)
                              → 은행 속 삽입·순서 문항은 올리지 않음 (삽입·순서는 아래 파일로 따로 올린 것을 씀)
        mg77-insert-v1 / mg77-order-v1 : 삽입·순서 문제 → inserts.js · orders.js 의 저장 방식 그대로 (meta 테이블, 동기화)
@@ -18,12 +18,12 @@ const Banks = {
   FORMAT: 'mg77-school-bank-v1',
   DB: 'mg77_bank',
   ST: 'files',
-  TYPES: [['grammar', '어법'], ['vocab', '어휘'], ['gbox', '어법 네모'], ['vbox', '어휘 네모'], ['blank', '빈칸'], ['summary', '요약'],
+  TYPES: [['grammar', '어법'], ['vocab', '어휘'], ['gbox', '어법 선택'], ['vbox', '어휘 선택'], ['blank', '빈칸'], ['summary', '요약'],
           ['insert', '삽입'], ['order', '순서'], ['irrelevant', '무관'], ['gist', '요지'], ['topic', '주제'], ['title', '제목'],
           ['claim', '주장'], ['implication', '함축'], ['match', '일치'], ['mismatch', '불일치']],
   VARS: [['orig', '원문'], ['v1', '약'], ['v2', '중'], ['v3', '강']],
-  KIND_NAME: { grammar: '어법', vocab: '어휘', 'gbox+vbox': '네모', 'blank+summary': '빈칸·요약', 'insert+order+irrelevant': '무관',
-               irrelevant: '무관', 'gist+topic+title+claim+implication+mismatch+match': '대의', variant: '변형지문' },
+  KIND_NAME: { grammar: '어법', vocab: '어휘', 'gbox+vbox': '어법·어휘 선택', 'blank+summary': '빈칸·요약', 'insert+order+irrelevant': '무관',
+               irrelevant: '무관', 'gist+topic+title+claim+implication+mismatch+match': '요지·주제·제목·주장·함축·일치·불일치', variant: '변형 지문(약·중·강) 문제' },
   STEM_INS: '글의 흐름으로 보아, 주어진 문장이 들어가기에 가장 적절한 곳을 고르시오.',
   STEM_ORD: '주어진 글 다음에 이어질 글의 순서로 가장 적절한 것을 고르시오.',
   KEEP: ['id', 'num', 'type', 'variant', 'variant_level', 'ver', 'slot', 'stem', 'paras', 'body', 'summary', 'underlined', 'options', 'answer', 'explain', 'level', 'form', 'kind'],
@@ -177,11 +177,10 @@ const Banks = {
     if (!mats.length) return '<div class="panel"><div class="empty">등록된 모의고사 교재가 없습니다.</div></div>';
     const list = mats.map(m => ({ m, its: this.allItems(m) })).filter(x => x.its.length);
     if (!list.length) return '<div class="panel"><div class="empty">올린 변형문제가 없습니다. 위에서 모의고사를 고른 뒤 “파일 올리기”로 Claude가 만든 파일(.json)을 올리세요.</div></div>';
-    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th>유형</th><th class="num">문항</th><th>최근 변경</th></tr></thead><tbody>${list.map(({ m, its }) => {
+    return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>종류</th><th>이름</th><th>유형</th><th class="num">문항</th></tr></thead><tbody>${list.map(({ m, its }) => {
       const ts = [...new Set(its.map(x => x.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b)).map(t => this.tName(t));
-      const up = [...this.bankFiles(m.id).map(f => f.at || ''), ...Inserts.recs(m.id).map(r => r.updatedAt || ''), ...Orders.recs(m.id).map(r => r.updatedAt || '')].sort().pop() || '';
       return `<tr class="click" data-bkgo="${m.id}"><td class="nowrap"><span class="np-tag ${m.type}">${MAT_TYPE[m.type]}</span></td><td class="nowrap"><b>${esc(NP.matName(m))}</b></td>
-        <td class="small">${esc(ts.join(' · '))}</td><td class="num">${its.length}</td><td class="nowrap">${esc(up.slice(0, 10))}</td></tr>`;
+        <td class="small">${esc(ts.join(' · '))}</td><td class="num">${its.length}</td></tr>`;
     }).join('')}</tbody></table></div>`;
   },
 
@@ -191,7 +190,7 @@ const Banks = {
       <span class="small soft">${its.length}문항</span><span style="flex:1"></span></div>`;
     if (!its.length) return h + '<div class="empty">이 모의고사에 올린 변형문제가 없습니다. “파일 올리기”로 파일을 올리세요.</div></div>';
     // 올린 파일 (지우기)
-    const chips = fs.map(f => `<span class="bk-file"><b>${esc(this.kindName(f.kind))}</b> ${f.items.length}문항<small>${esc((f.at || '').slice(0, 10))}</small><button type="button" class="bk-x" data-bkdelf="${esc(f.key)}" title="이 파일 지우기">×</button></span>`);
+    const chips = fs.map(f => `<span class="bk-file"><b>${esc(this.kindName(f.kind))}</b> ${f.items.length}문항<button type="button" class="bk-x" data-bkdelf="${esc(f.key)}" title="이 파일 지우기">×</button></span>`);
     if (ni.length) chips.push(`<span class="bk-file"><b>삽입</b> ${Inserts.nQs(ni)}문항<button type="button" class="bk-x" data-bka="delins" title="삽입 문제 모두 지우기">×</button></span>`);
     if (no.length) chips.push(`<span class="bk-file"><b>순서</b> ${no.length}문항<button type="button" class="bk-x" data-bka="delord" title="순서 문제 모두 지우기">×</button></span>`);
     h += `<div class="bk-files">${chips.join('')}</div>`;
@@ -199,8 +198,10 @@ const Banks = {
     const ts = [...new Set(its.map(x => x.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b));
     const vs = this.VARS.filter(([v]) => its.some(x => x.v === v));
     const c = (t, v) => its.filter(x => x.type === t && (!v || x.v === v)).length;
-    h += `<div class="tbl-wrap bk-sumt"><table class="tbl compact"><thead><tr><th>유형</th>${vs.map(([, nm]) => `<th class="num">${nm}</th>`).join('')}<th class="num">계</th></tr></thead><tbody>
-      ${ts.map(t => `<tr><td class="nowrap">${esc(this.tName(t))}</td>${vs.map(([v]) => `<td class="num">${c(t, v) || ''}</td>`).join('')}<td class="num"><b>${c(t)}</b></td></tr>`).join('')}</tbody></table></div>`;
+    const tbl = (rows) => `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>유형</th>${vs.map(([, nm]) => `<th class="num">${nm}</th>`).join('')}<th class="num">계</th></tr></thead><tbody>
+      ${rows.map(t => `<tr><td class="nowrap">${esc(this.tName(t))}</td>${vs.map(([v]) => `<td class="num">${c(t, v) || ''}</td>`).join('')}<td class="num"><b>${c(t)}</b></td></tr>`).join('')}</tbody></table></div>`;
+    const half = Math.ceil(ts.length / 2);
+    h += `<div class="bk-sumt">${tbl(ts.slice(0, half))}${ts.length > half ? tbl(ts.slice(half)) : ''}</div>`;   // 유형 표 2단
     // 지문 번호 카드
     const nums = [...new Set(its.map(x => x.num))].sort((a, b) => this.numKey(a) - this.numKey(b));
     if (!nums.includes(this.openNum)) this.openNum = '';
@@ -427,13 +428,13 @@ const Banks = {
           <div class="np-chips" data-bktypes>${this.typesHtml(dm)}</div></div>
         <div class="pr-sec"><h2>지문</h2>
           <div class="np-chips" data-bkvars>${this.varsHtml(dm)}</div>
-          <p class="pr-hint">원문 = 모의고사 지문 그대로, 약·중·강 = 바꾼 지문 (어법·어휘·네모·빈칸·무관만 있어요).</p></div>
+          <p class="pr-hint">원문 = 모의고사 지문 그대로, 약·중·강 = 낱말·문장 구조를 바꾼 지문의 변형 강도 (어법·어휘·어법 선택·어휘 선택·빈칸·무관만 있어요).</p></div>
         <div class="pr-sec"><h2>개수</h2>
           <div class="pr-nm-mode" role="radiogroup" aria-label="개수">
             ${radio('bk-cnt', 'all', this.cnt.mode, '전체')}
             <label class="chk"><input type="radio" name="bk-cnt" value="n" ${this.cnt.mode === 'n' ? 'checked' : ''}>지문·유형마다</label>
             <input type="number" data-bk-n min="1" max="50" step="1" value="${esc(String(this.cnt.n))}" style="width:56px" ${this.cnt.mode === 'n' ? '' : 'disabled'} aria-label="지문·유형마다 문항 수">개</div>
-          <p class="pr-hint">같은 자리의 다른 버전은 되도록 하나씩만 골라요.</p></div>
+          <p class="pr-hint">고른 지문 하나, 유형 하나마다 몇 문항을 낼지예요 (1~50). 그 지문·유형에 있는 문항보다 크게 적으면 있는 만큼 모두 나와요. 같은 자리의 다른 버전은 되도록 겹치지 않게 골라요.</p></div>
         <div class="pr-sec"><h2>배열</h2>
           <div class="pr-nm-mode" role="radiogroup" aria-label="유형 배열"><span class="small soft" style="min-width:34px">유형</span>
             ${radio('bk-at', 'group', this.arr.type, '유형별로 묶기')}${radio('bk-at', 'mix', this.arr.type, '섞기')}</div>
@@ -836,10 +837,10 @@ const Banks = {
   st.textContent = `
 .bk-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .bk-file { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 10px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); font-size: 13px; }
-.bk-file small { font-size: 11px; color: var(--ink-mute); }
 .bk-x { border: 0; background: none; color: var(--ink-mute); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 5px; border-radius: 10px; }
 .bk-x:hover { color: var(--danger, #c62828); background: var(--tint-strong); }
-.bk-sumt { margin-top: 10px; max-width: 520px; }
+.bk-sumt { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; margin-top: 10px; max-width: 1040px; }
+@media (max-width: 900px) { .bk-sumt { grid-template-columns: 1fr; } }
 .bk-sn { width: auto !important; min-width: 44px; font-size: 12px; white-space: nowrap; }
 .bk-psum { margin: 0 0 8px; }
 `;
