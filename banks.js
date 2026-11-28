@@ -188,22 +188,11 @@ const Banks = {
   matHtml(m) {
     const its = this.allItems(m), fs = this.bankFiles(m.id);
     let h = `<div class="panel"><div class="wx-bar"><span class="np-tag mock">${MAT_TYPE.mock}</span><b class="wx-mname">${esc(NP.matName(m))}</b>
-      <span class="small soft">${its.length}문항</span><span style="flex:1"></span></div>`;
+      <span class="small soft">${its.length}문항</span><span style="flex:1"></span>
+      ${its.length ? '<button type="button" class="btn sm ghost danger" data-bka="delall">이 회차 문제 모두 삭제</button>' : ''}</div>`;
     if (!its.length) return h + '<div class="empty">이 모의고사에 올린 변형문제가 없습니다. “파일 올리기”로 파일을 올리세요.</div></div>';
-    // 이름표: 변형 지문(약·중·강) 문제를 맨 앞에, 원문 문제는 유형마다 따로 (× = 그 유형이 들어 있는 파일 지우기)
-    const chip = (nm, n, del) => `<span class="bk-file"><b>${esc(nm)}</b> ${n}문항<button type="button" class="bk-x" ${del} title="지우기">×</button></span>`;
-    const chips = [];
-    fs.filter(f => f.kind === 'variant').forEach(f => chips.push(chip('변형 지문(약·중·강)', f.items.length, `data-bkdelf="${esc(f.key)}"`)));
-    const orig = its.filter(x => x.v === 'orig');
-    this.TYPES.forEach(([t, nm]) => {
-      const n = orig.filter(x => x.type === t).length;
-      if (!n) return;
-      let del;
-      if (t === 'insert') del = 'data-bka="delins"';
-      else if (t === 'order') del = 'data-bka="delord"';
-      else { const f = fs.find(y => y.kind !== 'variant' && y.items.some(it => it.type === t && (it.variant || 'orig') === 'orig')); del = f ? `data-bkdelf="${esc(f.key)}"` : 'disabled'; }
-      chips.push(chip(nm, n, del));
-    });
+    // 이름표: 유형마다 출제할 수 있는 전체 문항 수 (원문 + 변형 약·중·강), 유형 순서 = 모의고사 번호 순서
+    const chips = this.TYPES.map(([t, nm]) => { const n = its.filter(x => x.type === t).length; return n ? `<span class="bk-file"><b>${esc(nm)}</b> ${n}문항</span>` : ''; }).filter(Boolean);
     h += `<div class="bk-files">${chips.join('')}</div>`;
     // 유형 × 원문·변형 문항 수
     const ts = [...new Set(its.map(x => x.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b));
@@ -249,8 +238,6 @@ const Banks = {
     if (go) { this.matId = go.dataset.bkgo; this.openNum = ''; App.render(true); return; }
     const op = e.target.closest('[data-bkopen]');
     if (op) { const n = op.dataset.bkopen; this.openNum = this.openNum === n ? '' : n; App.render(); return; }
-    const df = e.target.closest('[data-bkdelf]');
-    if (df) { this.delFile(df.dataset.bkdelf); return; }
     const b = e.target.closest('[data-bka]');
     if (!b || b.disabled) return;
     const a = b.dataset.bka;
@@ -261,20 +248,28 @@ const Banks = {
       $('[data-bkfile]', main).click(); return;
     }
     if (a === 'print') { this.openPrint(); return; }
-    if (a === 'delins') { Inserts.delSet(this.matId); return; }
-    if (a === 'delord') { Orders.delSet(this.matId); return; }
+    if (a === 'delall') { this.delAll(this.matId); return; }
   },
 
-  async delFile(key) {
-    const f = this.files.get(key); if (!f) return;
-    const m = NP.mat(f.matId);
-    const ts = [...new Set(f.items.map(it => it.type))].sort((a, b) => this.tIdx(a) - this.tIdx(b)).map(t => this.tName(t));
-    const nm = f.kind === 'variant' ? '변형 지문(약·중·강)' : ts.join('·');
-    const together = f.kind !== 'variant' && ts.length > 1 ? `\n${ts.join('·')}은(는) 한 파일로 올라가 있어 함께 지워집니다.` : '';
-    if (!await confirmDlg(`“${m ? NP.matName(m) : ''}”의 ${nm} 문제 ${f.items.length}문항을 지울까요?${together}\n(이 PC에서만 지워집니다. 파일을 다시 올리면 돌아옵니다)`, '삭제', true)) return;
-    try { await this.dbDel(key); } catch (e) { alertDlg('지우지 못했습니다', '이 PC의 저장소에서 지우지 못했습니다. 다시 해 보세요.'); return; }
-    this._cache = null;
-    toast('지웠습니다');
+  // 이 회차의 변형문제를 모두 지움: 은행(이 PC) + 삽입·순서(동기화 저장 → 다른 기기에서도 지워짐)
+  async delAll(matId) {
+    const m = NP.mat(matId); if (!m) return;
+    const fs = this.bankFiles(matId), ni = Inserts.recs(matId), no = Orders.recs(matId);
+    const n = this.allItems(m).length;
+    if (!n) return;
+    const parts = [];
+    if (fs.length) parts.push(`은행 ${fs.reduce((k, f) => k + f.items.length, 0)}문항 (이 PC)`);
+    if (ni.length) parts.push(`삽입 ${Inserts.nQs(ni)}문항`);
+    if (no.length) parts.push(`순서 ${no.length}문항`);
+    const sync = ni.length || no.length ? '\n삽입·순서는 다른 기기에서도 지워집니다.' : '';
+    if (!await confirmDlg(`“${NP.matName(m)}”의 변형문제 ${n}문항을 모두 지울까요?\n${parts.join(' · ')}${sync}\n(파일을 다시 올리면 돌아옵니다)`, '삭제', true)) return;
+    try { for (const f of fs) await this.dbDel(f.key); }
+    catch (e) { alertDlg('지우지 못했습니다', '이 PC의 저장소에서 지우지 못했습니다. 다시 해 보세요.'); return; }
+    ni.forEach(r => Store.del('meta', r.id)); Inserts.clearSel(matId);
+    no.forEach(r => Store.del('meta', r.id)); Orders.clearSel(matId);
+    [...this.sel].forEach(k => { if (k.startsWith(matId + '|')) this.sel.delete(k); });
+    this._cache = null; this.openNum = '';
+    toast('이 회차의 변형문제를 지웠습니다');
     App.render();
   },
 
@@ -850,9 +845,7 @@ const Banks = {
   const st = document.createElement('style');
   st.textContent = `
 .bk-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.bk-file { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 10px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); font-size: 13px; }
-.bk-x { border: 0; background: none; color: var(--ink-mute); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 5px; border-radius: 10px; }
-.bk-x:hover { color: var(--danger, #c62828); background: var(--tint-strong); }
+.bk-file { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); font-size: 13px; }
 .bk-sumt { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; margin-top: 10px; max-width: 1040px; }
 @media (max-width: 900px) { .bk-sumt { grid-template-columns: 1fr; } }
 .bk-sn { width: auto !important; min-width: 44px; font-size: 12px; white-space: nowrap; }
