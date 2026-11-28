@@ -152,6 +152,7 @@ const App = {
     Object.keys(localStorage).forEach(k => { if (k.startsWith(CFG.PREFIX)) localStorage.removeItem(k); });
     await IDB.destroy();
     await Vocas.wipe();               // 단어 출제: 이 기기에 등록한 단어장(IndexedDB mg77_voca)도 함께 지움
+    await Banks.wipe();               // 변형문제: 이 PC에 올린 문제 은행(IndexedDB mg77_bank)도 함께 지움
     Store.reset();
     Auth.ok();
     $('#main').innerHTML = '';
